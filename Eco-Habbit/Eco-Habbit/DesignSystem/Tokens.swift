@@ -13,20 +13,32 @@ enum Tokens {}
 extension Tokens{
     
     enum Palette {
-        // MARK: Shade of Greens
+        // MARK: - Shade of Greens
         static let greenDarkest = Color(hex: 0x5E9B62)
         static let green = Color(hex: 0x6FAF73)
         static let greenLight = Color(hex: 0x8ACB88)
         static let greenFaint = Color(hex: 0xDCEFD9)
         static let greenFaintest = Color(hex: 0xEAF6E8)
         
-        // MARK: Black to White
+        // MARK: - Black to White
         static let black = Color(hex: 0x2F3A32)
         static let gray = Color(hex: 0x6B766E)
         static let grayLight = Color(hex: 0x9AA59C)
         static let grayMute = Color(hex: 0xF2F5F1)
         static let ink = Color(hex: 0xF2F5F1)
         static let white = Color(hex: 0xFFFFFF)
+        
+        // MARK: - Specific semantics
+        static let bgGradientMiddle = Color(hex: 0xF8FAF7)
+        static let bgColor = LinearGradient(
+            stops:[
+                .init(color: greenFaintest, location: 0.0),
+                .init(color: bgGradientMiddle, location: 0.45),
+                .init(color: white, location: 0.9)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 }
 
@@ -123,6 +135,13 @@ extension Tokens {
         static let smoke = "smoke"
         static let water = "water"
         static let tree = "tree"
+        
+        // MARK: - Shadow
+        static let yellowShadow = "yellow-shadow"
+        static let greenShadow = "green-shadow"
+        static let orangeShadow = "orange-shadow"
+        static let blackShadow = "black-shadow"
+        static let blueShadow = "blue-shadow"
         
 //        static let dashboardGlobe = "dashboard-globe" placeholder for our 3D asset
     }
