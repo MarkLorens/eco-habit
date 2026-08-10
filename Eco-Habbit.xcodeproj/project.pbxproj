@@ -256,19 +256,14 @@
 				DEVELOPMENT_TEAM = 3745VLZ7XR;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Eco Habit";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Eco Habit uses the camera so you can snap a photo of your sustainable action and have it detected and rewarded.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Eco Habit uses your location to surface regional missions and events happening near you.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Eco Habit lets you attach a photo from your library as evidence for an activity.";
-				INFOPLIST_KEY_UIAppFonts = (
-					"Caprasimo-Regular.ttf",
-					"Figtree-Regular.ttf",
-					"Figtree-SemiBold.ttf",
-					"Figtree-Bold.ttf",
-				);
+				INFOPLIST_KEY_UIAppFonts = "Caprasimo-Regular.ttf Figtree-Regular.ttf Figtree-SemiBold.ttf Figtree-Bold.ttf";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
@@ -299,19 +294,14 @@
 				DEVELOPMENT_TEAM = 3745VLZ7XR;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Eco Habit";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Eco Habit uses the camera so you can snap a photo of your sustainable action and have it detected and rewarded.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Eco Habit uses your location to surface regional missions and events happening near you.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Eco Habit lets you attach a photo from your library as evidence for an activity.";
-				INFOPLIST_KEY_UIAppFonts = (
-					"Caprasimo-Regular.ttf",
-					"Figtree-Regular.ttf",
-					"Figtree-SemiBold.ttf",
-					"Figtree-Bold.ttf",
-				);
+				INFOPLIST_KEY_UIAppFonts = "Caprasimo-Regular.ttf Figtree-Regular.ttf Figtree-SemiBold.ttf Figtree-Bold.ttf";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
