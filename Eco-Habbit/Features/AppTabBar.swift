@@ -101,9 +101,7 @@ struct AppTabBar: View {
     
     // MARK: - This is the camera
     private var captureButton: some View {
-        Button(action:{
-            
-        }){
+        Button(action: onCapture){
             Image(systemName: "camera.fill")
                 .textStyle(Tokens.Typography.title)
                 .foregroundStyle(Tokens.Semantic.tabviewBackground)
@@ -121,18 +119,14 @@ struct AppTabBar: View {
     }
 }
 
-struct AppTabView: View {
-    @State private var selection: AppTab = .home
-    
-    var body: some View {
-        TabView(selection: $selection) {
-            
-        }
-        .safeAreaInset(edge: .bottom) {
-            AppTabBar(selection: $selection)
-        }
-    }
-}
+// `AppTabView` removed — MainTabView is the real container and drives this bar
+// with `app.selectedTab`. The preview below exercises the bar on its own, which
+// is what you want when working on the bar itself.
 #Preview {
-    AppTabView()
+    @Previewable @State var selection: AppTab = .home
+
+    ZStack(alignment: .bottom) {
+        Tokens.Palette.limeCard.ignoresSafeArea()
+        AppTabBar(selection: $selection)
+    }
 }

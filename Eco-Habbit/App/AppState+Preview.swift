@@ -11,8 +11,8 @@ extension AppState {
         if defaults.string(forKey: "EHStage") == "login" { state.logOut() }
 
         switch defaults.string(forKey: "EHTab") {
-        case "activity": state.selectedTab = .activity
-        case "fights": state.selectedTab = .fights
+        case "activity", "actions": state.selectedTab = .actions
+        case "fights": state.selectedTab = .ourFights
         case "profile": state.selectedTab = .profile
         default: state.selectedTab = .home
         }

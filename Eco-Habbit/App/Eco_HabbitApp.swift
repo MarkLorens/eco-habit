@@ -2,11 +2,21 @@ import SwiftUI
 
 @main
 struct Eco_HabbitApp: App {
+    @StateObject private var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        FontLoader.registerBundledFonts()
+        #if DEBUG
+        _appState = StateObject(wrappedValue: AppState.fromLaunchArguments() ?? AppState())
+        #else
+        _appState = StateObject(wrappedValue: AppState())
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
-<<<<<<< Updated upstream:Eco-Habbit/Eco-Habbit/Eco_HabbitApp.swift
-=======
                 .environmentObject(appState)
                 .preferredColorScheme(.light)
                 .task(priority: .background) {
@@ -20,7 +30,6 @@ struct Eco_HabbitApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { appState.evaluateIfNeeded() }
                 }
->>>>>>> Stashed changes:Eco-Habbit/App/Eco_HabbitApp.swift
         }
     }
 }

@@ -30,7 +30,7 @@ struct HomeView: View {
     private var nextFight: some View {
         if let fight = app.nextFight {
             Button {
-                app.selectedTab = .fights
+                app.selectedTab = .ourFights
             } label: {
                 EHCard(background: AnyShapeStyle(Theme.C.accent2_100)) {
                     HStack(spacing: Theme.S.x3) {

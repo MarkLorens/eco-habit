@@ -1,8 +1,7 @@
 import SwiftUI
 
-enum AppTab: Hashable {
-    case home, activity, fights, profile
-}
+// `AppTab` lives in Features/AppTabBar.swift — it is Max's, and it belongs next
+// to the bar that renders it.
 
 /// Set when points land, so a view can play the reward animation once.
 struct Award: Identifiable, Equatable {

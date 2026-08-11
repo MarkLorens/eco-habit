@@ -99,7 +99,7 @@ struct VisualSearchView: View {
 
             // PRD §6.4 — a persistent way out, beside the chips.
             Button {
-                app.selectedTab = .activity
+                app.selectedTab = .actions
                 dismiss()
             } label: {
                 Text("Browse all habits")
