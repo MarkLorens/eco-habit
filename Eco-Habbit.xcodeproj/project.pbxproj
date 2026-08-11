@@ -6,8 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		AA0000000000000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3725B3EB3023DDC40036EE22 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3725B3F23023DDC40036EE22;
+			remoteInfo = "Eco-Habbit";
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		3725B3F33023DDC40036EE22 /* Eco-Habbit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Eco-Habbit.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000001 /* Eco-HabbitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Eco-HabbitTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +27,22 @@
 			path = "Eco-Habbit";
 			sourceTree = "<group>";
 		};
+		AA0000000000000000000002 /* Eco-HabbitTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Eco-HabbitTests";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		3725B3F03023DDC40036EE22 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000003 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +56,7 @@
 			isa = PBXGroup;
 			children = (
 				3725B3F53023DDC40036EE22 /* Eco-Habbit */,
+				AA0000000000000000000002 /* Eco-HabbitTests */,
 				3725B3F43023DDC40036EE22 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				3725B3F33023DDC40036EE22 /* Eco-Habbit.app */,
+				AA0000000000000000000001 /* Eco-HabbitTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +95,29 @@
 			productReference = 3725B3F33023DDC40036EE22 /* Eco-Habbit.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AA0000000000000000000006 /* Eco-HabbitTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA000000000000000000000B /* Build configuration list for PBXNativeTarget "Eco-HabbitTests" */;
+			buildPhases = (
+				AA0000000000000000000004 /* Sources */,
+				AA0000000000000000000003 /* Frameworks */,
+				AA0000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AA0000000000000000000008 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AA0000000000000000000002 /* Eco-HabbitTests */,
+			);
+			name = "Eco-HabbitTests";
+			packageProductDependencies = (
+			);
+			productName = "Eco-HabbitTests";
+			productReference = AA0000000000000000000001 /* Eco-HabbitTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +130,10 @@
 				TargetAttributes = {
 					3725B3F23023DDC40036EE22 = {
 						CreatedOnToolsVersion = 26.6;
+					};
+					AA0000000000000000000006 = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = 3725B3F23023DDC40036EE22;
 					};
 				};
 			};
@@ -100,12 +152,20 @@
 			projectRoot = "";
 			targets = (
 				3725B3F23023DDC40036EE22 /* Eco-Habbit */,
+				AA0000000000000000000006 /* Eco-HabbitTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		3725B3F13023DDC40036EE22 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +182,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AA0000000000000000000008 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3725B3F23023DDC40036EE22 /* Eco-Habbit */;
+			targetProxy = AA0000000000000000000007 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		3725B3FC3023DDC50036EE22 /* Debug */ = {
@@ -178,7 +253,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -236,7 +311,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -253,13 +328,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 3745VLZ7XR;
+				DEVELOPMENT_TEAM = M853XY9U3D;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Eco Habit";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Eco Habit uses the camera so you can snap a photo of your sustainable action and have it detected and rewarded.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Eco Habit uses your location to surface regional missions and events happening near you.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Eco Habit lets you attach a photo from your library as evidence for an activity.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Eco Habit uses the camera for visual search. No photos are stored.";
 				INFOPLIST_KEY_UIAppFonts = "Caprasimo-Regular.ttf Figtree-Regular.ttf Figtree-SemiBold.ttf Figtree-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -272,7 +345,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Ardhana.Eco-Habbit";
+				PRODUCT_BUNDLE_IDENTIFIER = com.greenapple.ecohabit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -291,13 +364,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 3745VLZ7XR;
+				DEVELOPMENT_TEAM = M853XY9U3D;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Eco Habit";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Eco Habit uses the camera so you can snap a photo of your sustainable action and have it detected and rewarded.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Eco Habit uses your location to surface regional missions and events happening near you.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Eco Habit lets you attach a photo from your library as evidence for an activity.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Eco Habit uses the camera for visual search. No photos are stored.";
 				INFOPLIST_KEY_UIAppFonts = "Caprasimo-Regular.ttf Figtree-Regular.ttf Figtree-SemiBold.ttf Figtree-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -310,7 +381,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Ardhana.Eco-Habbit";
+				PRODUCT_BUNDLE_IDENTIFIER = com.greenapple.ecohabit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -319,6 +390,52 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AA0000000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3745VLZ7XR;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greenapple.ecohabit.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Eco-Habbit.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Eco-Habbit";
+			};
+			name = Debug;
+		};
+		AA000000000000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 3745VLZ7XR;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.greenapple.ecohabit.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Eco-Habbit.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Eco-Habbit";
 			};
 			name = Release;
 		};
@@ -339,6 +456,15 @@
 			buildConfigurations = (
 				3725B3FF3023DDC50036EE22 /* Debug */,
 				3725B4003023DDC50036EE22 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA000000000000000000000B /* Build configuration list for PBXNativeTarget "Eco-HabbitTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000009 /* Debug */,
+				AA000000000000000000000A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

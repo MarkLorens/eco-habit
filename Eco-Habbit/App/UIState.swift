@@ -1,0 +1,46 @@
+import SwiftUI
+
+enum AppTab: Hashable {
+    case home, activity, fights, profile
+}
+
+/// Set when points land, so a view can play the reward animation once.
+struct Award: Identifiable, Equatable {
+    let id = UUID()
+    let habit: Habit
+    let points: Int
+    /// Foundations pay Vitality directly rather than points (PRD §3.2).
+    let vitalityGain: Int
+
+    init(habit: Habit, points: Int = 0, vitalityGain: Int = 0) {
+        self.habit = habit
+        self.points = points
+        self.vitalityGain = vitalityGain
+    }
+}
+
+struct Toast: Identifiable, Equatable {
+    enum Kind {
+        case success, info, warning
+
+        var tint: Color {
+            switch self {
+            case .success: return Theme.C.accent2_600
+            case .info: return Theme.C.neutral800
+            case .warning: return Theme.C.accent600
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .success: return "checkmark.circle.fill"
+            case .info: return "info.circle.fill"
+            case .warning: return "exclamationmark.triangle.fill"
+            }
+        }
+    }
+
+    let id = UUID()
+    let kind: Kind
+    let message: String
+}
