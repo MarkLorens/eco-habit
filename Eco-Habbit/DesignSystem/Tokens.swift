@@ -86,11 +86,12 @@ extension Tokens {
     }
     
     enum Typography {
-        static let icon = TextStyle(.system(size: 30, weight: .bold))
-        static let hero = TextStyle(.system(size: 28, weight: .heavy))
-        static let title = TextStyle(.system(size: 20, weight: .bold))
-        static let body = TextStyle(.system(size: 16, weight: .semibold))
-        static let footnote = TextStyle(.system(size: 12, weight: .regular))
+        static let icon = TextStyle(.system(size: 30, weight: .bold, design: .rounded))
+        static let hero = TextStyle(.system(size: 28, weight: .heavy, design: .rounded))
+        static let title = TextStyle(.system(size: 20, weight: .bold, design: .rounded))
+        static let body = TextStyle(.system(size: 16, weight: .semibold, design: .rounded))
+        static let footnote = TextStyle(.system(size: 12, weight: .regular, design: .rounded))
+        static let tabview = TextStyle(.system(size: 10, weight: .semibold, design: .rounded))
     }
 }
 
