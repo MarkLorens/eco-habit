@@ -13,31 +13,55 @@ enum Tokens {}
 extension Tokens{
     
     enum Palette {
-        // MARK: - Shade of Greens
-        static let greenDarkest = Color(hex: 0x5E9B62)
-        static let green = Color(hex: 0x6FAF73)
-        static let greenLight = Color(hex: 0x8ACB88)
-        static let greenFaint = Color(hex: 0xDCEFD9)
-        static let greenFaintest = Color(hex: 0xEAF6E8)
-        
-        // MARK: - Black to White
-        static let black = Color(hex: 0x2F3A32)
-        static let gray = Color(hex: 0x6B766E)
-        static let grayLight = Color(hex: 0x9AA59C)
-        static let grayMute = Color(hex: 0xF2F5F1)
-        static let ink = Color(hex: 0xF2F5F1)
-        static let white = Color(hex: 0xFFFFFF)
-        
-        // MARK: - Specific semantics
-        static let bgGradientMiddle = Color(hex: 0xF8FAF7)
-        static let bgColor = LinearGradient(
-            stops:[
-                .init(color: greenFaintest, location: 0.0),
-                .init(color: bgGradientMiddle, location: 0.45),
-                .init(color: white, location: 0.9)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
+            // MARK: - Lime
+            static let lime = Color(hex: 0xBFD95A)
+            static let limeCard = Color(hex: 0xF0FCC7)
+     
+            // MARK: - Orange
+            static let orange = Color(hex: 0xF15A29)
+            static let orangeCard = Color(hex: 0xFFD9CC)
+     
+            // MARK: - Blue
+            static let blue = Color(hex: 0x3984E8)
+            static let blueLight = Color(hex: 0xA9D4F5)
+            static let blueCard = Color(hex: 0xDEECFF)
+     
+            // MARK: - Green
+            static let greenDark = Color(hex: 0x205C52)
+            static let green = Color(hex: 0x8ACB88)
+            static let greenFaint = Color(hex: 0xEAF6E8)
+            static let greenCard = Color(hex: 0xE2F3EF)
+     
+            // MARK: - Yellow
+            static let yellow = Color(hex: 0xF4E96B)
+            static let yellowCard = Color(hex: 0xFFFDE8)
+     
+            // MARK: - Purple
+            static let purple = Color(hex: 0xE8B5E9)
+            static let purpleCard = Color(hex: 0xFCEAFE)
+     
+            // MARK: - Black & White
+            static let black = Color(hex: 0x2D3A33)
+            static let white = Color(hex: 0xFFFFFF)
+        }
+     
+        enum Semantic {
+            static let text = Palette.black
+            static let tabviewBackground = Palette.black
+            static let footnote = Color(hex: 0x6B766E)
+            static let tabviewActive = Color(hex: 0x3D5047)
+        }
+}
+
+// MARK: - Apparently Swift can't read hex. Stooped language
+extension Color {
+    init(hex: UInt32) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: 1
         )
     }
 }
