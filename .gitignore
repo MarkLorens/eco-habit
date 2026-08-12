@@ -1,18 +1,35 @@
-*.xcuserstate
 # macOS
 .DS_Store
 
-# Xcode
+# Xcode — per-user state, never shared
 DerivedData/
 build/
 xcuserdata/
 *.xcuserstate
+*.xcscmblueprint
+*.xccheckout
 
-# SwiftPM
+# Build output
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.spm-build/
 .build/
+Packages/
 
-# Firebase
-GoogleService-Info.plist
+# CocoaPods / Carthage (unused but cheap to guard)
+Pods/
+Carthage/Build/
+
+# Playground state
+timeline.xctimeline
+playground.xcworkspace
+
+# Firebase — client config is public by design (PRD §9.6)
 
 # Secrets
 .env
