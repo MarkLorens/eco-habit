@@ -50,8 +50,9 @@ struct ActivityListCard: View {
                 .padding(Tokens.Spacing.xs)
                 .frame(width: iconSize, height: iconSize)
                 .background(
-                    RoundedRectangle(cornerRadius: Tokens.Radius.basicCards)
+                    Circle()
                         .fill(tint)
+                        .frame(width: 40, height: 40)
                         
                 )
 //                .padding([.vertical, .leading], Tokens.Spacing.xl)
@@ -103,44 +104,43 @@ struct ActivityListCard: View {
     }
 }
 
-//#Preview {
-//    struct Harness: View {
-//        @State private var checks = [false, true, false]
-// 
-//        var body: some View {
-//            ScrollView {
-//                VStack(spacing: Tokens.Spacing.sm) {
-//                    ActivityListCard(
-//                        title: "Bring a reusable bottle",
-//                        points: 5,
-//                        icon: "trash",
-//                        tint: Tokens.Palette.orangeCard,
-//                        background: Tokens.Palette.orange,
-//                        isChecked: false,
-//                        onToggle: { _ in }
-//                    )
-//                    ActivityListCard(
-//                        title: "Bring your own food container",
-//                        points: 10,
-//                        icon: "trash",
-//                        tint: Tokens.Palette.orangeCard,
-//                        background: Tokens.Palette.orange,
-//                        isChecked: false,
-//                        onToggle: { _ in }
-//                    )
-//                    ActivityListCard(
-//                        title: "Borrow instead of buying new things you rarely use",
-//                        points: 10,
-//                        icon: "trash",
-//                        tint: Tokens.Palette.orangeCard,
-//                        background: Tokens.Palette.orange,
-//                        isChecked: false,
-//                        onToggle: { _ in }
-//                    )
-//                }
-//                .padding(Tokens.Spacing.md)
-//            }
-//        }
-//    }
-//    return Harness()
-//}
+
+#Preview {
+    struct Harness: View {
+        @State private var checks = [false, true, false]
+
+        var body: some View {
+            VStack(spacing: Tokens.Spacing.sm) {
+                ActivityListCard(
+                    title: "Bring a reusable bottle",
+                    points: 5,
+                    icon: "trash",
+                    tint: Tokens.Palette.orangeCard,
+                    background: Tokens.Palette.orange,
+                    isChecked: $checks[0]
+                )
+
+                ActivityListCard(
+                    title: "Bring your own food container",
+                    points: 10,
+                    icon: "trash",
+                    tint: Tokens.Palette.orangeCard,
+                    background: Tokens.Palette.orange,
+                    isChecked: $checks[1]
+                )
+
+                ActivityListCard(
+                    title: "Borrow instead of buying things you rarely use",
+                    points: 10,
+                    icon: "trash",
+                    tint: Tokens.Palette.orangeCard,
+                    background: Tokens.Palette.orange,
+                    isChecked: $checks[2]
+                )
+            }
+            .padding(Tokens.Spacing.md)
+        }
+    }
+
+    return Harness()
+}

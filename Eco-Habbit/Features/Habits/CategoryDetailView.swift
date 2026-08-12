@@ -1,13 +1,48 @@
 import SwiftUI
 
+private struct HeaderHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct CategoryDetailView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
 
     let category: HabitCategory
 
+    @State private var headerHeight: CGFloat = 0
+    private let sheetTail: CGFloat = 56
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        ScrollView {
+            VStack(spacing: Tokens.Spacing.sm) {
+                ForEach(app.rows(in: category)) { row in
+                    ActivityListCard(title: row.habit.name,
+                                     points: PointsEngine.tierPoints(row.habit.tier),
+                                     icon: category.icon,
+                                     tint: category.tint,
+                                     background: category.background,
+                                     isChecked: row.isCompletedToday,
+                                     onToggle: { toggle(row) }
+                    )
+                }
+            }
+            .padding(Tokens.Spacing.md)
+            .padding(.top, headerHeight)
+        }
+        .background(alignment: .top) {
+            UnevenRoundedRectangle(
+                bottomLeadingRadius: 40,
+                bottomTrailingRadius: 40,
+                style: .continuous
+            )
+            .fill(Tokens.Palette.white)
+            .frame(height: headerHeight + sheetTail)
+        }
+        .overlay(alignment: .top) {
             header
                 .padding(.horizontal, Tokens.Spacing.md)
                 .padding(.bottom, Tokens.Spacing.xl)
@@ -21,22 +56,16 @@ struct CategoryDetailView: View {
                     .fill(Tokens.Palette.white)
                     .ignoresSafeArea(edges: .top)
                 )
-            ScrollView {
-                VStack{
-                    ForEach(app.rows(in: category)) { row in
-                        ActivityListCard(title: row.habit.name,
-                                         points: PointsEngine.tierPoints(row.habit.tier),
-                                         icon: category.icon,
-                                         tint: category.tint,
-                                         background: category.background,
-                                         isChecked: row.isCompletedToday,
-                                         onToggle: { toggle(row) }
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: HeaderHeightKey.self,
+                            value: proxy.size.height
                         )
                     }
-                }
-            }
-            .padding(Tokens.Spacing.md)
+                )
         }
+        .onPreferenceChange(HeaderHeightKey.self) { headerHeight = $0 }
         .background(category.tint.ignoresSafeArea())
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
@@ -44,7 +73,7 @@ struct CategoryDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.sm) {
-            CircleIconButton(systemName: "chevron.left") { dismiss() }
+            NavigateButton(background: Tokens.Semantic.buttonTintDefault, direction: .left){ dismiss() }
             Text(category.title)
                 .foregroundStyle(Tokens.Semantic.text)
                 .textStyle(Tokens.Typography.hero)
@@ -52,6 +81,7 @@ struct CategoryDetailView: View {
                 .foregroundStyle(Tokens.Semantic.footnote)
                 .textStyle(Tokens.Typography.footnote)
         }
+        .padding([.horizontal], Tokens.Spacing.md)
     }
 
     private func toggle(_ row: HabitRow) {

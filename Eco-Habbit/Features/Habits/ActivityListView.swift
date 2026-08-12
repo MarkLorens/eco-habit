@@ -4,7 +4,7 @@ struct ActivityListView: View {
     @EnvironmentObject private var app: AppState
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $app.actionsPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(alignment: .leading, spacing: Tokens.Spacing.sm){
@@ -27,7 +27,8 @@ struct ActivityListView: View {
                                     title: category.title,
                                     caption: category.caption,
                                     icon: category.icon,
-                                    background: category.tint
+                                    background: category.background,
+                                    tint: category.tint
                                 )
                             }
                             .buttonStyle(.plain)
@@ -55,5 +56,5 @@ struct ActivityListView: View {
 
 #Preview {
     ActivityListView()
-        .environmentObject(AppState())
+        .environmentObject(AppState.preview)
 }

@@ -56,6 +56,7 @@ extension Tokens{
             static let pointTagOrange = Palette.orange
             static let pointTagPurple = Color(hex: 0xC67AC8)
             static let pointTagGreen = Palette.green
+            static let buttonTintDefault = Color(hex: 0xF9F9F9)
         }
 }
 
