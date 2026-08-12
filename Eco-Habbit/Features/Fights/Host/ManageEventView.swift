@@ -36,7 +36,7 @@ struct ManageEventView: View {
             isPresented: $confirmingCancel,
             titleVisibility: .visible
         ) {
-            Button("Cancel the Fight", role: .destructive) { app.cancelHostedFight(current) }
+            Button("Cancel the Fight", role: .destructive) { Task { await app.cancelHostedFight(current) } }
             Button("Keep it", role: .cancel) {}
         } message: {
             Text("It stays visible to anyone signed up, marked cancelled. This cannot be undone.")
@@ -115,7 +115,7 @@ struct ManageEventView: View {
         VStack(spacing: Theme.S.x2) {
             switch current.status {
             case .draft:
-                Button("Publish") { app.publishFight(current) }
+                Button("Publish") { Task { await app.publishFight(current) } }
                     .buttonStyle(PrimaryButtonStyle())
                 Text("Nobody can see this until you publish it.")
                     .font(Theme.F.body(12))

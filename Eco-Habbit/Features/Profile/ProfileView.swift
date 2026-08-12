@@ -23,7 +23,6 @@ struct ProfileView: View {
             .background(Theme.C.bg)
             .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
-                case .favourites: FavouriteCategoriesView()
                 case .notifications: NotificationSettingsView()
                 case .privacy: PrivacySettingsView()
                 case .history: ActivityHistoryView()
@@ -35,7 +34,7 @@ struct ProfileView: View {
         }
         .tint(Theme.C.accent)
         .sheet(item: $badgeDetail) { badge in
-            BadgeDetailSheet(badge: badge, unlocked: app.isUnlocked(badge))
+            BadgeDetailSheet(badge: badge, unlocked: badge.isUnlocked)
                 .presentationDetents([.height(340)])
         }
     }
@@ -57,10 +56,10 @@ struct ProfileView: View {
                 )
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(app.userName)
+                Text(app.displayName)
                     .font(Theme.F.heading(19))
                     .foregroundStyle(Theme.C.text)
-                EHTag(text: "Level \(app.level) · \(app.levelTitle)", style: .accent)
+                EHTag(text: app.earthStage.displayName, style: .accent)
             }
 
             Spacer()
@@ -68,14 +67,14 @@ struct ProfileView: View {
     }
 
     private var initials: String {
-        let parts = app.userName.split(separator: " ").prefix(2)
+        let parts = app.displayName.split(separator: " ").prefix(2)
         return parts.compactMap { $0.first.map(String.init) }.joined().uppercased()
     }
 
     private var stats: some View {
         HStack(spacing: 10) {
-            StatTile(value: "\(app.vitality)", label: "Vitality")
-            StatTile(value: "\(app.streakDays)", label: "Day streak")
+            StatTile(value: "\(app.currentPoints)", label: "Points")
+            StatTile(value: "\(app.displayStreak())", label: "Day streak")
             StatTile(value: "\(app.unlockedBadgeCount)", label: "Badges")
         }
         .padding(.top, 18)
@@ -86,8 +85,8 @@ struct ProfileView: View {
             SectionHeading(text: "Badges")
 
             LazyVGrid(columns: badgeColumns, spacing: 14) {
-                ForEach(MockData.badges) { badge in
-                    let unlocked = app.isUnlocked(badge)
+                ForEach(app.badges) { badge in
+                    let unlocked = badge.isUnlocked
                     Button {
                         badgeDetail = badge
                     } label: {
@@ -136,18 +135,6 @@ struct ProfileView: View {
     private var settings: some View {
         EHCard(padding: 4) {
             VStack(spacing: 0) {
-                NavigationLink(value: ProfileRoute.favourites) {
-                    SettingsRow(title: "Favorite categories") {
-                        HStack(spacing: 6) {
-                            Text("\(app.favouriteCategories.count)")
-                                .font(Theme.F.body(13))
-                                .foregroundStyle(Theme.C.neutral600)
-                            ChevronRight()
-                        }
-                    }
-                }
-                .buttonStyle(PlainPressStyle())
-
                 NavigationLink(value: ProfileRoute.notifications) {
                     SettingsRow(title: "Notifications") {
                         HStack(spacing: 6) {
@@ -207,24 +194,24 @@ private struct SignOutFooter: ViewModifier {
         VStack(spacing: 10) {
             content
 
-            Button("Log out") { app.logOut() }
+            // No log out while `userId` is fixed — it returns with Firebase Auth.
                 .buttonStyle(SecondaryButtonStyle(height: 46))
                 .padding(.top, 14)
 
             Button("Reset local data") { confirmingReset = true }
                 .buttonStyle(GhostButtonStyle(height: 40, fontSize: 14))
                 .alert("Reset local data?", isPresented: $confirmingReset) {
-                    Button("Reset", role: .destructive) { app.resetEverything() }
+                    Button("Reset", role: .destructive) { Task { await app.resetEverything() } }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("Points, streak, history and settings on this device are deleted. The account starts over at Vitality \(VitalityEngine.startingVitality).")
+                    Text("Points, streak, history and badges on this device are deleted. The account starts over from zero.")
                 }
         }
     }
 }
 
 enum ProfileRoute: Hashable {
-    case favourites, notifications, privacy, history
+    case notifications, privacy, history
     #if DEBUG
     case debug
     #endif
@@ -278,9 +265,9 @@ private struct BadgeDetailSheet: View {
                 .font(Theme.F.heading(19))
                 .foregroundStyle(Theme.C.text)
 
-            EHTag(text: badge.tier, style: .neutral, fontSize: 12)
+            EHTag(text: badge.type.rawValue, style: .neutral, fontSize: 12)
 
-            Text(badge.detail)
+            Text(badge.description)
                 .font(Theme.F.body(13.5))
                 .foregroundStyle(Theme.C.neutral700)
                 .multilineTextAlignment(.center)

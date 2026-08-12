@@ -25,6 +25,12 @@ extension Tokens{
             static let blue = Color(hex: 0x3984E8)
             static let blueLight = Color(hex: 0xA9D4F5)
             static let blueCard = Color(hex: 0xDEECFF)
+
+            // Paler variant for the Water category page. `blueCard` sits at
+            // brightness 234 while yellowCard and purpleCard — which match the
+            // Sketch exactly — are at 251 and 242, so the old blue read darker
+            // than its siblings on the same screen.
+            static let blueCardSoft = Color(hex: 0xEAF4FF)
      
             // MARK: - Green
             static let greenDark = Color(hex: 0x205C52)
@@ -78,7 +84,7 @@ extension Tokens {
     }
     
     enum Typography {
-        static let icon = TextStyle(.system(size: 30, weight: .bold, design: .rounded))
+        static let icon = TextStyle(.system(size: 24, weight: .bold, design: .rounded))
         static let hero = TextStyle(.system(size: 28, weight: .heavy, design: .rounded))
         static let title = TextStyle(.system(size: 20, weight: .bold, design: .rounded))
         static let body = TextStyle(.system(size: 16, weight: .semibold, design: .rounded))
@@ -153,6 +159,15 @@ extension Tokens {
         static let water = "water"
         static let tree = "tree"
         
+        // MARK: - Category mascots (vector SVG)
+        static let mascotEnergy = "mascot-energy"
+        static let mascotWater = "mascot-water"
+        static let mascotWaste = "mascot-waste"
+        static let mascotMobility = "mascot-mobility"
+        static let mascotActions = "mascot-actions"
+        static let mascotConsumption = "mascot-consumption"
+        static let earth = "earth"
+
         // MARK: - Shadow
         static let yellowShadow = "yellow-shadow"
         static let greenShadow = "green-shadow"

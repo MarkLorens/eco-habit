@@ -20,9 +20,9 @@ final class FightRepositoryTests: XCTestCase {
         )
     }
 
-    private func state() -> PersistedState {
-        var state = PersistedState()
-        state.vitality = 50
+    private func state() -> UserState {
+        var state = UserState(userId: "test-user")
+        state.currentPoints = 500
         return state
     }
 
@@ -90,7 +90,7 @@ final class FightRepositoryTests: XCTestCase {
         FightRepository.signUp(for: f, in: &s, now: now)
 
         XCTAssertEqual(FightRepository.checkIn(to: f, in: &s, now: now), .windowClosed)
-        XCTAssertTrue(s.fightAttendedDates.isEmpty)
+        XCTAssertTrue(s.attendedEventIDs.isEmpty)
     }
 
     func testCheckInRequiresSignup() {
@@ -106,22 +106,15 @@ final class FightRepositoryTests: XCTestCase {
         var s = state()
         FightRepository.signUp(for: f, in: &s, now: now)
 
+        // A standard-tier Fight pays 75, the same as a standard Event claim.
         XCTAssertEqual(FightRepository.checkIn(to: f, in: &s, now: now),
-                       .checkedIn(vitalityGain: 10))
-        XCTAssertTrue(s.fightAttendedDates.contains(Day.today(now)))
+                       .checkedIn(pointsAwarded: 75, wasCapped: false))
+        XCTAssertTrue(s.attendedEventIDs.contains(f.id))
         XCTAssertNotNil(s.fightAttendance[f.id])
     }
 
     /// Vitality is *not* moved at check-in — the loop applies it when it scores the day.
     /// Same split as §9.3: the attendance record is the truth, Vitality is derived.
-    func testCheckInDoesNotTouchVitalityDirectly() {
-        let f = fight(startsIn: 0)
-        var s = state()
-        FightRepository.signUp(for: f, in: &s, now: now)
-        FightRepository.checkIn(to: f, in: &s, now: now)
-
-        XCTAssertEqual(s.vitality, 50, "check-in records a date; the loop awards the points")
-    }
 
     /// §4.5 — one check-in per attendee per event.
     func testDoubleCheckInIsRejected() {
@@ -145,21 +138,18 @@ final class FightRepositoryTests: XCTestCase {
 
     // MARK: - The full loop, end to end
 
-    /// The Phase 6 exit test, in code: join → check in → the day scores +10 instead of
-    /// its normal delta.
-    func testAttendedDayAwardsTenAndReplacesTheNormalDelta() {
+    /// The end-to-end path: join, check in, points land immediately. There is
+    /// no evaluation loop any more — `checkIn` credits the account directly,
+    /// the same way `EventClaimService` does.
+    func testJoinThenCheckInAwardsPoints() {
         let f = fight(startsIn: 0)
         var s = state()
-        let day = Day.today(now)
-        s.lastEvaluatedDate = Day.adding(-1, to: day)
 
         FightRepository.signUp(for: f, in: &s, now: now)
         FightRepository.checkIn(to: f, in: &s, now: now)
 
-        // Score that day by advancing to the next one.
-        EvaluationLoop.evaluate(state: &s, habits: [], today: Day.adding(1, to: day)!)
-
-        XCTAssertEqual(s.vitality, 60, "+10, not the −3 an empty day would have given")
+        XCTAssertEqual(s.currentPoints, 575, "500 + 75 for a standard tier")
+        XCTAssertTrue(FightRepository.hasAttended(f.id, in: s))
     }
 
     // MARK: - Lists

@@ -1,297 +1,326 @@
 import SwiftUI
 import Combine
 
-/// The shared store. Holds `PersistedState` and exposes it to views, but **owns no
-/// business rules** — logging goes to `HabitRepository`, Shields to `UserRepository`,
-/// scoring to `EvaluationLoop`. Keeping it a coordinator is what lets three people work
-/// in three feature folders without meeting in this file every day (PRD §9.13.2).
+/// The single object a View touches.
+///
+/// Same role as Tio's `AppStore` on the MockData branch, but an
+/// `ObservableObject` rather than `@Observable` — the rest of this app's views
+/// already bind that way, and converting them all was not worth the churn.
+///
+/// Views never call a service or a repository directly. That is what makes the
+/// Firebase swap a change to `AppState.init` and nothing else: the six
+/// repositories are protocol-typed and constructor-injected all the way down.
 @MainActor
 final class AppState: ObservableObject {
 
-    @Published private(set) var data: PersistedState
+    // MARK: - Published state
 
+    @Published private(set) var userState: UserState
+    @Published private(set) var badges: [Badge] = []
+    /// Derived from today's logs, never stored separately.
+    @Published private(set) var completedTodayIDs: Set<String> = []
+    /// Every log, newest first. Derived from the log repository, never stored
+    /// separately — the logs are the record.
+    @Published private(set) var history: [ActivityLog] = []
+    /// Set when a badge unlocks, so a view can play the celebration once.
+    @Published private(set) var recentlyUnlockedBadges: [Badge] = []
+    @Published private(set) var lastDecay: DecayOutcome?
+    @Published private(set) var isReady = false
+
+    // Transient UI state that shouldn't survive a relaunch.
     @Published var selectedTab: AppTab = .home
     @Published var isCameraPresented = false
     @Published var toast: Toast?
     @Published var lastAward: Award?
 
-    init(data: PersistedState = PersistenceStore.load()) {
-        self.data = data
-        evaluateIfNeeded()
+    // MARK: - Dependencies
+
+    let userId: String
+    let config: PointsConfiguration
+
+    private let activityRepository: any ActivityRepositoryProtocol
+    private let eventRepository: any EventRepositoryProtocol
+    private let logRepository: any ActivityLogRepositoryProtocol
+    private let eventLogRepository: any EventLogRepositoryProtocol
+    private let userStateRepository: any UserStateRepositoryProtocol
+    private let badgeRepository: any BadgeRepositoryProtocol
+
+    private let loggingService: ActivityLoggingService
+    private let eventClaimService: EventClaimService
+    private let decayService: DecayService
+    private let streakService = StreakService()
+
+    private let seedDemoDataIfEmpty: Bool
+
+    // MARK: - Init
+
+    /// The one place the concrete data layer is chosen. Swapping the six `Mock*`
+    /// types for `Firebase*` ones is the whole Firebase migration on the app side.
+    init(
+        userId: String = "demo-user",
+        config: PointsConfiguration = .default,
+        store: any KeyValueStoring = LocalJSONFileStore(),
+        seedDemoDataIfEmpty: Bool = true
+    ) {
+        self.userId = userId
+        self.config = config
+        self.seedDemoDataIfEmpty = seedDemoDataIfEmpty
+
+        activityRepository = MockActivityRepository()
+        eventRepository = MockEventRepository()
+        logRepository = MockActivityLogRepository(store: store)
+        eventLogRepository = MockEventLogRepository(store: store)
+        userStateRepository = MockUserStateRepository(store: store)
+        badgeRepository = MockBadgeRepository(store: store)
+
+        loggingService = ActivityLoggingService(
+            config: config,
+            activityRepository: activityRepository,
+            logRepository: logRepository,
+            userStateRepository: userStateRepository,
+            badgeRepository: badgeRepository
+        )
+        eventClaimService = EventClaimService(
+            config: config,
+            eventRepository: eventRepository,
+            eventLogRepository: eventLogRepository,
+            userStateRepository: userStateRepository,
+            badgeRepository: badgeRepository
+        )
+        decayService = DecayService(config: config)
+
+        userState = UserState(userId: userId)
     }
 
-    /// Run at launch and on foreground. Idempotent, so calling it freely is safe.
-    func evaluateIfNeeded() {
-        mutate { EvaluationLoop.evaluate(state: &$0, habits: MockData.habits, today: today) }
-    }
+    // MARK: - Bootstrap
 
-    var today: String { Day.today() }
+    /// App open. Applies decay, loads badges, refreshes today's logs.
+    /// Idempotent — safe to call on every foreground.
+    func bootstrap(now: Date = Date()) async {
+        do {
+            var state = try await userStateRepository.fetchUserState(userId: userId)
 
-    // MARK: - Account
-
-    var isLoggedIn: Bool { data.isLoggedIn }
-    var userName: String { data.userName.isEmpty ? "there" : data.userName }
-    var firstName: String { userName.split(separator: " ").first.map(String.init) ?? userName }
-    var notificationsEnabled: Bool { data.notificationsEnabled }
-    var favouriteCategories: Set<HabitCategory> { data.favouriteCategories }
-
-    // MARK: - Earth
-
-    var vitality: Int { data.vitality }
-    var stage: VitalityStage { VitalityStage.stage(for: data.vitality) }
-    var globeHealth: Double { PointsEngine.globeHealth(vitality: data.vitality) }
-    var level: Int { stage.rawValue + 1 }
-
-    var levelTitle: String {
-        switch stage {
-        case .barren: return "Seedling"
-        case .stirring: return "Sprout"
-        case .recovering: return "Grower"
-        case .thriving: return "Eco Guardian"
-        case .flourishing: return "Planet Keeper"
-        }
-    }
-
-    var stageProgress: Double {
-        guard let next = stage.next else { return 1 }
-        let floor = stage.range.lowerBound
-        let span = next.range.lowerBound - floor
-        guard span > 0 else { return 1 }
-        return min(1, max(0, Double(data.vitality - floor) / Double(span)))
-    }
-
-    /// PRD §9.5 — `streakDays` is a *settled* value that stops at yesterday, so today's
-    /// target has to be added back in for display. Without this a user who just hit their
-    /// target sees the number stall until midnight and concludes it's broken.
-    var displayStreak: Int {
-        data.streakDays + (dailyPoints >= PointsEngine.dailyTarget ? 1 : 0)
-    }
-
-    var streakDays: Int { displayStreak }
-
-    // MARK: - Today
-
-    var todaysLogs: [HabitLog] { HabitRepository.logs(on: today, in: data) }
-
-    var dailyPoints: Int { HabitRepository.dailyTotal(on: today, habits: MockData.habits, in: data) }
-
-    var dailyProgress: Double {
-        min(1, Double(dailyPoints) / Double(PointsEngine.dailyTarget))
-    }
-
-    /// Where today sits against the 60 ceiling, for the second ring in §6.1.
-    var dailyCapProgress: Double {
-        min(1, Double(dailyPoints) / Double(PointsEngine.dailyCap))
-    }
-
-    func log(for habitId: String) -> HabitLog? {
-        todaysLogs.first { $0.habitId == habitId }
-    }
-
-    func isCompletedToday(_ habitId: String) -> Bool { log(for: habitId) != nil }
-
-    func isAvailable(_ habit: Habit) -> Bool {
-        HabitRepository.isAvailable(habit, on: today, in: data)
-    }
-
-    func rows(in category: HabitCategory) -> [HabitRow] {
-        MockData.habits(in: category).map { HabitRow(habit: $0, log: log(for: $0.id)) }
-    }
-
-    func doneCount(in category: HabitCategory) -> Int {
-        rows(in: category).filter(\.isCompletedToday).count
-    }
-
-    /// Up to three things worth doing today: still available, favourites first.
-    var suggestedHabits: [Habit] {
-        let pending = MockData.habits.filter { !$0.isFoundation && isAvailable($0) }
-        let favourites = pending.filter { data.favouriteCategories.contains($0.category) }
-        let rest = pending.filter { !data.favouriteCategories.contains($0.category) }
-        return Array((favourites + rest).prefix(3))
-    }
-
-    // MARK: - History and badges (all derived — nothing summable is stored)
-
-    var history: [HistoryEntry] {
-        data.logs
-            .compactMap { log in
-                MockData.habitsById[log.habitId].map { HistoryEntry(log: log, habit: $0) }
+            if seedDemoDataIfEmpty, state.currentPoints == 0, state.lastActivityDate == nil {
+                state = MockUserStateData.demo
+                try await userStateRepository.save(state)
             }
-            .sorted { $0.date > $1.date }
-    }
 
-    var totalActionsLogged: Int { data.logs.count }
+            // Decay is computed here, on app open — there is no background job.
+            let outcome = decayService.apply(to: &state, asOf: now)
+            if outcome.didDecay {
+                try await userStateRepository.save(state)
+            }
 
-    var foundationsCompleted: Int {
-        data.logs.filter { MockData.habitsById[$0.habitId]?.isFoundation == true }.count
-    }
-
-    func actionCount(in category: HabitCategory) -> Int {
-        data.logs.filter { MockData.habitsById[$0.habitId]?.category == category }.count
-    }
-
-    func isUnlocked(_ badge: Badge) -> Bool {
-        switch badge.requirement {
-        case .totalActions(let n): return totalActionsLogged >= n
-        case .streak(let n): return max(displayStreak, data.longestStreak) >= n
-        case .vitality(let n): return data.vitality >= n
-        case .categoryActions(let category, let n): return actionCount(in: category) >= n
-        case .foundations(let n): return foundationsCompleted >= n
-        case .seasonal: return false
+            userState = state
+            lastDecay = outcome
+            badges = try await badgeRepository.fetchBadges(userId: userId)
+            await refreshTodayLogs(now: now)
+            await refreshHistory()
+        } catch {
+            // Degrade to an empty account rather than blocking the UI.
+            userState = UserState(userId: userId)
         }
+        isReady = true
     }
 
-    var unlockedBadgeCount: Int { MockData.badges.filter(isUnlocked).count }
+    private func refreshHistory() async {
+        let all = (try? await logRepository.fetchAllLogs(userId: userId)) ?? []
+        history = all.sorted { $0.loggedAt > $1.loggedAt }
+    }
 
-    // MARK: - Shields
+    private func refreshTodayLogs(now: Date = Date()) async {
+        let dayKey = DateKeys.dayKey(for: now)
+        let logs = (try? await logRepository.fetchLogs(userId: userId, dayKey: dayKey)) ?? []
+        completedTodayIDs = Set(logs.map(\.activityId))
+    }
 
-    var shieldsAvailable: Int { data.shieldsAvailable }
-    var isTodayShielded: Bool { UserRepository.isShielded(today, in: data) }
+    // MARK: - Catalogue
 
-    @discardableResult
-    func activateShield() -> Bool {
-        var ok = false
-        mutate { ok = UserRepository.activateShield(in: &$0, on: today, today: today) }
-        toast = ok
-            ? Toast(kind: .success, message: "Shielded — today won't cost you.")
-            : Toast(kind: .warning, message: "No Shield available for today.")
-        return ok
+    var activities: [Activity] { MockActivityData.all }
+    var events: [Event] { MockEventData.all }
+
+    func activities(in category: Category) -> [Activity] {
+        MockActivityData.activities(in: category)
+    }
+
+    func activity(id: String) -> Activity? {
+        MockActivityData.activity(withID: id)
+    }
+
+    func isCompletedToday(_ activityId: String) -> Bool {
+        completedTodayIDs.contains(activityId)
+    }
+
+    func doneCount(in category: Category) -> Int {
+        activities(in: category).filter { isCompletedToday($0.id) }.count
+    }
+
+    // MARK: - Progress reads
+
+    var currentPoints: Int { userState.currentPoints }
+    var earthStage: EarthStage { userState.earthStage(using: config) }
+
+    /// Cosmetic — reads 0 once a streak is broken but not yet recorded.
+    func displayStreak(asOf now: Date = Date()) -> Int {
+        streakService.displayStreak(for: userState, asOf: now)
+    }
+
+    var pointsToNextStage: Int? {
+        guard let next = earthStage.next else { return nil }
+        return max(0, config.threshold(for: next) - userState.currentPoints)
+    }
+
+    var unlockedBadgeCount: Int { badges.filter(\.isUnlocked).count }
+    var totalActionsLogged: Int { history.count }
+
+    func remainingDailyBasePoints(now: Date = Date()) async -> Int {
+        let dayKey = DateKeys.dayKey(for: now)
+        let logs = (try? await logRepository.fetchLogs(userId: userId, dayKey: dayKey)) ?? []
+        let used = logs.reduce(0) { $0 + $1.countedBasePoints }
+        return max(0, config.dailyBasePointsCap - used)
     }
 
     // MARK: - Logging
 
     @discardableResult
-    func logHabit(_ habit: Habit, source: HabitLog.Source) -> HabitRepository.LogResult {
-        var result = HabitRepository.LogResult.retroactive
-        mutate {
-            result = HabitRepository.log(habit, on: today, today: today, source: source, in: &$0)
+    func logActivity(
+        _ activity: Activity,
+        hasEvidence: Bool = false,
+        source: LogSource = .manualChecklist,
+        now: Date = Date()
+    ) async -> LogActivityResult {
+        recentlyUnlockedBadges = []
+
+        let result: LogActivityResult
+        do {
+            result = try await loggingService.log(
+                activityId: activity.id,
+                userId: userId,
+                hasEvidence: hasEvidence,
+                source: source,
+                now: now
+            )
+        } catch {
+            toast = Toast(kind: .warning, message: "Couldn't save that. Try again.")
+            return .activityNotFound
         }
 
         switch result {
-        case .logged(let points):
-            lastAward = Award(habit: habit, points: points)
-        case .foundation(let gain):
-            lastAward = Award(habit: habit, vitalityGain: gain)
-        case .alreadyLogged, .weeklyLimitReached, .retroactive:
-            break
+        case .success(let outcome):
+            userState = outcome.userState
+            recentlyUnlockedBadges = outcome.unlockedBadges
+            if !outcome.unlockedBadges.isEmpty {
+                badges = (try? await badgeRepository.fetchBadges(userId: userId)) ?? badges
+            }
+            await refreshTodayLogs(now: now)
+            await refreshHistory()
+            lastAward = Award(activity: activity, points: outcome.breakdown.finalPoints)
+            toast = Toast(kind: .success,
+                          message: "\(activity.name) · +\(outcome.breakdown.finalPoints) pts")
+
+        case .alreadyLoggedToday:
+            toast = Toast(kind: .info, message: "Already logged today — back tomorrow.")
+
+        case .onCooldown(let days):
+            toast = Toast(kind: .info,
+                          message: "Available again in \(days) day\(days == 1 ? "" : "s").")
+
+        case .activityNotFound:
+            toast = Toast(kind: .warning, message: "Couldn't log that one.")
         }
         return result
     }
 
-    /// Log and report the outcome. Every logging surface uses this so a weekly cap or a
-    /// duplicate reads the same way from the checklist, the dashboard and the camera.
+    // MARK: - Events (claimed, per Tio's model)
+
     @discardableResult
-    func logAndToast(_ habit: Habit, source: HabitLog.Source) -> HabitRepository.LogResult {
-        let result = logHabit(habit, source: source)
+    func claimEvent(_ event: Event, checkInCode: String? = nil, now: Date = Date()) async -> ClaimEventResult {
+        recentlyUnlockedBadges = []
+
+        let result: ClaimEventResult
+        do {
+            result = try await eventClaimService.claim(
+                eventId: event.id, userId: userId, checkInCode: checkInCode, now: now
+            )
+        } catch {
+            toast = Toast(kind: .warning, message: "Couldn't claim that. Try again.")
+            return .eventNotFound
+        }
+
         switch result {
-        case .logged(let points):
-            toast = Toast(kind: .success, message: "\(habit.name) · +\(points) pts")
-        case .foundation(let gain):
-            toast = Toast(kind: .success, message: "\(habit.name) · +\(gain) Vitality")
-        case .alreadyLogged:
-            toast = Toast(kind: .info, message: habit.isFoundation
-                ? "Already done — Foundations count once."
-                : "Already logged today — back tomorrow.")
-        case .weeklyLimitReached(let limit):
-            toast = Toast(kind: .info, message: "That's all \(limit) for this week.")
-        case .retroactive:
-            toast = Toast(kind: .warning, message: "Only today can be logged.")
+        case .success(let outcome):
+            userState = outcome.userState
+            recentlyUnlockedBadges = outcome.unlockedBadges
+            if !outcome.unlockedBadges.isEmpty {
+                badges = (try? await badgeRepository.fetchBadges(userId: userId)) ?? badges
+            }
+            toast = Toast(kind: .success, message: outcome.wasCapped
+                ? "Claimed — monthly event cap reached."
+                : "Claimed · +\(outcome.log.awardedPoints) pts")
+        case .alreadyClaimed:
+            toast = Toast(kind: .info, message: "Already claimed.")
+        case .eventNotFound:
+            toast = Toast(kind: .warning, message: "That event no longer exists.")
+        case .checkInCodeRequired:
+            toast = Toast(kind: .warning, message: "This event needs a check-in code.")
         }
         return result
     }
 
-    /// Same-day undo (PRD §3.4).
-    @discardableResult
-    func revertTodaysLog(habitId: String) -> Bool {
-        var ok = false
-        mutate {
-            ok = HabitRepository.unlog(habitId, on: today, today: today, habits: MockData.habits, in: &$0)
-        }
-        return ok
-    }
+    // MARK: - Fights (hosted events with QR check-in, PRD §4 / §6.5.1)
 
-    // MARK: - Fights (PRD §4)
-
-    /// Seeded events plus anything this account hosts. Everything that browses
-    /// or looks a Fight up goes through here, so a hosted event behaves exactly
-    /// like a bundled one.
-    var allFights: [Fight] { MockData.fights + data.hostedFights }
-
+    var allFights: [Fight] { MockFightData.seeded + userState.hostedFights }
     func fight(id: String) -> Fight? { allFights.first { $0.id == id } }
 
     var upcomingFights: [Fight] { FightRepository.upcoming(allFights) }
-    var myUpcomingFights: [Fight] { FightRepository.signedUp(allFights, in: data) }
-    var pastFights: [Fight] { FightRepository.attended(allFights, in: data) }
-
-    /// The dashboard's "Next Fight" card (§6.1).
+    var myUpcomingFights: [Fight] { FightRepository.signedUp(allFights, in: userState) }
+    var pastFights: [Fight] { FightRepository.attended(allFights, in: userState) }
     var nextFight: Fight? { myUpcomingFights.first }
+    var hostedFights: [Fight] { FightRepository.hostedFights(in: userState) }
 
-    func isSignedUp(_ fight: Fight) -> Bool { FightRepository.isSignedUp(fight.id, in: data) }
-    func hasAttended(_ fight: Fight) -> Bool { FightRepository.hasAttended(fight.id, in: data) }
-    func signup(for fight: Fight) -> FightSignup? { FightRepository.signup(for: fight.id, in: data) }
+    var isOrganization: Bool { userState.isOrganization }
+    var orgName: String { userState.orgName.isEmpty ? displayName : userState.orgName }
+    var displayName: String {
+        userState.displayName.isEmpty ? MockUserStateData.demoDisplayName : userState.displayName
+    }
+    var firstName: String { displayName.split(separator: " ").first.map(String.init) ?? displayName }
 
-    @discardableResult
-    func joinFight(_ fight: Fight) -> FightRepository.SignupResult {
-        var result = FightRepository.SignupResult.eventFinished
-        mutate { result = FightRepository.signUp(for: fight, in: &$0, now: Date()) }
+    func isSignedUp(_ fight: Fight) -> Bool { FightRepository.isSignedUp(fight.id, in: userState) }
+    func hasAttended(_ fight: Fight) -> Bool { FightRepository.hasAttended(fight.id, in: userState) }
+    func signup(for fight: Fight) -> FightSignup? { FightRepository.signup(for: fight.id, in: userState) }
+    func isHost(of fight: Fight) -> Bool { FightRepository.isHost(of: fight, in: userState) }
+    func scans(for fight: Fight) -> [HostScan] { FightRepository.scans(for: fight.id, in: userState) }
+    func signupCount(for fight: Fight) -> Int { isSignedUp(fight) ? 1 : 0 }
 
+    func joinFight(_ fight: Fight) async {
+        let result = await mutateUser { FightRepository.signUp(for: fight, in: &$0) }
         switch result {
-        case .signedUp:
-            toast = Toast(kind: .success, message: "You're in — see you at \(fight.locationName).")
-        case .alreadySignedUp:
-            toast = Toast(kind: .info, message: "You're already signed up.")
-        case .eventFinished:
-            toast = Toast(kind: .warning, message: "That Fight has already finished.")
-        case .eventCancelled:
-            toast = Toast(kind: .warning, message: "The host cancelled this Fight.")
+        case .signedUp: toast = Toast(kind: .success, message: "You're in — see you at \(fight.locationName).")
+        case .alreadySignedUp: toast = Toast(kind: .info, message: "You're already signed up.")
+        case .eventFinished: toast = Toast(kind: .warning, message: "That Fight has already finished.")
+        case .eventCancelled: toast = Toast(kind: .warning, message: "The host cancelled this Fight.")
         }
-        return result
     }
 
-    @discardableResult
-    func cancelFight(_ fight: Fight) -> Bool {
-        var ok = false
-        mutate { ok = FightRepository.cancelSignup(for: fight.id, in: &$0, now: Date()) }
+    func cancelFight(_ fight: Fight) async {
+        let ok = await mutateUser { FightRepository.cancelSignup(for: fight.id, in: &$0) }
         if ok { toast = Toast(kind: .info, message: "Signup cancelled. No penalty.") }
-        return ok
     }
 
-    /// Stands in for the host scanning the attendee's QR. Real cross-device check-in
-    /// arrives with Firebase in Phase 10 (§9.3).
     @discardableResult
-    func checkIn(to fight: Fight) -> FightRepository.CheckInResult {
-        var result = FightRepository.CheckInResult.notSignedUp
-        mutate { result = FightRepository.checkIn(to: fight, in: &$0, now: Date()) }
-
+    func checkIn(to fight: Fight) async -> FightRepository.CheckInResult {
+        let result = await mutateUser { FightRepository.checkIn(to: fight, in: &$0) }
         switch result {
-        case .checkedIn(let gain):
-            toast = Toast(kind: .success, message: "Checked in — +\(gain) Vitality for today.")
-        case .notSignedUp:
-            toast = Toast(kind: .warning, message: "Sign up before checking in.")
-        case .alreadyCheckedIn:
-            toast = Toast(kind: .info, message: "Already checked in to this Fight.")
-        case .windowClosed:
-            toast = Toast(kind: .warning, message: "Check-in opens an hour before the start.")
-        case .eventCancelled:
-            toast = Toast(kind: .warning, message: "The host cancelled this Fight.")
+        case .checkedIn(let points, let capped):
+            toast = Toast(kind: .success, message: capped
+                ? "Checked in — monthly event cap reached."
+                : "Checked in · +\(points) pts")
+        case .notSignedUp: toast = Toast(kind: .warning, message: "Sign up before checking in.")
+        case .alreadyCheckedIn: toast = Toast(kind: .info, message: "Already checked in.")
+        case .windowClosed: toast = Toast(kind: .warning, message: "Check-in opens an hour before the start.")
+        case .eventCancelled: toast = Toast(kind: .warning, message: "The host cancelled this Fight.")
         }
         return result
-    }
-
-    // MARK: - Host mode (PRD §6.5.1)
-
-    var isOrganization: Bool { data.isOrganization }
-    var orgName: String { data.orgName.isEmpty ? userName : data.orgName }
-    var hostedFights: [Fight] { FightRepository.hostedFights(in: data) }
-
-    func isHost(of fight: Fight) -> Bool { FightRepository.isHost(of: fight, in: data) }
-    func scans(for fight: Fight) -> [HostScan] { FightRepository.scans(for: fight.id, in: data) }
-
-    /// How many local signups exist for a hosted event. Until Phase 10 the only
-    /// account on the device is this one, so this is 0 or 1 — the number is
-    /// honest, the scale is not.
-    func signupCount(for fight: Fight) -> Int {
-        FightRepository.isSignedUp(fight.id, in: data) ? 1 : 0
     }
 
     func newDraft(type: FightType = .beachCleanup) -> Fight {
@@ -299,7 +328,7 @@ final class AppState: ObservableObject {
         return Fight(
             id: "host-\(UUID().uuidString.prefix(8))",
             title: "", summary: "", type: type,
-            hostName: orgName, hostId: "local-host",
+            hostName: orgName, hostId: userId,
             locationName: "", address: "",
             latitude: nil, longitude: nil,
             startsAt: start, endsAt: start.addingTimeInterval(3 * 3600),
@@ -307,94 +336,73 @@ final class AppState: ObservableObject {
         )
     }
 
-    func saveDraft(_ fight: Fight) {
-        mutate {
-            if $0.hostedFights.contains(where: { $0.id == fight.id }) {
-                FightRepository.update(fight, in: &$0)
+    func saveDraft(_ fight: Fight) async {
+        await mutateUser { state in
+            if state.hostedFights.contains(where: { $0.id == fight.id }) {
+                FightRepository.update(fight, in: &state)
             } else {
-                FightRepository.createDraft(fight, in: &$0)
+                FightRepository.createDraft(fight, in: &state)
             }
         }
         toast = Toast(kind: .success, message: "Saved as a draft.")
     }
 
-    func publishFight(_ fight: Fight) {
-        var ok = false
-        mutate { ok = FightRepository.publish(fight.id, in: &$0) }
+    func publishFight(_ fight: Fight) async {
+        let ok = await mutateUser { FightRepository.publish(fight.id, in: &$0) }
         toast = ok
             ? Toast(kind: .success, message: "Published — it's in the public list now.")
             : Toast(kind: .info, message: "Already published.")
     }
 
-    func cancelHostedFight(_ fight: Fight) {
-        var ok = false
-        mutate { ok = FightRepository.cancel(fight.id, in: &$0) }
-        if ok {
-            toast = Toast(kind: .info, message: "Cancelled. Anyone signed up still sees it.")
-        }
+    func cancelHostedFight(_ fight: Fight) async {
+        let ok = await mutateUser { FightRepository.cancel(fight.id, in: &$0) }
+        if ok { toast = Toast(kind: .info, message: "Cancelled. Anyone signed up still sees it.") }
     }
 
-    /// One scanned QR. Records it on the host roster, and — when the code turns
-    /// out to be this device's own signup — also credits the attendee side, so
-    /// the whole loop is demonstrable on a single phone (§12.1).
     @discardableResult
-    func recordScan(_ raw: String, for fight: Fight) -> FightRepository.ScanResult {
-        var result = FightRepository.ScanResult.unreadable
-        mutate { result = FightRepository.recordScan(raw, for: fight, in: &$0) }
-
-        if case .accepted = result,
-           FightRepository.signup(for: fight.id, in: data)?.checkInToken == raw {
-            checkIn(to: fight)
-        }
+    func recordScan(_ raw: String, for fight: Fight) async -> FightRepository.ScanResult {
+        let ownCode = FightRepository.signup(for: fight.id, in: userState)?.checkInToken == raw
+        let result = await mutateUser { FightRepository.recordScan(raw, for: fight, in: &$0) }
+        // Single-device demo path (§12.1): scanning your own code also credits you.
+        if case .accepted = result, ownCode { await checkIn(to: fight) }
         return result
     }
 
-    // MARK: - Mutations
+    // MARK: - Settings
 
-    func updateFavourites(_ categories: Set<HabitCategory>) {
-        mutate { $0.favouriteCategories = categories }
+    var notificationsEnabled: Bool { userState.notificationsEnabled }
+
+    func setNotifications(_ on: Bool) async {
+        await mutateUser { $0.notificationsEnabled = on }
     }
 
-    func setNotifications(_ on: Bool) { mutate { $0.notificationsEnabled = on } }
-
-    func logIn() { mutate { $0.isLoggedIn = true } }
-
-    func logOut() {
-        mutate { $0.isLoggedIn = false }
-        selectedTab = .home
-    }
-
-    func resetEverything() {
-        PersistenceStore.wipe()
-        data = PersistedState()
-        selectedTab = .home
-        evaluateIfNeeded()
-        toast = Toast(kind: .info, message: "Local data cleared.")
-    }
-
-    // MARK: - Debug
-
-    #if DEBUG
-    /// Time travel (PRD §13 Phase 2). Runs the real loop against a chosen day.
-    func debugEvaluate(asOf day: String) {
-        mutate { EvaluationLoop.evaluate(state: &$0, habits: MockData.habits, today: day) }
-    }
-
-    /// PRD §4.3 — verification is a human flipping a flag, and there is no admin
-    /// surface until Phase 10. DEBUG-only on purpose: `isOrganization` must never
-    /// be user-writable, and §9.6 makes that a Security Rules requirement.
-    func debugSetOrganization(_ on: Bool, name: String = "Ombak Bersih") {
-        mutate {
+    func setOrganization(_ on: Bool, name: String = "Ombak Bersih") async {
+        await mutateUser {
             $0.isOrganization = on
             $0.orgName = on ? name : ""
         }
     }
-    #endif
 
-    private func mutate(_ change: (inout PersistedState) -> Void) {
-        var next = data
-        change(&next)
-        data = next
-        PersistenceStore.save(next)
+    func resetEverything() async {
+        let fresh = UserState(userId: userId)
+        try? await userStateRepository.save(fresh)
+        userState = fresh
+        completedTodayIDs = []
+        selectedTab = .home
+        toast = Toast(kind: .info, message: "Local data cleared.")
+    }
+
+    // MARK: - Plumbing
+
+    /// Mutate the user record and persist it. The Fight repository is a set of
+    /// pure functions over `UserState`, so this is the only place they touch
+    /// storage — the same shape the rest of the app uses.
+    @discardableResult
+    private func mutateUser<T>(_ change: (inout UserState) -> T) async -> T {
+        var next = userState
+        let result = change(&next)
+        userState = next
+        try? await userStateRepository.save(next)
+        return result
     }
 }

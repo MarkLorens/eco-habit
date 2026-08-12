@@ -1,0 +1,205 @@
+rules_version = '2';
+
+// =============================================================================
+// Eco-Habit — Firestore Security Rules
+//
+// PRD §9.6: "It is the rules file, and that file deserves more care than
+// configuration usually gets — it is the ONLY enforcement layer in the system."
+//
+// There is no application server and no Cloud Functions (§9.2). Everything an
+// attacker cannot do, they cannot do because of this file.
+//
+// Read §9.6's threat model before loosening anything. Vitality is deliberately
+// client-authoritative — a user forging their own Earth is an accepted,
+// documented risk. What is NOT accepted is touching anyone else's data, or
+// granting yourself hosting rights.
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ----------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // §8: "Admin privileges come from a custom auth claim checked in rules —
+    // never a client-writable field." Set it with the Admin SDK, not from the app.
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    // The one field a user may never move. Guarding the FIELD rather than the
+    // document is what lets someone write the rest of their own record (§9.6).
+    function orgFlagUnchanged() {
+      return request.resource.data.isOrganization == resource.data.isOrganization;
+    }
+
+    function isVerifiedOrganisation() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+             .data.isOrganization == true;
+    }
+
+    function eventHost(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId)).data.hostUserId;
+    }
+
+    function isSignedUpTo(eventId, uid) {
+      return exists(/databases/$(database)/documents/events/$(eventId)/signups/$(uid));
+    }
+
+    // ---- /users -----------------------------------------------------------
+    // §9.6: "Users may read and write only their own documents."
+    //
+    // Deliberately NOT world-readable. A host never needs to read an attendee's
+    // record — the attendance document carries everything the roster shows, and
+    // §10 keeps attendee lists host-only.
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+
+      // A new account cannot arrive already verified.
+      allow create: if isOwner(uid)
+        && request.resource.data.isOrganization == false;
+
+      allow update: if (isOwner(uid) && orgFlagUnchanged()) || isAdmin();
+
+      // Account deletion cascade is unresolved (§10) — no client deletes until
+      // there is a sweep that also clears logs, signups, attendance and events.
+      allow delete: if false;
+
+      // ---- habit logs ----
+      // §9.6: "habitLogs are immutable after creation; deletion permitted only
+      // same-day." Document id is {habitId}_{localDate} (§5.5), which makes
+      // once-per-day structural rather than something the client is trusted on.
+      //
+      // HONEST LIMIT: rules cannot verify `localDate` against the user's
+      // timezone — `request.time` is UTC and the device's offset is unknown.
+      // Combined with §9.11's offline-first writes (a log may legitimately sync
+      // days late), "no retroactive logging" stays a CLIENT rule enforced in
+      // HabitRepository. What rules do enforce is ownership and immutability,
+      // which is what protects other people.
+      match /habitLogs/{logId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow create: if isOwner(uid)
+          && request.resource.data.habitId is string
+          && request.resource.data.localDate is string;
+        allow update: if false;
+
+        // Same-day undo (§3.4), approximated as a window from the log's own
+        // timestamp — 36h covers the widest timezone plus a late-night undo.
+        allow delete: if isOwner(uid)
+          && request.time < resource.data.loggedAt + duration.value(36, 'h');
+      }
+
+      // ---- vitality history ----
+      // Written once per scored day by EvaluationLoop. Append-only: a rewritten
+      // past day would let someone launder an inflated Vitality into the record.
+      match /vitalityHistory/{localDate} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow create: if isOwner(uid);
+        allow update, delete: if false;
+      }
+
+      match /badges/{badgeKey} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if isOwner(uid);
+      }
+    }
+
+    // ---- /habits ----------------------------------------------------------
+    // §9.12: "client-read-only, written only via the admin dashboard."
+    // Currently still bundled with the app; this rule is here for the day it
+    // moves, so nobody can quietly start writing it.
+
+    match /habits/{habitId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---- /events ----------------------------------------------------------
+    // §9.6: "Event documents may be created only by accounts with
+    // isOrganization == true, and edited only by the owning host."
+
+    match /events/{eventId} {
+      // Drafts are private to their host until published (§6.5.1) — a
+      // half-written event must never appear in the public list.
+      allow read: if signedIn()
+        && (resource.data.status != 'draft'
+            || resource.data.hostUserId == request.auth.uid
+            || isAdmin());
+
+      allow create: if isVerifiedOrganisation()
+        && request.resource.data.hostUserId == request.auth.uid
+        && request.resource.data.status == 'draft';
+
+      // The host may edit, but may never hand the event to somebody else.
+      allow update: if (signedIn()
+        && resource.data.hostUserId == request.auth.uid
+        && request.resource.data.hostUserId == resource.data.hostUserId) || isAdmin();
+
+      // §6.5.1: "cancelling is not deletion" — status moves to `cancelled` and
+      // it stays visible to anyone signed up.
+      allow delete: if isAdmin();
+
+      // ---- signups ----
+      // Exists as a document so the attendance rule below can verify that the
+      // person being checked in actually signed up.
+      match /signups/{uid} {
+        // §10: the roster is visible only to the host and admins.
+        allow read: if isOwner(uid)
+          || eventHost(eventId) == request.auth.uid
+          || isAdmin();
+
+        allow create, update: if isOwner(uid);
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    // ---- /attendance ------------------------------------------------------
+    // §9.3, the one cross-user write in the entire app.
+    //
+    // Top-level rather than nested so the composite id {eventId}_{uid} enforces
+    // uniqueness for free: "a duplicate check-in is a write to an existing
+    // document, which rules reject. No unique constraint needed, no race."
+    //
+    // `create` (not `write`) is doing that work — create fails when the document
+    // already exists, so a second scan of the same code cannot succeed.
+
+    match /attendance/{attendanceId} {
+      allow read: if signedIn()
+        && (resource.data.userId == request.auth.uid
+            || resource.data.checkedInBy == request.auth.uid
+            || isAdmin());
+
+      allow create: if signedIn()
+        // the id must be exactly {eventId}_{uid} of the payload
+        && attendanceId == request.resource.data.eventId + '_' + request.resource.data.userId
+        // only the event's host may check anyone in
+        && eventHost(request.resource.data.eventId) == request.auth.uid
+        // §9.6: "no self-check-in"
+        && request.resource.data.userId != request.auth.uid
+        // the attendee must genuinely be signed up
+        && isSignedUpTo(request.resource.data.eventId, request.resource.data.userId)
+        && request.resource.data.checkedInBy == request.auth.uid;
+
+      // §9.6: "immutable after write".
+      allow update, delete: if false;
+    }
+
+    // ---- default deny -----------------------------------------------------
+    // Anything not matched above is denied. New collections must be granted
+    // access deliberately rather than inheriting it.
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

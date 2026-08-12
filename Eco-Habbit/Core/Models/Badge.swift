@@ -1,41 +1,85 @@
+//
+//  Badge.swift
+//  Eco-Habbit
+//
+//  Created by Tio Dwi Ardhana on 11/08/26.
+//
+//  Butuh   : Category
+//  Dipakai : MockBadgeData, BadgeEvaluationService
+//
+
 import Foundation
 
-/// PRD §7 — all criteria are counts of actions, never point totals. There is no point
-/// total to threshold against.
-struct Badge: Identifiable, Codable, Hashable {
-    let id: String
-    let name: String
-    let tier: String
-    let detail: String
-    let requirement: Requirement
-
-    enum Requirement: Codable, Hashable {
-        case totalActions(Int)
-        case streak(Int)
-        case vitality(Int)
-        case categoryActions(HabitCategory, Int)
-        case foundations(Int)
-        case seasonal
-    }
+/// Menentukan angka mana yang dibandingkan dengan `Badge.threshold`.
+nonisolated enum BadgeType: String, Codable, CaseIterable {
+    case streak             // dari UserState.currentStreak
+    case categoryMilestone  // dari jumlah aksi satu kategori; wajib isi targetCategory
+    case evidence           // dari jumlah foto bukti
+    case event              // dari jumlah event dihadiri
+    case points             // dari UserState.currentPoints
 }
 
-/// A rendered line in the activity history. **Derived, never persisted** — computed from
-/// `logs` plus the catalogue (PRD §9.7). Storing it is what let the old revert-by-title
-/// bug delete unrelated past entries.
-struct HistoryEntry: Identifiable, Hashable {
-    let id: UUID
-    let title: String
-    let category: HabitCategory
-    let points: Int
-    let date: Date
-    let source: HabitLog.Source
+nonisolated struct Badge: Identifiable, Codable, Hashable {
 
-    init(log: HabitLog, habit: Habit) {
-        id = log.id
-        title = habit.name
-        category = habit.category
-        points = habit.basePoints
-        date = log.loggedAt
-        source = log.source
+    let id: String
+    let name: String
+
+    /// Kalimat naratif untuk kartu badge.
+    let description: String
+
+    let type: BadgeType
+
+    /// Syarat dalam bahasa manusia, untuk ditampilkan. Jangan pernah di-parse —
+    /// angka yang dipakai mesin ada di `threshold`.
+    let criteria: String
+
+    /// Angka target, dibandingkan dengan nilai yang ditunjuk `type`.
+    let threshold: Int
+
+    /// Hanya relevan untuk `.categoryMilestone`.
+    let targetCategory: Category?
+
+    /// `nil` = badge nasional. Semua badge nasional untuk sekarang (fitur
+    /// provinsi ditunda). Badge regional nanti wajib kumulatif, bukan streak.
+    let provinceCode: String?
+
+    // MARK: - Progress user
+
+    var isUnlocked: Bool
+    var unlockedDate: Date?
+
+    init(
+        id: String,
+        name: String,
+        description: String,
+        type: BadgeType,
+        criteria: String,
+        threshold: Int,
+        targetCategory: Category? = nil,
+        provinceCode: String? = nil,
+        isUnlocked: Bool = false,
+        unlockedDate: Date? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.description = description
+        self.type = type
+        self.criteria = criteria
+        self.threshold = threshold
+        self.targetCategory = targetCategory
+        self.provinceCode = provinceCode
+        self.isUnlocked = isUnlocked
+        self.unlockedDate = unlockedDate
     }
+
+    /// Mengisi `isUnlocked` dan `unlockedDate` sekaligus, agar tidak ada badge
+    /// terbuka tanpa tanggal.
+    func unlocked(at date: Date = Date()) -> Badge {
+        var copy = self
+        copy.isUnlocked = true
+        copy.unlockedDate = date
+        return copy
+    }
+
+    var isNational: Bool { provinceCode == nil }
 }

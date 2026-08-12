@@ -56,7 +56,7 @@ struct ScannerView: View {
         .onDisappear { scanner.stop() }
         .onChange(of: scanner.lastCode) { _, code in
             guard let code else { return }
-            handle(code)
+            Task { await handle(code) }
         }
     }
 
@@ -119,8 +119,8 @@ struct ScannerView: View {
 
     // MARK: - Scanning
 
-    private func handle(_ code: String) {
-        let result = app.recordScan(code, for: fight)
+    private func handle(_ code: String) async {
+        let result = await app.recordScan(code, for: fight)
 
         let feedback: Feedback = switch result {
         case .accepted(let who): Feedback(message: "\(who) checked in", good: true)

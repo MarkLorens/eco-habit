@@ -28,7 +28,8 @@ struct Eco_HabbitApp: App {
                     _ = HabitClassifier.shared
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { appState.evaluateIfNeeded() }
+                    // Decay is computed on app open, not by a background job.
+                    if phase == .active { Task { await appState.bootstrap() } }
                 }
         }
     }

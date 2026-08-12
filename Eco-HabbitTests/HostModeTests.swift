@@ -28,10 +28,10 @@ final class HostModeTests: XCTestCase {
         fight(id, startsIn: 0, status: .published)
     }
 
-    private func hostState() -> PersistedState {
-        var state = PersistedState()
+    private func hostState() -> UserState {
+        var state = UserState(userId: "test-user")
         state.isOrganization = true
-        state.userName = "Ombak Bersih"
+        state.displayName = "Ombak Bersih"
         return state
     }
 
@@ -110,8 +110,8 @@ final class HostModeTests: XCTestCase {
     // MARK: - Token round trip
 
     func testTokenParsesBackToItsFightAndAttendee() {
-        var attendee = PersistedState()
-        attendee.userName = "Made Wirawan"
+        var attendee = UserState(userId: "test-user")
+        attendee.displayName = "Made Wirawan"
         let event = fight(startsIn: 24)
 
         FightRepository.signUp(for: event, in: &attendee, now: now)
@@ -228,18 +228,19 @@ final class HostModeTests: XCTestCase {
         )
     }
 
-    /// The host roster and the attendee's own Vitality are separate records
-    /// until Phase 10 — awarding another user Vitality is a cross-user write
-    /// with no server to authorise it (§9.3).
-    func testScanningDoesNotAwardTheAttendeeVitality() {
+    /// The host roster and the attendee's own points are separate records until
+    /// Firebase lands — awarding another user points is a cross-user write with
+    /// no server to authorise it (§9.3). Scanning fills the roster; the
+    /// attendee's own device credits itself.
+    func testScanningDoesNotAwardTheAttendeePoints() {
         var s = hostState()
-        s.vitality = 50
+        s.currentPoints = 500
         let event = liveFight()
 
         FightRepository.recordScan(token(for: event.id, attendee: "Someone Else"),
                                    for: event, in: &s, now: now)
 
-        XCTAssertEqual(s.vitality, 50)
-        XCTAssertTrue(s.fightAttendedDates.isEmpty)
+        XCTAssertEqual(s.currentPoints, 500)
+        XCTAssertTrue(s.attendedEventIDs.isEmpty)
     }
 }

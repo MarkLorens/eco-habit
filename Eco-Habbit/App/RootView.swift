@@ -7,39 +7,15 @@ struct RootView: View {
         ZStack {
             Theme.C.bg.ignoresSafeArea()
 
-            Group {
-                if app.isLoggedIn {
-                    MainTabView()
-                        .transition(.opacity)
-                } else {
-                    SignInPlaceholder()
-                        .transition(.opacity)
-                }
-            }
-            .animation(.easeInOut(duration: 0.35), value: app.isLoggedIn)
+            // No sign-in gate: this data model has no auth yet — `userId` is
+            // fixed at "demo-user" until Firebase Auth lands (FIREBASE_SETUP §4b).
+            // The sign-in screen returns with it.
+            MainTabView()
         }
         .overlay(alignment: .top) {
             ToastLayer()
         }
-    }
-}
-
-private struct SignInPlaceholder: View {
-    @EnvironmentObject private var app: AppState
-
-    var body: some View {
-        VStack(spacing: 24) {
-            GlobeView(health: 50, size: 180, interactive: false)
-            Text("Eco-Habbit")
-                .font(Theme.F.heading(28))
-                .foregroundStyle(Theme.C.text)
-            Button("Sign In with Apple") {
-                app.logIn()
-            }
-            .buttonStyle(PrimaryButtonStyle())
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.C.bg)
+        .task { await app.bootstrap() }
     }
 }
 

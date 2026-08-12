@@ -17,7 +17,7 @@
 > **0.3** — **Seeds removed entirely.** There is now a single point system, and its only function is to feed the Earth. Nothing is spendable, nothing is redeemable, and there is no second balance anywhere in the app.
 > **0.4** — Backend switched from Supabase to **Firebase**. Check-in restructured to eliminate the last piece of server logic — the app now has **zero server code**. Added the security model (§9.6), forward-compatibility constraints (§9.7), backend migration triggers (§9.8), and trust and safety (§9.9). Local notifications brought back into scope.
 > **0.5** — Camera repurposed from evidence capture to **visual search** — no photos stored, no evidence bonus, Firebase Storage removed. Organisation host tools moved fully into iOS; the web dashboard is now admin-only.
-> **0.6** — **Camera switched to zero-shot MobileCLIP** (§5.2): no trained head, no training photographs, 18 searchable habits — this closes §12 Q3. **Onboarding removed entirely** (§6.0) — sign in lands straight on the dashboard. **Firebase deferred from Phase 3 to Phase 10** (§13): all business logic is proven on-device against bundled JSON before the cloud arrives. Local persistence is a `Codable` blob until then; SwiftData is no longer assumed (§9.10). Added **§9.13 Code architecture and collaboration**: file layout, ownership boundaries, and the rule against a shared god object. Screen specs in §6 cleaned of the evidence-photo language 0.5 orphaned. Catalogue totals corrected to 43 recurring + 7 Foundations. Notifications reconciled with §9.4. Added **Phase 0** to §13 — the existing prototype is built against 0.1 and needs an explicit teardown before Phase 1.
+> **0.6** — Naming settled to **camelCase** throughout (`habitLogs`, `isOrganization`) and the attendance id to `{eventId}_{uid}`; §4.5's Supabase-era `check_in_attendee` server function removed in favour of §9.3. **Camera switched to zero-shot MobileCLIP** (§5.2): no trained head, no training photographs, 18 searchable habits — this closes §12 Q3. **Onboarding removed entirely** (§6.0) — sign in lands straight on the dashboard. **Firebase deferred from Phase 3 to Phase 10** (§13): all business logic is proven on-device against bundled JSON before the cloud arrives. Local persistence is a `Codable` blob until then; SwiftData is no longer assumed (§9.10). Added **§9.13 Code architecture and collaboration**: file layout, ownership boundaries, and the rule against a shared god object. Screen specs in §6 cleaned of the evidence-photo language 0.5 orphaned. Catalogue totals corrected to 43 recurring + 7 Foundations. Notifications reconciled with §9.4. Added **Phase 0** to §13 — the existing prototype is built against 0.1 and needs an explicit teardown before Phase 1.
 
 > **How to read this doc.** **[DECISION]** marks a call made to keep the spec unblocked — overrule freely. **[OPEN]** marks something still needing an owner.
 
@@ -302,7 +302,7 @@ Fights are the app's collective layer. Habits are what you do alone; Fights are 
 
 **[DECISION]** **Verified organisations only.** Individual users cannot host in v1.
 
-- A boolean `is_organization` on the user record gates all hosting capability.
+- A boolean `isOrganization` on the user record gates all hosting capability.
 - **Verification is manual.** A developer or admin flips the flag directly in the database, or via the admin dashboard (§8). No application flow, no review queue, no automated vetting.
 - Intentional scope reduction: real host vetting is a trust-and-safety system, not a feature, and it is not buildable before the exhibit.
 - **[OPEN]** Whether individual hosting ever unlocks, and on what basis. With no lifetime score to gate it against, this needs a different mechanism than 0.2 assumed — likely admin approval per user.
@@ -322,7 +322,7 @@ An organisation account can create, edit, cancel, and check in attendees for its
 
 1. On signup, the app generates a signed check-in token for that `(user, event)` pair and renders it as a QR code in the app.
 2. At the venue, the host opens the event in scan mode and scans each attendee's code.
-3. The scan calls the `check_in_attendee` server function, which validates the token, confirms the event is within its check-in window, confirms the attendee is signed up, and awards **+10 Vitality** atomically.
+3. The scan writes an **attendance document** (§9.3). Security Rules validate that the host owns the event, that the attendee is signed up, and that the document does not already exist. **There is no server function** — that phrasing was Supabase-era and was removed in 0.6.
 4. The attendee's device reflects the change on next sync; the host sees a running attendee count.
 
 **Why the host scans, not the attendee:**
@@ -330,7 +330,7 @@ The host controls the physical space. If attendees scanned a host-displayed code
 
 **Constraints:**
 - Check-in window opens 1 hour before start and closes 3 hours after end. **[OPEN]** — tune after a real event.
-- One check-in per attendee per event, enforced by a unique database constraint.
+- One check-in per attendee per event, enforced by the **composite document ID** `{eventId}_{uid}` (§9.3) — a duplicate is a write to an existing document, which rules reject. No constraint, no race.
 - The **+10 Vitality replaces** that day's normal delta rather than stacking on top of it. Attending a Fight is the best possible outcome for a day; habits logged the same day still count toward the streak but do not add further Vitality.
 - Check-in **requires connectivity on the host's device.** No offline queue: awarding Vitality to another user is a cross-user write and cannot be optimistic. **[OPEN]** — many Bali beaches and mangrove sites have no signal, which is precisely where these events happen. Fallback: host marks attendance from a roster afterwards.
 
@@ -622,7 +622,7 @@ In the Supabase design, attendance required one stored procedure, because the ho
 The host never writes to the attendee's record. The host writes only an **attendance document**:
 
 ```
-/attendance/{eventId}_{userId}
+/attendance/{eventId}_{uid}
     eventId, userId, checkedInAt, checkedInBy
 ```
 
@@ -708,10 +708,10 @@ That last row is the whole argument. **Cutting vouchers in 0.2 cut the threat mo
 
 **Rules requirements (must be met before launch):**
 - Users may read and write only their own documents.
-- `habit_logs` are immutable after creation; deletion permitted only same-day.
+- `habitLogs` are immutable after creation; deletion permitted only same-day.
 - Attendance documents: host-only creation, no self-check-in, event ownership verified, immutable after write.
 - Event documents: writable only by the hosting organisation account.
-- `is_organization` is **not** user-writable under any circumstances.
+- `isOrganization` is **not** user-writable under any circumstances. Rules guard the *field*, not the document, so a user can still write the rest of their own record.
 - Event documents may be created only by accounts with `isOrganization == true`, and edited only by the owning host.
 - **Firebase Storage is not enabled.** No rules surface, no photo access to secure.
 
@@ -723,7 +723,7 @@ Two constraints, cheap to honour now and expensive to retrofit. Both are good ar
 
 **1. Every write goes through a repository layer.** All logging flows through a `HabitRepository` — never `context.insert()` scattered across views. When writes eventually move server-side, one file changes instead of thirty. This is also what makes the logic testable.
 
-**2. Never store a derived total.** `habit_logs` is authoritative; everything else is computed from it. Do not cache a lifetime point total, a habit count, or anything else summable. Derived state can be recomputed server-side later; stored state must be either trusted or discarded.
+**2. Never store a derived total.** `habitLogs` is authoritative; everything else is computed from it. Do not cache a lifetime point total, a habit count, or anything else summable. Derived state can be recomputed server-side later; stored state must be either trusted or discarded.
 
 Honour both and adding a backend is roughly a week of mechanical work. Skip them and it is a rewrite — not because backends are hard, but because logic will have leaked into views.
 
@@ -919,7 +919,7 @@ Three files everyone eventually touches — `MainTabView`, `Theme`, `habits.json
 
 **[DECISION]** The 50 habits ship as **`Resources/habits.json`**, decoded once at launch and seeded into SwiftData (§13 Phase 1).
 
-50 habits × 9 fields — including a sourced impact statement and a citation URL — is a ~500-line Swift array edited by whoever does content research (§3.5), who then must not break the build. As JSON: content edits stop being code edits, conflicts merge line-by-line rather than as Swift syntax, and the same file seeds Firestore `/habits` in Phase 3 unchanged.
+50 habits × 9 fields — including a sourced impact statement and a citation URL — is a ~500-line Swift array edited by whoever does content research (§3.5), who then must not break the build. As JSON: content edits stop being code edits, conflicts merge line-by-line rather than as Swift syntax, and the same file seeds Firestore `/habits` in Phase 10 unchanged, if it is ever migrated at all — it is client-read-only and works offline as a bundled file.
 
 #### 9.13.6 No local Swift packages
 

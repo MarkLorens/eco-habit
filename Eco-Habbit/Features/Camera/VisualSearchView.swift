@@ -88,8 +88,8 @@ struct VisualSearchView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Theme.S.x2) {
                         ForEach(camera.matches) { match in
-                            if let habit = MockData.habitsById[match.habitId] {
-                                chip(habit)
+                            if let activity = MockActivityData.activity(withID: match.habitId) {
+                                chip(activity)
                             }
                         }
                     }
@@ -115,24 +115,24 @@ struct VisualSearchView: View {
         .animation(.easeOut(duration: 0.2), value: camera.matches)
     }
 
-    /// PRD §5.4 — an unavailable habit is greyed with a label rather than
+    /// PRD §5.4 — an unavailable activity is greyed with a label rather than
     /// hidden. Hiding it makes the camera look broken.
-    private func chip(_ habit: Habit) -> some View {
-        let available = app.isAvailable(habit)
+    private func chip(_ activity: Activity) -> some View {
+        let available = !app.isCompletedToday(activity.id)
 
         return Button {
             guard available else { return }
-            app.logAndToast(habit, source: .visualSearch)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Task { await app.logActivity(activity, source: .camera) }
         } label: {
             VStack(alignment: .leading, spacing: 3) {
-                Text(habit.name)
+                Text(activity.name)
                     .font(Theme.F.body(14, weight: .bold))
                     .foregroundStyle(available ? Theme.C.text : Theme.C.neutral600)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
-                Text(label(for: habit, available: available))
+                Text(label(for: activity, available: available))
                     .font(Theme.F.body(11.5, weight: .semibold))
                     .foregroundStyle(available ? Theme.C.accent700 : Theme.C.neutral500)
             }
@@ -148,13 +148,11 @@ struct VisualSearchView: View {
         .disabled(!available)
     }
 
-    private func label(for habit: Habit, available: Bool) -> String {
-        guard available else {
-            return habit.isFoundation ? "Already done" : "Done today"
-        }
-        return habit.isFoundation
-            ? "+\(VitalityEngine.foundationBoost) Vitality"
-            : "+\(habit.tier.points) pts"
+    /// Base points only — the evidence, streak and priority multipliers are
+    /// applied when the log is written, so the chip promises the floor, never
+    /// a number the user might not get.
+    private func label(for activity: Activity, available: Bool) -> String {
+        available ? "+\(activity.basePoints) pts" : "Done today"
     }
 
     // MARK: - Simulator

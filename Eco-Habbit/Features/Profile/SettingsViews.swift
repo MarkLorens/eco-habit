@@ -1,88 +1,8 @@
 import SwiftUI
 
-struct FavouriteCategoriesView: View {
-    @EnvironmentObject private var app: AppState
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var selection: Set<HabitCategory> = []
-
-    var body: some View {
-        SettingsScaffold(
-            title: "Favorite categories",
-            subtitle: "Pick 2–3. These float to the top of the activity list."
-        ) {
-            VStack(spacing: 10) {
-                ForEach(HabitCategory.allCases) { category in
-                    let isOn = selection.contains(category)
-                    Button {
-                        withAnimation(.easeOut(duration: 0.15)) { toggle(category) }
-                    } label: {
-                        HStack(spacing: 14) {
-                            CategoryIconView(
-                                glyph: category.glyph,
-                                size: 22,
-                                color: isOn ? Theme.C.accent600 : Theme.C.neutral600
-                            )
-                            .frame(width: 44, height: 44)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(isOn ? Theme.C.accent100 : Theme.C.neutral100)
-                            )
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(category.name)
-                                    .font(Theme.F.body(15, weight: .bold))
-                                    .foregroundStyle(Theme.C.text)
-                                Text(category.blurb)
-                                    .font(Theme.F.body(12.5))
-                                    .foregroundStyle(Theme.C.neutral600)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 20))
-                                .foregroundStyle(isOn ? Theme.C.accent500 : Theme.C.neutral300)
-                        }
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: Theme.R.card)
-                                .fill(Theme.C.surface)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: Theme.R.card)
-                                        .stroke(isOn ? Theme.C.accent500 : Theme.C.neutral200, lineWidth: 1)
-                                )
-                        )
-                    }
-                    .buttonStyle(PlainPressStyle())
-                }
-
-                Text("\(selection.count) of 3 selected")
-                    .font(Theme.F.body(13))
-                    .foregroundStyle(Theme.C.neutral600)
-                    .padding(.top, 6)
-
-                Button("Save") {
-                    app.updateFavourites(selection)
-                    app.toast = Toast(kind: .success, message: "Favorites updated.")
-                    dismiss()
-                }
-                .buttonStyle(PrimaryButtonStyle(height: 50))
-                .disabled(selection.count < 2)
-                .padding(.top, 8)
-            }
-        }
-        .onAppear { selection = app.favouriteCategories }
-    }
-
-    private func toggle(_ category: HabitCategory) {
-        if selection.contains(category) {
-            selection.remove(category)
-        } else if selection.count < 3 {
-            selection.insert(category)
-        }
-    }
-}
+// FavouriteCategoriesView removed — this data model has no "favourite
+// categories" concept, and nothing read it once the old dashboard's suggestion
+// strip went away. Re-add it to UserState if the idea comes back.
 
 struct NotificationSettingsView: View {
     @EnvironmentObject private var app: AppState
@@ -99,7 +19,7 @@ struct NotificationSettingsView: View {
                 VStack(spacing: 0) {
                     toggleRow("All notifications", isOn: Binding(
                         get: { app.notificationsEnabled },
-                        set: { app.setNotifications($0) }
+                        set: { on in Task { await app.setNotifications(on) } }
                     ))
                     toggleRow("Daily reminder", isOn: $dailyReminder)
                         .disabled(!app.notificationsEnabled)
@@ -217,11 +137,11 @@ struct ActivityHistoryView: View {
         }
     }
 
-    private var groupedHistory: [(day: Date, entries: [HistoryEntry])] {
+    private var groupedHistory: [(day: Date, entries: [ActivityLog])] {
         let calendar = Calendar.current
-        let groups = Dictionary(grouping: app.history) { calendar.startOfDay(for: $0.date) }
+        let groups = Dictionary(grouping: app.history) { calendar.startOfDay(for: $0.loggedAt) }
         return groups
-            .map { (day: $0.key, entries: $0.value.sorted { $0.date > $1.date }) }
+            .map { (day: $0.key, entries: $0.value.sorted { $0.loggedAt > $1.loggedAt }) }
             .sorted { $0.day > $1.day }
     }
 
@@ -233,23 +153,33 @@ struct ActivityHistoryView: View {
 }
 
 private struct HistoryRow: View {
-    let entry: HistoryEntry
+    let entry: ActivityLog
+
+    /// The log denormalises `category` but not the name, so the title is a
+    /// catalogue lookup. A log for a retired activity falls back to its id
+    /// rather than vanishing from the history.
+    private var title: String {
+        MockActivityData.activity(withID: entry.activityId)?.name ?? entry.activityId
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            CategoryIconView(glyph: entry.category.glyph, size: 18, color: Theme.C.accent2_700)
+            Image(entry.category.mascotName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 22, height: 22)
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(Theme.C.accent2_100))
+                .background(Circle().fill(entry.category.cardBackground))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.title)
+                Text(title)
                     .font(Theme.F.body(14, weight: .semibold))
                     .foregroundStyle(Theme.C.text)
                     .multilineTextAlignment(.leading)
 
                 HStack(spacing: 6) {
-                    Text(entry.date.formatted(date: .omitted, time: .shortened))
-                    if entry.source == .visualSearch {
+                    Text(entry.loggedAt.formatted(date: .omitted, time: .shortened))
+                    if entry.source == .camera {
                         Label("Camera", systemImage: "camera.fill")
                     }
                 }
@@ -259,7 +189,7 @@ private struct HistoryRow: View {
 
             Spacer()
 
-            EHTag(text: "+\(entry.points)", style: .accent2)
+            EHTag(text: "+\(entry.finalPoints)", style: .accent2)
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 12)

@@ -44,7 +44,7 @@ MODEL_NAME = "MobileCLIP-S2"
 CKPT = "datacompdr"  # open_clip tag; downloads apple/MobileCLIP-S2-OpenCLIP and caches
 
 HERE = pathlib.Path(__file__).parent
-CATALOGUE = HERE.parent / "Eco-Habbit" / "Resources" / "habits.json"
+CATALOGUE = HERE.parent / "Eco-Habbit" / "Resources" / "activities.json"
 OUT = HERE.parent / "Eco-Habbit" / "Resources" / "habit_vectors.json"
 # ---------------------------------------------------------------------------
 
@@ -59,7 +59,7 @@ OUT = HERE.parent / "Eco-Habbit" / "Resources" / "habit_vectors.json"
 # A plain metal spoon scored 0.21 against "a bamboo cutlery set in a cloth pouch"
 # — barely over threshold — because nothing in that set described a bare object.
 PROMPTS = {
-    "ws2": [  # Use a reusable water bottle
+    "food_reusable_bottle": [  # Use a reusable water bottle
         "a stainless steel water bottle",
         "an insulated metal flask",
         "a reusable water bottle with a screw cap",
@@ -68,16 +68,7 @@ PROMPTS = {
         "a close-up of a metal water bottle",
         "a steel drinking bottle standing on a desk",
     ],
-    "ws3": [  # Bring your own coffee cup
-        "a reusable coffee cup with a silicone lid",
-        "a travel mug on a cafe counter",
-        "a ceramic keep cup held in a hand",
-        "a bamboo tumbler with a screw lid",
-        "a photo of an insulated coffee tumbler",
-        "a close-up of a reusable coffee cup",
-        "a travel mug held in a hand",
-    ],
-    "ws1": [  # Refuse a plastic bag; use your own
+    "food_reusable_bag": [  # Refuse a plastic bag; use your own
         "a canvas tote bag",
         "a cloth shopping bag full of groceries",
         "a jute string mesh produce bag",
@@ -86,16 +77,7 @@ PROMPTS = {
         "a close-up of a cloth tote bag",
         "a folded fabric shopping bag",
     ],
-    "ws4": [  # Refuse a plastic straw
-        "a stainless steel drinking straw",
-        "metal reusable straws in a jar",
-        "a bamboo cutlery set in a cloth pouch",
-        "a travel fork spoon and knife set",
-        "a photo of a rolled up utensil pouch",
-        "a stainless steel spoon and fork",
-        "a close-up of a metal drinking straw",
-    ],
-    "ws5": [  # Segregate waste into organic and inorganic
+    "waste_segregate": [  # Segregate waste into organic and inorganic
         "a blue recycling bin with the recycling symbol",
         "sorted bins for paper glass and plastic",
         "a recycling container full of cans and bottles",
@@ -104,7 +86,7 @@ PROMPTS = {
         "a close-up of the recycling symbol on a bin",
         "a bin with sorted bottles and cans inside it",
     ],
-    "ws6": [  # Compost food scraps
+    "waste_compost": [  # Compost food scraps
         "a compost bin full of vegetable peelings",
         "a countertop food scrap caddy",
         "dark compost soil with eggshells and coffee grounds",
@@ -113,7 +95,7 @@ PROMPTS = {
         "a close-up of vegetable peelings",
         "a kitchen compost caddy on a worktop",
     ],
-    "ws8": [  # Refill household products at a bulk store
+    "waste_refill_product": [  # Refill household products at a bulk store
         "a bulk food refill dispenser in a shop",
         "gravity bins of grains and nuts in a zero waste store",
         "a public water refill fountain",
@@ -122,16 +104,7 @@ PROMPTS = {
         "a close-up of a bulk food dispenser",
         "a jar being filled with dry goods",
     ],
-    "ws9": [  # Use cloth instead of paper towels
-        "folded cloth napkins on a table",
-        "a beeswax food wrap covering a bowl",
-        "cotton dishcloths in a kitchen",
-        "reusable cloth kitchen towels",
-        "a photo of a beeswax wrap around a sandwich",
-        "a close-up of a folded cloth napkin",
-        "a stack of cotton kitchen cloths",
-    ],
-    "f1": [  # Eat a fully plant-based meal
+    "food_plant_based_meal": [  # Eat a fully plant-based meal
         "a plate of vegetables and grains",
         "a bowl of salad with chickpeas",
         "a vegan buddha bowl on a wooden table",
@@ -140,7 +113,7 @@ PROMPTS = {
         "a close-up of a vegetable dish",
         "a plate of food with no meat on it",
     ],
-    "f4": [  # Buy produce from a local market
+    "food_buy_local": [  # Buy produce from a local market
         "a farmers market vegetable stall",
         "crates of fresh produce at an outdoor market",
         "a greengrocer stand with boxes of fruit",
@@ -149,7 +122,7 @@ PROMPTS = {
         "a close-up of loose vegetables in a crate",
         "an outdoor produce stall",
     ],
-    "f6": [  # Pack a home-cooked lunch
+    "food_own_container": [  # Pack a home-cooked lunch
         "a glass food storage container with a lid",
         "a stainless steel lunchbox",
         "a bento box packed with food",
@@ -158,7 +131,7 @@ PROMPTS = {
         "a close-up of a glass food container",
         "a metal lunch tin on a table",
     ],
-    "t1": [  # Walk or cycle a trip under 2 km
+    "mobility_cycle": [  # Walk or cycle a trip under 2 km
         "a bicycle parked on the street",
         "a person riding a bike",
         "a bike leaning against a wall",
@@ -167,7 +140,7 @@ PROMPTS = {
         "a close-up of a bicycle frame and pedals",
         "a bike seen from the side",
     ],
-    "t2": [  # Take public transport instead of driving
+    "mobility_public_transport": [  # Take public transport instead of driving
         "the interior of a city bus",
         "a train platform at a station",
         "a tram on a city street",
@@ -176,7 +149,7 @@ PROMPTS = {
         "a bus seen from the pavement",
         "a train arriving at a platform",
     ],
-    "c1": [  # Repair something instead of replacing it
+    "waste_repair_instead_replace": [  # Repair something instead of replacing it
         "hands sewing a patch onto jeans",
         "a needle and thread mending a sweater",
         "a sewing kit with spools of thread",
@@ -185,7 +158,7 @@ PROMPTS = {
         "a close-up of a stitched patch on fabric",
         "hands holding a needle and thread",
     ],
-    "c2": [  # Buy secondhand instead of new
+    "food_buy_secondhand": [  # Buy secondhand instead of new
         "a rail of used clothes in a thrift store",
         "the inside of a charity shop",
         "a vintage clothing market stall",
@@ -194,16 +167,7 @@ PROMPTS = {
         "a close-up of used clothes on wooden hangers",
         "a thrift shop clothing rail",
     ],
-    "c6": [  # Borrow or rent instead of buying
-        "shelves of books in a library",
-        "a stack of library books with date labels",
-        "a person browsing library shelves",
-        "a public library reading room",
-        "a photo of a library book with a barcode sticker",
-        "a close-up of books on a library shelf",
-        "a library barcode stamped inside a book",
-    ],
-    "e2": [  # Air-dry laundry instead of using a dryer
+    "energy_air_dry_clothes": [  # Air-dry laundry instead of using a dryer
         "laundry hanging on a clothesline",
         "clothes drying on an indoor airer rack",
         "washing pegged out on a line in the sun",
@@ -212,7 +176,7 @@ PROMPTS = {
         "a close-up of clothes pegged on a line",
         "a drying rack of damp clothes indoors",
     ],
-    "w4": [  # Collect rainwater
+    "water_collect_rainwater": [  # Collect rainwater
         "a green water butt beside a house",
         "a rain barrel collecting water from a downpipe",
         "a large rainwater tank in a garden",
@@ -221,14 +185,41 @@ PROMPTS = {
         "a close-up of a water butt tap",
         "a rain barrel standing against a wall",
     ],
+    "energy_unplug_chargers": [
+        "an unplugged charger beside a wall socket",
+        "a phone charger removed from the outlet",
+        "a bare wall socket with nothing plugged in",
+        "a hand pulling a plug from a socket",
+        "a photo of a coiled unused charging cable",
+        "a close-up of an empty power outlet",
+        "a switched-off power strip",
+    ],
+    "water_fix_leaking_tap": [
+        "a dripping tap with a water droplet",
+        "a wrench tightening a tap fitting",
+        "hands repairing a leaking faucet",
+        "a plumber's tools beside a sink tap",
+        "a photo of water dripping from a spout",
+        "a close-up of a tap washer being replaced",
+        "a leaking pipe joint under a sink",
+    ],
 }
 
 DUPLICATE_COSINE = 0.9  # habits above this are visually inseparable
 
 
 def load_catalogue() -> dict[str, dict]:
+    """The same file the app bundles — one source of truth for activity ids."""
     with open(CATALOGUE) as f:
-        return {h["id"]: h for h in json.load(f)}
+        rows = json.load(f)
+    return {
+        r["id"]: {
+            **r,
+            # Tio's own data decides what is photographable.
+            "isCameraDetectable": r["evidenceStrength"] in ("direct", "contextual"),
+        }
+        for r in rows
+    }
 
 
 def main() -> None:

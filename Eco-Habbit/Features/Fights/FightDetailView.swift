@@ -139,14 +139,14 @@ struct FightDetailView: View {
     private var reward: some View {
         EHCard(background: AnyShapeStyle(Theme.C.accent2_100)) {
             HStack(spacing: Theme.S.x3) {
-                Text("+\(VitalityEngine.fightBoost)")
+                Text("+\(fight.attendancePoints)")
                     .font(Theme.F.heading(30))
                     .foregroundStyle(Theme.C.accent2_700)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Vitality")
+                    Text("points")
                         .font(Theme.F.body(14.5, weight: .bold))
                         .foregroundStyle(Theme.C.text)
-                    Text("More than three perfect days of habits, in one afternoon.")
+                    Text("Counts against the same monthly event quota as a claimed event.")
                         .font(Theme.F.body(12.5))
                         .foregroundStyle(Theme.C.neutral700)
                         .fixedSize(horizontal: false, vertical: true)
@@ -177,7 +177,7 @@ struct FightDetailView: View {
             }
 
             if hasAttended {
-                Label("Attended — +\(VitalityEngine.fightBoost) Vitality credited",
+                Label("Attended — +\(fight.attendancePoints) pts credited",
                       systemImage: "checkmark.seal.fill")
                     .font(Theme.F.body(14.5, weight: .bold))
                     .foregroundStyle(Theme.C.accent2_700)
@@ -190,11 +190,11 @@ struct FightDetailView: View {
 
                 // Stands in for the host's scanner until Phase 10 (§9.3).
                 if fight.isCheckInOpen() {
-                    Button("Simulate host scan") { app.checkIn(to: fight) }
+                    Button("Simulate host scan") { Task { await app.checkIn(to: fight) } }
                         .buttonStyle(SecondaryButtonStyle())
                 }
 
-                Button("Cancel signup") { app.cancelFight(fight) }
+                Button("Cancel signup") { Task { await app.cancelFight(fight) } }
                     .buttonStyle(GhostButtonStyle())
 
                 Text("No penalty for cancelling.")
@@ -202,7 +202,7 @@ struct FightDetailView: View {
                     .foregroundStyle(Theme.C.neutral600)
 
             } else {
-                Button("Join this Fight") { app.joinFight(fight) }
+                Button("Join this Fight") { Task { await app.joinFight(fight) } }
                     .buttonStyle(PrimaryButtonStyle())
 
                 Text("Signing up shares your display name with \(fight.hostName).")

@@ -100,7 +100,7 @@ struct EventFormView: View {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
 
-        app.saveDraft(draft)
+        Task { await app.saveDraft(draft) }
         dismiss()
     }
 }

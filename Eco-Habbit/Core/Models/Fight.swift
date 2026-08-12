@@ -27,6 +27,14 @@ struct Fight: Identifiable, Codable, Hashable {
     /// Exhibit seed data is labelled so it can never be mistaken for a real event (§8).
     var isDemo: Bool = false
 
+    /// Attending pays out on the same scale as claiming an `Event`, and against
+    /// the same monthly cap. A Fight is hosted and scanned where an Event is
+    /// merely claimed, but there is no reason for the two to use different
+    /// economies — the numbers all live in `PointsConfiguration`.
+    var tier: EventTier = .standard
+
+    var attendancePoints: Int { tier.points }
+
     enum Status: String, Codable {
         case draft, published, cancelled
     }
