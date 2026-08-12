@@ -4,43 +4,44 @@ struct ActivityListView: View {
     @EnvironmentObject private var app: AppState
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $app.actionsPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Sustainability Activity")
-                        .font(Theme.F.heading(24))
-                        .foregroundStyle(Theme.C.text)
-
-                    Text("One credit per activity per day.")
-                        .font(Theme.F.body(13.5))
-                        .foregroundStyle(Theme.C.neutral600)
-                        .padding(.top, 6)
-
-                    VStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.sm){
+                        Text("Daily Practices")
+                            .textStyle(Tokens.Typography.hero)
+                            .foregroundStyle(Tokens.Semantic.text)
+                        
+                        Text("Choose a category to see suggested actions")
+                            .textStyle(Tokens.Typography.footnote)
+                            .foregroundStyle(Tokens.Semantic.footnote)
+                    }
+                    .padding(.horizontal, Tokens.Spacing.xxl)
+                    LazyVGrid(
+                        columns: [GridItem(.flexible(), spacing: Tokens.Spacing.md), GridItem(.flexible())],
+                        spacing: Tokens.Spacing.xl
+                    ){
                         ForEach(sortedCategories) { category in
                             NavigationLink(value: category) {
-                                CategoryRow(
-                                    category: category,
-                                    done: app.doneCount(in: category),
-                                    total: MockData.habits(in: category).count,
-                                    isFavourite: app.favouriteCategories.contains(category)
+                                Cards(
+                                    title: category.title,
+                                    caption: category.caption,
+                                    icon: category.icon,
+                                    background: category.background,
+                                    tint: category.tint
                                 )
                             }
-                            .buttonStyle(PlainPressStyle())
+                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(.top, 18)
+                    .padding(Tokens.Spacing.md)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .tabContentInsets()
             }
-            .background(Theme.C.bg)
+            .background(Tokens.Palette.white)
             .navigationDestination(for: HabitCategory.self) { category in
                 CategoryDetailView(category: category)
             }
         }
-        .tint(Theme.C.accent)
     }
 
     private var sortedCategories: [HabitCategory] {
@@ -53,46 +54,7 @@ struct ActivityListView: View {
     }
 }
 
-private struct CategoryRow: View {
-    let category: HabitCategory
-    let done: Int
-    let total: Int
-    let isFavourite: Bool
-
-    var body: some View {
-        HStack(spacing: 14) {
-            CategoryIconView(glyph: category.glyph, size: 22, color: Theme.C.accent2_700)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Theme.C.accent2_100))
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(category.name)
-                        .font(Theme.F.body(15, weight: .bold))
-                        .foregroundStyle(Theme.C.text)
-                    if isFavourite {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 10))
-                            .foregroundStyle(Theme.C.accent400)
-                    }
-                }
-                Text("\(done)/\(total) done today")
-                    .font(Theme.F.body(12.5))
-                    .foregroundStyle(Theme.C.neutral600)
-            }
-
-            Spacer()
-            ChevronRight()
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.R.card)
-                .fill(Theme.C.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.R.card)
-                        .stroke(Theme.C.neutral200, lineWidth: 1)
-                )
-        )
-        .elevation(Theme.E.sm)
-    }
+#Preview {
+    ActivityListView()
+        .environmentObject(AppState.preview)
 }

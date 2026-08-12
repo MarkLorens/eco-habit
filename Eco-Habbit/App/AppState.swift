@@ -11,6 +11,8 @@ final class AppState: ObservableObject {
     @Published private(set) var data: PersistedState
 
     @Published var selectedTab: AppTab = .home
+    // Added for the action tab ya
+    @Published var actionsPath = NavigationPath()
     @Published var isCameraPresented = false
     @Published var toast: Toast?
     @Published var lastAward: Award?

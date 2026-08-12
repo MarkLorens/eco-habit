@@ -1,56 +1,67 @@
 import SwiftUI
 
 enum HabitCategory: String, Codable, CaseIterable, Identifiable, Hashable {
-    case waste
     case energy
+    case waste
+    case actions
     case water
-    case food
-    case transport
+    case mobility
     case consumption
 
     var id: String { rawValue }
 
-    var name: String {
+    var title: String {
         switch self {
-        case .waste: return "Waste Reduction"
-        case .energy: return "Energy Saving"
-        case .water: return "Water Conservation"
-        case .food: return "Food"
-        case .transport: return "Transport"
+        case .energy: return "Energy"
+        case .waste: return "Waste"
+        case .actions: return "Actions"
+        case .water: return "Water"
+        case .mobility: return "Mobility"
         case .consumption: return "Consumption"
         }
     }
 
-    var shortName: String {
+    var caption: String {
         switch self {
-        case .waste: return "Waste"
-        case .energy: return "Energy"
-        case .water: return "Water"
-        case .food: return "Food"
-        case .transport: return "Transport"
-        case .consumption: return "Reuse"
+        case .energy: return "Safe energy\nPower a better future"
+        case .waste: return "Less waste today\nCleaner tomorrow"
+        case .actions: return "Small steps\nCreate big impacts"
+        case .water: return "Every drop matters"
+        case .mobility: return "Move smarter\nTravel greener"
+        case .consumption: return "Consume less\nLive better"
         }
     }
-
-    var blurb: String {
+    
+    var icon: String {
         switch self {
-        case .waste: return "Cut what you throw away"
-        case .energy: return "Use less at home"
-        case .water: return "Every litre counts"
-        case .food: return "Eat greener"
-        case .transport: return "Get there cleaner"
-        case .consumption: return "Buy less, reuse more"
+        case .energy: return Tokens.Icons.lightBulb
+        case .waste: return Tokens.Icons.trash
+        case .actions: return Tokens.Icons.tree
+        case.water: return Tokens.Icons.water
+        case .mobility: return Tokens.Icons.smoke
+        case .consumption: return Tokens.Icons.burger
         }
     }
-
-    var glyph: IconGlyph {
+    
+    var tint: Color {
+        switch self{
+        case .energy: return Tokens.Palette.yellowCard
+        case .waste: return Tokens.Palette.purpleCard
+        case .actions: return Tokens.Palette.limeCard
+        case .water: return Tokens.Palette.blueCard
+        case .mobility: return Tokens.Palette.greenCard
+        case .consumption: return Tokens.Palette.orangeCard
+        }
+    }
+    
+    var background: Color {
         switch self {
-        case .waste: return .bag
-        case .energy: return .bolt
-        case .water: return .droplet
-        case .food: return .bag
-        case .transport: return .bike
-        case .consumption: return .bag
+        case .energy:      return Tokens.Semantic.pointTagYellow
+        case .waste:       return Tokens.Semantic.pointTagPurple
+        case .actions:     return Tokens.Semantic.pointTagLime
+        case .water:       return Tokens.Semantic.pointTagBlue
+        case .mobility:    return Tokens.Semantic.pointTagGreen
+        case .consumption: return Tokens.Semantic.pointTagOrange
         }
     }
 }

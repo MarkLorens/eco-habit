@@ -103,19 +103,6 @@ enum Theme {
 }
 
 // MARK: - Helpers
-
-extension Color {
-    init(hex: UInt32) {
-        self.init(
-            .sRGB,
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255,
-            opacity: 1
-        )
-    }
-}
-
 extension View {
     func elevation(_ shadow: Theme.Shadow) -> some View {
         self.shadow(color: shadow.color, radius: shadow.radius, x: 0, y: shadow.y)
