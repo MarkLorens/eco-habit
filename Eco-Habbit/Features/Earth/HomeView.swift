@@ -178,7 +178,7 @@ private struct MissionCard: View {
             app.logAndToast(habit, source: .checklist)
         } label: {
             VStack(alignment: .leading, spacing: 10) {
-                CategoryIconView(glyph: habit.category.glyph, size: 22, color: Theme.C.accent600)
+//                CategoryIconView(glyph: habit.category.icon, size: 22, color: Theme.C.accent600)
 
                 Text(habit.name)
                     .font(Theme.F.body(13.5, weight: .bold))

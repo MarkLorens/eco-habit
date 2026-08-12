@@ -79,9 +79,6 @@ struct Cards: View {
 }
 
 #Preview {
-    let columns = [
-        GridItem(.adaptive(minimum: 176.91))
-        ]
     ScrollView{
         LazyVGrid(
             columns: [GridItem(.flexible(), spacing: Tokens.Spacing.md), GridItem(.flexible())],

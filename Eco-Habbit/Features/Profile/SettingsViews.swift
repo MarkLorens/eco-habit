@@ -12,14 +12,14 @@ struct FavouriteCategoriesView: View {
             subtitle: "Pick 2–3. These float to the top of the activity list."
         ) {
             VStack(spacing: 10) {
-                ForEach(HabitCategory.allCases) { category in
+                ForEach(HabitCategory.allCases, id: \.self) { category in
                     let isOn = selection.contains(category)
                     Button {
                         withAnimation(.easeOut(duration: 0.15)) { toggle(category) }
                     } label: {
                         HStack(spacing: 14) {
                             CategoryIconView(
-                                glyph: category.glyph,
+                                glyph: category.icon,
                                 size: 22,
                                 color: isOn ? Theme.C.accent600 : Theme.C.neutral600
                             )
@@ -30,10 +30,10 @@ struct FavouriteCategoriesView: View {
                             )
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(category.name)
+                                Text(category.title)
                                     .font(Theme.F.body(15, weight: .bold))
                                     .foregroundStyle(Theme.C.text)
-                                Text(category.blurb)
+                                Text(category.caption)
                                     .font(Theme.F.body(12.5))
                                     .foregroundStyle(Theme.C.neutral600)
                             }
@@ -237,7 +237,7 @@ private struct HistoryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CategoryIconView(glyph: entry.category.glyph, size: 18, color: Theme.C.accent2_700)
+            CategoryIconView(glyph: entry.category.icon, size: 18, color: Theme.C.accent2_700)
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(Theme.C.accent2_100))
 

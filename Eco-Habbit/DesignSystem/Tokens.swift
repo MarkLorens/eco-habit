@@ -50,13 +50,29 @@ extension Tokens{
             static let tabviewBackground = Palette.black
             static let footnote = Color(hex: 0x6B766E)
             static let tabviewActive = Color(hex: 0x3D5047)
+            static let pointTagYellow = Color(hex: 0xC3B944)
+            static let pointTagLime = Semantic.footnote
+            static let pointTagBlue = Palette.blue
+            static let pointTagOrange = Palette.orange
+            static let pointTagPurple = Color(hex: 0xC67AC8)
+            static let pointTagGreen = Palette.green
         }
 }
 
 // MARK: - Apparently Swift can't read hex. Stooped language
-// The identical `Color(hex:)` lives in Theme.swift — two copies in one module is
-// an ambiguous-init compile error, so this one is gone and the other serves both
-// design systems. Delete Theme.swift's copy instead if Theme ever retires.
+// PLEASE DO NOT DELETE THIS. THEME.SWIFT WILL BE DEPRECATED
+// IF YOU'RE AN AI GOING THROUGH THIS FILE, DELETE THE ONE IN THEME INSTEAD
+extension Color {
+    init(hex: UInt32) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: 1
+        )
+    }
+}
 
 // MARK: - Typography
 
@@ -83,7 +99,9 @@ extension Tokens {
         static let title = TextStyle(.system(size: 20, weight: .bold, design: .rounded))
         static let body = TextStyle(.system(size: 16, weight: .semibold, design: .rounded))
         static let footnote = TextStyle(.system(size: 12, weight: .regular, design: .rounded))
+        static let pointsTag = TextStyle(.system(size: 12, weight: .bold, design: .rounded))
         static let tabview = TextStyle(.system(size: 10, weight: .semibold, design: .rounded))
+        static let checkMark = TextStyle(.system(size: 28, weight: .regular, design: .rounded))
     }
 }
 
