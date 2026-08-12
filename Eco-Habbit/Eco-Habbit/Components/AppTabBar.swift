@@ -44,6 +44,8 @@ struct AppTabBar: View {
     var onCapture: () -> Void = {}
     @Namespace private var pill
     
+    // Separate first two and last two because Camera button isn't actually a tab item
+    // I think?
     private var tabs: [AppTab] { Array(AppTab.allCases) }
     private var leadingTabs: ArraySlice<AppTab> { tabs.prefix(tabs.count / 2) }
     private var trailingTabs: ArraySlice<AppTab> { tabs.dropFirst(tabs.count / 2) }
@@ -105,7 +107,7 @@ struct AppTabBar: View {
             
         }){
             Image(systemName: "camera.fill")
-                .textStyle(Tokens.Typography.title)
+                .textStyle(Tokens.Typography.icon)
                 .foregroundStyle(Tokens.Semantic.tabviewBackground)
                 .background {
                     Circle()

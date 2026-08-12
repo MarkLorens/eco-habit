@@ -86,7 +86,7 @@ extension Tokens {
     }
     
     enum Typography {
-        static let icon = TextStyle(.system(size: 30, weight: .bold, design: .rounded))
+        static let icon = TextStyle(.system(size: 24, weight: .bold, design: .rounded))
         static let hero = TextStyle(.system(size: 28, weight: .heavy, design: .rounded))
         static let title = TextStyle(.system(size: 20, weight: .bold, design: .rounded))
         static let body = TextStyle(.system(size: 16, weight: .semibold, design: .rounded))
