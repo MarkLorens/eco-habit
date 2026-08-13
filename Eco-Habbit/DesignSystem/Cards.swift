@@ -68,25 +68,25 @@ struct Cards: View {
             spacing: Tokens.Spacing.xl
         ){
             Cards(
-                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.trash, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
+                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
             )
             Cards(
-                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.trash, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
+                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
             )
             Cards(
-                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.trash, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
+                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
             )
             Cards(
-                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.trash, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
+                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
             )
             Cards(
-                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.trash, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
+                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
             )
             Cards(
-                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.trash, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
+                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
             )
             Cards(
-                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.trash, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
+                title: "Waste", caption: "Less waste today\nCleaner Tomorrow", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard, tint: Tokens.Palette.yellowCard/*, shadow: Tokens.Icons.blackShadow*/
             )
         }
         .padding(Tokens.Spacing.md)

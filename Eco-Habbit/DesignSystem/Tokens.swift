@@ -165,19 +165,18 @@ extension Tokens {
         static let profileTabViewActive = "profile-tabview-active"
         
         // MARK: - Rest of assets
-        static let lightBulb = "light-bulb"
-        static let trash = "trash"
-        static let burger = "burger"
-        static let smoke = "smoke"
-        static let water = "water"
-        static let tree = "tree"
-        
-        // MARK: - Shadow
-        static let yellowShadow = "yellow-shadow"
-        static let greenShadow = "green-shadow"
-        static let orangeShadow = "orange-shadow"
-        static let blackShadow = "black-shadow"
-        static let blueShadow = "blue-shadow"
+        static let actionIcon = "actions-icon"
+        static let actionDetail = "action-detail-small"
+        static let consumptionIcon = "consumption-icon"
+        static let consumptionDetail = "consumption-detail"
+        static let energyIcon = "energy-icon"
+        static let energyDetail = "energy-detail"
+        static let mobilityIcon = "mobility-icon"
+        static let mobilityDetail = "mobility-detail"
+        static let wasteIcon = "waste-icon"
+        static let wasteDetail = "waste-detail"
+        static let waterIcon = "water-icon"
+        static let waterDetail = "water-detail"
         
 //        static let dashboardGlobe = "dashboard-globe" placeholder for our 3D asset
     }
