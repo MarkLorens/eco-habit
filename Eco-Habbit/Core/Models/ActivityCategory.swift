@@ -34,12 +34,23 @@ enum HabitCategory: String, Codable, CaseIterable, Identifiable, Hashable {
     
     var icon: String {
         switch self {
-        case .energy: return Tokens.Icons.lightBulb
-        case .waste: return Tokens.Icons.trash
-        case .actions: return Tokens.Icons.tree
-        case.water: return Tokens.Icons.water
-        case .mobility: return Tokens.Icons.smoke
-        case .consumption: return Tokens.Icons.burger
+        case .energy: return Tokens.Icons.energyIcon
+        case .waste: return Tokens.Icons.wasteIcon
+        case .actions: return Tokens.Icons.actionIcon
+        case.water: return Tokens.Icons.waterIcon
+        case .mobility: return Tokens.Icons.mobilityIcon
+        case .consumption: return Tokens.Icons.consumptionIcon
+        }
+    }
+    
+    var iconDetail: String {
+        switch self {
+        case .energy: return Tokens.Icons.energyDetail
+        case .waste: return Tokens.Icons.wasteDetail
+        case .actions: return Tokens.Icons.actionDetail
+        case.water: return Tokens.Icons.waterDetail
+        case .mobility: return Tokens.Icons.mobilityDetail
+        case .consumption: return Tokens.Icons.consumptionDetail
         }
     }
     
@@ -62,6 +73,17 @@ enum HabitCategory: String, Codable, CaseIterable, Identifiable, Hashable {
         case .water:       return Tokens.Semantic.pointTagBlue
         case .mobility:    return Tokens.Semantic.pointTagGreen
         case .consumption: return Tokens.Semantic.pointTagOrange
+        }
+    }
+    
+    var iconScale: CGFloat {
+        switch self {
+        case .energy:      return 0.95
+        case .waste:       return 1.04
+        case .actions:     return 1.23
+        case .water:       return 0.87
+        case .mobility:    return 0.96
+        case .consumption: return 1.06
         }
     }
 }

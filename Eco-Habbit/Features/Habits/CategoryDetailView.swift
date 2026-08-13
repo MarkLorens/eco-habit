@@ -45,7 +45,6 @@ struct CategoryDetailView: View {
         .overlay(alignment: .top) {
             header
                 .padding(.horizontal, Tokens.Spacing.md)
-                .padding(.bottom, Tokens.Spacing.xl)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     UnevenRoundedRectangle(
@@ -72,16 +71,23 @@ struct CategoryDetailView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.sm) {
-            NavigateButton(background: Tokens.Semantic.buttonTintDefault, direction: .left){ dismiss() }
-            Text(category.title)
-                .foregroundStyle(Tokens.Semantic.text)
-                .textStyle(Tokens.Typography.hero)
-            Text(category.caption)
-                .foregroundStyle(Tokens.Semantic.footnote)
-                .textStyle(Tokens.Typography.footnote)
+        HStack {
+            VStack(alignment: .leading, spacing: Tokens.Spacing.sm) {
+                NavigateButton(background: Tokens.Semantic.buttonTintDefault, direction: .left){ dismiss() }
+                Text(category.title)
+                    .foregroundStyle(Tokens.Semantic.text)
+                    .textStyle(Tokens.Typography.hero)
+                Text(category.caption)
+                    .foregroundStyle(Tokens.Semantic.footnote)
+                    .textStyle(Tokens.Typography.footnote)
+            }
+            Spacer(minLength: Tokens.Spacing.sm)
+            Image(category.iconDetail)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 130 * category.iconScale, height: 130 * category.iconScale)
         }
-        .padding([.horizontal], Tokens.Spacing.md)
+        .padding([.horizontal], Tokens.Spacing.sm)
     }
 
     private func toggle(_ row: HabitRow) {
@@ -98,7 +104,7 @@ struct CategoryDetailView: View {
 #if DEBUG
 #Preview("Category detail") {
     NavigationStack {
-        CategoryDetailView(category: .energy)
+        CategoryDetailView(category: .actions)
     }
     .environmentObject(AppState.preview)
 }
