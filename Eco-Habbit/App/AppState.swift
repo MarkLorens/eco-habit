@@ -37,6 +37,8 @@ final class AppState: ObservableObject {
 
     // Transient UI state that shouldn't survive a relaunch.
     @Published var selectedTab: AppTab = .home
+    // Added for the action tab ya
+    @Published var actionsPath = NavigationPath()
     @Published var isCameraPresented = false
     @Published var toast: Toast?
     @Published var lastAward: Award?

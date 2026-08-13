@@ -38,8 +38,13 @@ struct DailyPracticesView: View {
                             caption: category.tagline,
                             icon: category.mascotName,
                             background: category.cardBackground,
+                            tint: category.cardBackground,
                             action: { onSelectCategory(category) }
                         )
+                        // NavigateButton di dalam kartu menangkap tap tombolnya
+                        // sendiri; area kartu selebihnya tetap harus bisa di-tap.
+                        .contentShape(Rectangle())
+                        .onTapGesture { onSelectCategory(category) }
                     }
                 }
                 // Ruang supaya kartu terakhir tidak tertutup tab bar mengambang.
