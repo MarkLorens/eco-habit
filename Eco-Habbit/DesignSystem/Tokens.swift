@@ -57,6 +57,8 @@ extension Tokens{
             static let pointTagPurple = Color(hex: 0xC67AC8)
             static let pointTagGreen = Palette.green
             static let buttonTintDefault = Color(hex: 0xF9F9F9)
+            static let profileBg = Color(hex: 0xF2FCD2)
+            static let statIcon = Color(hex: 0xA0A6A3)
         }
 }
 
@@ -95,9 +97,10 @@ extension Tokens {
     }
     
     enum Typography {
-        static let icon = TextStyle(.system(size: 24, weight: .bold, design: .rounded))
+        static let icon = TextStyle(.system(size: 30, weight: .bold, design: .rounded))
         static let hero = TextStyle(.system(size: 28, weight: .heavy, design: .rounded))
         static let title = TextStyle(.system(size: 20, weight: .bold, design: .rounded))
+        static let title2 = TextStyle(.system(size: 20, weight: .heavy, design: .rounded))
         static let body = TextStyle(.system(size: 16, weight: .semibold, design: .rounded))
         static let footnote = TextStyle(.system(size: 12, weight: .regular, design: .rounded))
         static let pointsTag = TextStyle(.system(size: 12, weight: .bold, design: .rounded))
@@ -128,6 +131,8 @@ extension Tokens {
         static let lg: CGFloat = 16
         static let xl: CGFloat = 20
         static let xxl: CGFloat = 24
+        static let huge: CGFloat = 28
+        static let goodLord: CGFloat = 32
     }
     // Comment out and add down here if you need a more specific ruling
 //    enum Layout {
