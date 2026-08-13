@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		50E0E69C302DA48700E63E49 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 50E0E69B302DA48700E63E49 /* Lottie */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		3725B3F33023DDC40036EE22 /* Eco-Habbit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Eco-Habbit.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				50E0E69C302DA48700E63E49 /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = "Eco-Habbit";
 			packageProductDependencies = (
+				50E0E69B302DA48700E63E49 /* Lottie */,
 			);
 			productName = "Eco-Habbit";
 			productReference = 3725B3F33023DDC40036EE22 /* Eco-Habbit.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 3725B3EA3023DDC40036EE22;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				50E0E69A302DA48700E63E49 /* XCRemoteSwiftPackageReference "lottie-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3725B3F43023DDC40036EE22 /* Products */;
 			projectDirPath = "";
@@ -344,6 +353,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		50E0E69A302DA48700E63E49 /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.6.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		50E0E69B302DA48700E63E49 /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 50E0E69A302DA48700E63E49 /* XCRemoteSwiftPackageReference "lottie-ios" */;
+			productName = Lottie;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3725B3EB3023DDC40036EE22 /* Project object */;
 }
