@@ -24,7 +24,8 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     stats
                     badges
-                    settings
+                    recap
+//                    settings
                 }
                 .padding(.horizontal, 20)
                 // The identity block is an overlay, so it takes up no layout space —
@@ -171,6 +172,25 @@ struct ProfileView: View {
         false
         #endif
     }
+    
+    private var recap: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
+            HStack{
+                Text("Recap")
+                    .textStyle(Tokens.Typography.title)
+                    .foregroundStyle(Tokens.Semantic.text)
+            }
+            ScrollView(.horizontal){
+                HStack(spacing: Tokens.Spacing.lg){
+                    recapCards(caption: "Your July Recap", icon: Tokens.Icons.actionIcon, background: Tokens.Palette.limeCard)
+                    recapCards(caption: "All Time", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard)
+                    recapCards(caption: "2026", icon: Tokens.Icons.wasteIcon, background: Tokens.Palette.purpleCard)
+                    recapCards(caption: "I'm hiding", icon: Tokens.Icons.mobilityIcon, background: Tokens.Palette.greenCard)
+                }
+            }
+        }
+        .padding(.top, Tokens.Spacing.xxl)
+    }
 
     private var settings: some View {
         EHCard(padding: 4) {
@@ -238,6 +258,35 @@ struct ProfileView: View {
     }
 }
 
+private struct recapCards: View {
+    private let caption: String
+    private let icon: String
+    private let background: Color
+    
+    init(caption: String, icon: String, background: Color) {
+        self.caption = caption
+        self.icon = icon
+        self.background = background
+    }
+    
+    var body: some View {
+        HStack(spacing: Tokens.Spacing.xxl){
+            Text(caption)
+                .textStyle(Tokens.Typography.body)
+                .foregroundStyle(Tokens.Semantic.text)
+            Image(icon)
+                .resizable()
+                .scaledToFit()
+        }
+        .frame(maxWidth: 127, maxHeight: 148, alignment: .bottom)
+        .padding([.horizontal], Tokens.Spacing.md)
+        .padding([.vertical], Tokens.Spacing.lg)
+        .background{
+            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards)
+                .fill(background)
+        }
+    }
+}
 private struct SignOutFooter: ViewModifier {
     @EnvironmentObject private var app: AppState
     @State private var confirmingReset = false
