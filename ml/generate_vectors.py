@@ -2,9 +2,13 @@
 Generate habit_vectors.json for the Eco-Habit iOS app.
 
 Encodes prompt ensembles with the MobileCLIP-S2 TEXT tower and writes one
-L2-normalised vector per camera-searchable habit.
+L2-normalised vector per camera-searchable habit, plus the distractor vectors
+that let the app answer "none of these".
 
-    ../../CameraAI/venv/bin/python generate_vectors.py
+    ml/venv/bin/python generate_vectors.py
+
+Runs on CoreML, not torch: the text tower ships as an .mlpackage next to this
+script, so the dependencies are coremltools + a CLIP tokenizer and nothing else.
 
 >>> READ THIS BEFORE TRUSTING ANY SCORE <<<
 The text vectors below only mean anything if the .mlpackage in the iOS app is
@@ -32,20 +36,34 @@ import itertools
 import json
 import pathlib
 
-import open_clip
-import torch
+import numpy as np
+import coremltools as ct
+from transformers import CLIPTokenizerFast
 
 # --- MUST MATCH THE iOS .mlpackage -----------------------------------------
-# MobileCLIP-S2 is v1. Its image tower is mobileclip_s2_image.mlpackage in the
-# app's Resources, which is what HabitClassifier loads. Do NOT point this at
-# MobileClip/mobileclip2_s0.pt — that is MobileCLIP2 (v1 vs v2 = different
-# embedding space, normal-looking scores that mean nothing).
+# This runs the TEXT tower from the same Apple release as the app's IMAGE tower,
+# through CoreML — not through torch/open_clip. That removes the entire class of
+# "v1 vs v2, S0 vs S2" mismatch this file used to warn about, because both
+# towers now come from one place instead of two.
+#
+# Verified equivalent: encoding the habit prompts through this path reproduces
+# the previous open_clip-generated vectors at cosine 1.000000.
 MODEL_NAME = "MobileCLIP-S2"
-CKPT = "datacompdr"  # open_clip tag; downloads apple/MobileCLIP-S2-OpenCLIP and caches
+CKPT = "mobileclip_s2_text.mlpackage"
 
 HERE = pathlib.Path(__file__).parent
+TEXT_TOWER = HERE / CKPT
 CATALOGUE = HERE.parent / "Eco-Habbit" / "Resources" / "activities.json"
 OUT = HERE.parent / "Eco-Habbit" / "Resources" / "habit_vectors.json"
+
+CONTEXT_LENGTH = 77
+
+# CLIP's learned temperature. The text tower alone cannot report it — it is a
+# separate parameter of the full model — so it is stated here. open_clip clamps
+# logit_scale at 100 during training and MobileCLIP trains to that ceiling, so
+# this is the trained value rather than a guess. It only scales the softmax
+# confidence; `autoLogConfidence` in Swift is tuned on photographs regardless.
+LOGIT_SCALE = 100.0
 # ---------------------------------------------------------------------------
 
 # Prompts describe WHAT THE CAMERA SEES, never what the habit means.
@@ -205,7 +223,165 @@ PROMPTS = {
     ],
 }
 
+# --- DISTRACTORS ------------------------------------------------------------
+# Things the camera WILL be pointed at that are not habits. These ship as
+# vectors and are ranked in the same pass as the habits.
+#
+# WHY THIS EXISTS
+# Ranking against habits alone is a closed set: whatever you photograph, the
+# nearest of N habits wins, because there is no option to return nothing. A
+# single-use plastic bottle is overwhelmingly "a bottle", so it lands on
+# food_reusable_bottle with a healthy score and the app logs points for it.
+#
+# Two things that do NOT fix it, both tried:
+#   * Raising minSimilarity. The plastic bottle genuinely scores high — you would
+#     have to raise the floor past where real reusable bottles land.
+#   * Negation in the habit prompt ("a metal bottle, not a plastic one"). CLIP
+#     has no negation. The tokens "plastic bottle" pull the habit vector TOWARD
+#     plastic bottles. It reliably makes things worse.
+#
+# Giving the wrong answer somewhere correct to land is what works. Each key is
+# an id; the label is shown to the user ("That looks like a single-use plastic
+# bottle"), so write labels as a noun phrase that completes that sentence.
+#
+# THE UNSUSTAINABLE TWINS MATTER MOST. A distractor only earns its place if it
+# is close to a habit — "a photo of a cat" defends nothing. Every group below
+# either shadows a specific habit or catches the camera pointing at nothing.
+DISTRACTORS = {
+    "plastic_bottle": (
+        "a single-use plastic bottle",
+        [
+            "a single-use plastic water bottle",
+            "a disposable PET bottle with a paper label",
+            "a clear plastic drinks bottle with a blue cap",
+            "a crushed empty plastic bottle",
+            "a pack of bottled water in plastic wrap",
+            "a close-up of a transparent disposable bottle",
+        ],
+    ),
+    "plastic_bag": (
+        "a disposable plastic bag",
+        [
+            "a thin white plastic carrier bag",
+            "a disposable polythene shopping bag",
+            "a crumpled plastic grocery bag",
+            "a black bin bag of household rubbish",
+            "groceries in a thin plastic supermarket bag",
+            "a close-up of a translucent plastic bag",
+        ],
+    ),
+    "paper_cup": (
+        "a disposable cup",
+        [
+            "a disposable paper coffee cup with a plastic lid",
+            "a takeaway cup with a cardboard sleeve",
+            "a styrofoam cup",
+            "a plastic cup with a straw in it",
+        ],
+    ),
+    "disposable_tableware": (
+        "single-use tableware",
+        [
+            "disposable plastic forks and knives",
+            "a styrofoam takeaway food container",
+            "a paper plate with plastic cutlery",
+            "food wrapped in cling film on a plastic tray",
+        ],
+    ),
+    "packaged_food": (
+        "packaged supermarket food",
+        [
+            "a supermarket aisle of packaged food",
+            "vegetables sealed in a plastic tray",
+            "a shelf of branded snack packets",
+            "fruit wrapped in plastic film",
+        ],
+    ),
+    "meat_meal": (
+        "a meal with meat in it",
+        [
+            "a steak on a plate",
+            "a plate of grilled chicken and chips",
+            "a hamburger with a beef patty",
+            "sausages frying in a pan",
+        ],
+    ),
+    "private_car": (
+        "a car or motorbike",
+        [
+            "the interior of a private car",
+            "a parked motorbike with a chrome exhaust",
+            "a car dashboard and steering wheel",
+            "a car parked on a driveway",
+        ],
+    ),
+    "appliance": (
+        "an electrical appliance running",
+        [
+            "a tumble dryer machine",
+            "an air conditioner unit on a wall",
+            "a washing machine with the door open",
+            "a television switched on in a living room",
+        ],
+    ),
+    # Not a twin of anything — this group catches the camera pointing at nothing
+    # in particular, which without it lands on whichever habit is least unlike a
+    # wall. It is the difference between "no" and a confident wrong answer.
+    "scene": (
+        "an ordinary scene",
+        [
+            "an empty white wall",
+            "a laptop keyboard on a desk",
+            "a person's face in close up",
+            "a plain ceiling with a light fitting",
+            "a carpeted floor",
+            "a blurry dark photo of nothing in particular",
+            "a hand held up to the camera",
+            "a street with parked cars",
+        ],
+    ),
+}
+
 DUPLICATE_COSINE = 0.9  # habits above this are visually inseparable
+
+
+def load_text_encoder():
+    """Returns `encode(prompts) -> unit vector`, prompt-ensembled.
+
+    Shared by test_vectors.py and validate_image.py so the tokenizer, the
+    padding value and the ensembling procedure exist in exactly one place. They
+    have to match the app bit for bit, and three copies is three chances to drift.
+    """
+    if not TEXT_TOWER.exists():
+        raise SystemExit(f"missing {TEXT_TOWER}")
+
+    model = ct.models.MLModel(str(TEXT_TOWER))
+    tokenizer = CLIPTokenizerFast.from_pretrained("openai/clip-vit-base-patch32")
+
+    def tokenize(text: str):
+        """CLIP BPE, padded to 77 with ZERO.
+
+        The padding value is load-bearing and it is not the obvious one:
+        HuggingFace's CLIPTokenizer pads with <|endoftext|> (49407), open_clip
+        pads with 0, and the tower was trained the open_clip way. Pad with the
+        HF default and every vector lands in a different part of the space —
+        habit prompts then score ~0.19 against their own vectors, which reads
+        like a broken model rather than a wrong constant.
+        """
+        ids = tokenizer(text, truncation=True, max_length=CONTEXT_LENGTH)["input_ids"]
+        return np.array([ids + [0] * (CONTEXT_LENGTH - len(ids))], dtype=np.int32)
+
+    def encode(prompts):
+        """Normalise each prompt, mean, normalise again — so a dot product IS a cosine."""
+        embs = []
+        for text in prompts:
+            emb = np.asarray(model.predict({"text": tokenize(text)})["final_emb_1"],
+                             dtype=np.float64).ravel()
+            embs.append(emb / np.linalg.norm(emb))
+        mean = np.stack(embs).mean(axis=0)
+        return mean / np.linalg.norm(mean)
+
+    return encode
 
 
 def load_catalogue() -> dict[str, dict]:
@@ -246,30 +422,30 @@ def main() -> None:
         for hid in missing:
             print(f"          {hid:<5} {catalogue[hid]['name']}")
 
-    print(f"\n[2] Loading model: {MODEL_NAME} from {CKPT}")
-    print("    >>> CONFIRM this matches the app's .mlpackage. A v1/v2 or S0/S2")
-    print("    >>> mismatch yields normal-looking, meaningless scores.")
+    print(f"\n[2] Loading TEXT tower: {TEXT_TOWER.name}")
+    print("    Same Apple release as the app's image tower, run through CoreML —")
+    print("    so both halves of the model come from one place, not two.")
 
-    model, _, _ = open_clip.create_model_and_transforms(MODEL_NAME, pretrained=CKPT)
-    tokenizer = open_clip.get_tokenizer(MODEL_NAME)
-    model.eval()
+    encode = load_text_encoder()
 
     ids = sorted(PROMPTS)
     vectors = []
-    with torch.no_grad():
-        for hid in ids:
-            # Prompt ensembling: normalise each prompt, mean, normalise again.
-            # Same procedure the image side uses, so dot product == cosine.
-            emb = model.encode_text(tokenizer(PROMPTS[hid])).float()
-            emb = emb / emb.norm(dim=-1, keepdim=True)
-            mean = emb.mean(dim=0)
-            mean = mean / mean.norm()
-            vectors.append(mean)
-            print(f"    encoded {hid:<5} {len(PROMPTS[hid])} prompts  "
-                  f"{catalogue[hid]['name']}")
+    for hid in ids:
+        vectors.append(encode(PROMPTS[hid]))
+        print(f"    encoded {hid:<34} {len(PROMPTS[hid])} prompts  "
+              f"{catalogue[hid]['name']}")
 
-    stacked = torch.stack(vectors)
+    dids = sorted(DISTRACTORS)
+    dvectors = []
+    for d in dids:
+        dvectors.append(encode(DISTRACTORS[d][1]))
+        print(f"    encoded {d:<34} {len(DISTRACTORS[d][1])} prompts  "
+              f"[distractor] {DISTRACTORS[d][0]}")
+
+    stacked = np.stack(vectors)
+    dstacked = np.stack(dvectors)
     dim = stacked.shape[1]
+    logit_scale = LOGIT_SCALE
 
     print(f"\n[3] Embedding dimension: {dim}  <-- must equal the .mlpackage output length")
     if dim != 512:
@@ -290,25 +466,57 @@ def main() -> None:
     else:
         print(f"    none — all {len(ids)} habits are distinguishable")
 
-    off = sims - torch.eye(len(ids)) * 2
+    off = sims - np.eye(len(ids)) * 2
     i, j = divmod(int(off.argmax()), len(ids))
     print(f"    (closest pair overall: {sims[i, j]:.3f}  {ids[i]} <-> {ids[j]})")
 
-    # Only id + vec ship. `name` is not duplicated here — the app already has the
-    # catalogue and looks the habit up by id, so a name in two places is just two
-    # places to drift. Negatives are omitted too: they served the verify flow,
-    # which PRD §5.1 cut when the camera became a search input.
+    # The report that matters. A habit sitting close to its unsustainable twin is
+    # the one that will log a false positive on a real photo, and this says which
+    # one and by how much BEFORE anybody points a phone at anything.
+    print(f"\n[4b] Nearest distractor per habit (text-space):")
+    cross = stacked @ dstacked.T
+    worst = []
+    for k, hid in enumerate(ids):
+        best = int(cross[k].argmax())
+        gap = float(cross[k].max())
+        worst.append((gap, hid, dids[best]))
+    for gap, hid, did in sorted(worst, reverse=True):
+        flag = "  <-- TIGHT" if gap > 0.80 else ""
+        print(f"    {gap:.3f}  {hid:<34} vs {did}{flag}")
+    print("    Text-space cosines run HIGH; the number to watch is the ordering,")
+    print("    not the value. Anything marked TIGHT will need sharper prompts —")
+    print("    name the material ('stainless steel', 'matte metal'), never the")
+    print("    negative ('not plastic'), which pulls the vector the wrong way.")
+
+    # Habits ship id + vec only. `name` is not duplicated here — the app has the
+    # catalogue and looks the habit up by id, so a name in two places is two
+    # places to drift.
+    #
+    # Distractors DO carry a label, because there is no catalogue to look "a
+    # single-use plastic bottle" up in, and the label is the whole point: it is
+    # what lets the app say what it thinks it saw instead of "nothing found".
     payload = {
         "model": MODEL_NAME,
         "dim": dim,
+        "logitScale": logit_scale,
         "habits": [{"id": hid, "vec": v.tolist()} for hid, v in zip(ids, vectors)],
+        "distractors": [
+            {"id": did, "label": DISTRACTORS[did][0], "vec": v.tolist()}
+            for did, v in zip(dids, dvectors)
+        ],
     }
+    # `indent=1` rather than a single long line: an editor that soft-wraps or
+    # reformats long lines will happily inject a newline *inside* a float
+    # ("-0.0191486943513\n    15,") and silently corrupt the file. Short lines
+    # give a formatter nothing to wrap. Costs ~10% size, buys immunity.
     with open(OUT, "w") as f:
-        json.dump(payload, f)
+        json.dump(payload, f, indent=1)
+        f.write("\n")
 
     size = OUT.stat().st_size / 1024
     print(f"\n[5] Wrote {OUT.relative_to(HERE.parent)}: "
-          f"{len(payload['habits'])} habits x {dim} floats ({size:.0f} KB)")
+          f"{len(payload['habits'])} habits + {len(payload['distractors'])} distractors "
+          f"x {dim} floats ({size:.0f} KB), logitScale {logit_scale:.1f}")
     print("    It is inside the synchronized group, so Xcode picks it up with no")
     print("    project changes. Run test_vectors.py next.")
 

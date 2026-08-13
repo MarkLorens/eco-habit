@@ -15,13 +15,37 @@ struct ActivityRow: View {
 
     private let activity: Activity
     private let isCompleted: Bool
+    private let points: Int?
+    private let multiplier: Double
     private let onToggle: () -> Void
 
-    init(activity: Activity, isCompleted: Bool, onToggle: @escaping () -> Void = {}) {
+    /// `points` adalah poin SUNGGUHAN untuk baris ini — hasil proyeksi (kalau
+    /// belum dikerjakan) atau yang benar-benar didapat (kalau sudah). Sengaja
+    /// dioper sebagai nilai, bukan dibaca dari AppState: komponen ini tinggal di
+    /// DesignSystem dan harus tetap bisa di-preview tanpa state apa pun.
+    ///
+    /// `nil` jatuh kembali ke `activity.basePoints`, yaitu perilaku lama.
+    init(activity: Activity,
+         isCompleted: Bool,
+         points: Int? = nil,
+         multiplier: Double = 1.0,
+         onToggle: @escaping () -> Void = {}) {
         self.activity = activity
         self.isCompleted = isCompleted
+        self.points = points
+        self.multiplier = multiplier
         self.onToggle = onToggle
     }
+
+    private var displayedPoints: Int { points ?? activity.basePoints }
+
+    /// Tag pengali hanya muncul kalau memang ada bonusnya, dan tidak pernah pada
+    /// baris yang sudah selesai — angka di situ sudah final, bukan tawaran.
+    private var showsMultiplier: Bool { multiplier > 1.0 && !isCompleted }
+
+    /// Cap harian sudah habis: baris jujur menampilkan 0, bukan angka penuh yang
+    /// tidak akan pernah dibayar.
+    private var isWorthless: Bool { displayedPoints == 0 && !isCompleted }
 
     var body: some View {
         Button(action: onToggle) {
@@ -78,25 +102,42 @@ struct ActivityRow: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
 
-            pointsPill
-                .opacity(isCompleted ? 0.6 : 1)
+            HStack(spacing: Tokens.Spacing.sm) {
+                pointsPill
+                    .opacity(isCompleted ? 0.6 : 1)
+
+                if showsMultiplier {
+                    multiplierTag
+                }
+            }
         }
     }
 
-    /// "+5 pts" — angkanya dari `basePoints`, yang diturunkan dari FrictionLevel.
+    /// "+14 pts" — poin sungguhan, streak dan cap sudah ikut dihitung.
     private var pointsPill: some View {
         HStack(spacing: Tokens.Spacing.xs) {
             Image(systemName: "leaf.fill")
                 .font(.system(size: 9))
-            Text("+\(activity.basePoints) pts")
+            Text("+\(displayedPoints) pts")
                 .textStyle(Tokens.Typography.footnote)
         }
-        .foregroundStyle(activity.category.pillTextColor)
+        .foregroundStyle(isWorthless ? Tokens.Semantic.footnote
+                                     : activity.category.pillTextColor)
         .padding(.horizontal, Tokens.Spacing.sm)
         .padding(.vertical, 3)
         .background(
-            Capsule().fill(activity.category.cardBackground)
+            Capsule().fill(isWorthless ? Tokens.Semantic.footnote.opacity(0.12)
+                                       : activity.category.cardBackground)
         )
+    }
+
+    /// Sengaja teks polos, bukan kapsul kedua. Pill poin harus tetap jadi angka
+    /// utama — dua kapsul bersebelahan membuat baris terlihat seperti punya dua
+    /// nilai yang setara.
+    private var multiplierTag: some View {
+        Text("×\(multiplier.formatted(.number.precision(.fractionLength(0...2))))")
+            .textStyle(Tokens.Typography.footnote)
+            .foregroundStyle(Tokens.Semantic.footnote)
     }
 
     private var checkCircle: some View {
@@ -125,7 +166,15 @@ struct ActivityRow: View {
     ScrollView {
         VStack(spacing: Tokens.Spacing.md) {
             ForEach(Array(activities.enumerated()), id: \.element.id) { index, activity in
-                ActivityRow(activity: activity, isCompleted: index == 1)
+                // Streak 30 hari: pengali 1,35 dan poin sudah dikalikan, seperti
+                // yang dilihat user sungguhan.
+                ActivityRow(
+                    activity: activity,
+                    isCompleted: index == 1,
+                    points: index == 3 ? 0   // contoh cap harian habis
+                        : Int((Double(activity.basePoints) * 1.35).rounded()),
+                    multiplier: 1.35
+                )
             }
         }
         .padding(Tokens.Spacing.lg)

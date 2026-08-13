@@ -101,10 +101,18 @@ struct CategoryDetailView: View {
 
                 ScrollView {
                     LazyVStack(spacing: Tokens.Spacing.md) {
+                        // Di DALAM ScrollView, bukan di header. Header adalah
+                        // lembar putih dengan tiga konstanta hasil ukur Sketch
+                        // (radius 28, inset 50, overlap −19); menyisipkan apa pun
+                        // ke VStack itu menggeser tumpang tindih negatifnya.
+                        banner
+
                         ForEach(displayedActivities) { activity in
                             ActivityRow(
                                 activity: activity,
                                 isCompleted: store.isCompletedToday(activity.id),
+                                points: points(for: activity),
+                                multiplier: store.streakMultiplier(),
                                 onToggle: { logActivity(activity) }
                             )
                         }
@@ -146,7 +154,64 @@ struct CategoryDetailView: View {
         }
     }
 
+    // MARK: - Poin per baris
+
+    /// Angka yang ditampilkan satu baris.
+    ///
+    /// Yang sudah dikerjakan memakai poin yang BENAR-BENAR didapat, bukan
+    /// proyeksi ulang: proyeksi menghitung sisa cap harian, dan log itu sendiri
+    /// sudah ikut menghabiskannya — baris F3 yang tadi memberi 20 poin akan
+    /// berubah jadi "+0" begitu cap penuh, seolah usahanya dibatalkan.
+    private func points(for activity: Activity) -> Int {
+        if store.isCompletedToday(activity.id) {
+            return store.loggedPoints(for: activity.id) ?? activity.basePoints
+        }
+        return store.projectedPoints(for: activity).finalPoints
+    }
+
     // MARK: - Bagian
+
+    /// Penjelas di atas daftar: kenapa angka di tiap baris bukan poin dasar.
+    ///
+    /// Muncul hanya kalau ada yang perlu dijelaskan. Streak di bawah 7 hari tidak
+    /// punya bonus, jadi user baru tidak melihat hiasan pengali yang belum
+    /// mereka dapatkan sama sekali.
+    @ViewBuilder
+    private var banner: some View {
+        if store.isDailyCapReached {
+            bannerCard(
+                title: "Daily cap reached",
+                detail: "Actions still count toward badges and streak, but earn 0 more points today."
+            )
+        } else if store.streakMultiplier() > 1.0 {
+            bannerCard(
+                title: "×\(store.streakMultiplier().formatted(.number.precision(.fractionLength(0...2)))) streak bonus",
+                // Streak PROSPEKTIF — sama dengan yang dipakai baris-baris di
+                // bawahnya, jadi angka di banner dan di pill selalu sepakat.
+                detail: "Day \(store.prospectiveStreak()) — already included in every action below."
+            )
+        }
+    }
+
+    private func bannerCard(title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+            Text(title)
+                .textStyle(Tokens.Typography.body)
+                .foregroundStyle(Tokens.Semantic.text)
+
+            Text(detail)
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Semantic.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Tokens.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards, style: .continuous)
+                .fill(Tokens.Palette.white.opacity(0.7))
+        )
+    }
 
     /// Lembar putih di depan yang menutupi area header, dengan dua sudut bawah
     /// membulat sehingga warna kategori di belakangnya mengintip di kiri-kanan.

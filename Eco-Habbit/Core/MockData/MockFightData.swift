@@ -1,9 +1,6 @@
 import Foundation
 
-/// Seeded Fights — the organisation-hosted events with QR check-in (PRD §4).
-///
-/// Distinct from `MockEventData`, which is the claim-a-code catalogue. Both
-/// exist on purpose: an Event is claimed, a Fight is hosted and scanned into.
+/// Seeded Fights for the demo.
 ///
 /// Loaded from `Resources/fights.json` as **offsets from launch**, not absolute
 /// dates. Absolute dates in seed data go stale — a week after writing them the

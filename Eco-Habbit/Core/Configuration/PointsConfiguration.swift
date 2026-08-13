@@ -35,6 +35,13 @@ nonisolated struct PointsConfiguration: Codable, Equatable {
     /// Wajib urut naik berdasarkan `minimumStreakDay`.
     var streakTiers: [StreakTier]
 
+    /// **Sengaja 1.0 — bonus foto dihapus dari ekonomi.**
+    ///
+    /// Field-nya dipertahankan, bukan dihapus: tiap `ActivityLog` yang sudah
+    /// tersimpan membawa `evidenceBonus`, jadi menghapusnya mengubah bentuk data
+    /// di disk tanpa keuntungan apa pun. Kamera tetap ada dan `hasEvidence` tetap
+    /// mengisi `totalEvidencePhotoCount` untuk badge — yang hilang hanya
+    /// pengalinya. Isi 1.2 lagi kalau bonusnya dihidupkan kembali.
     var evidenceBonusWithPhoto: Double
     var evidenceBonusWithoutPhoto: Double
 
@@ -78,7 +85,7 @@ nonisolated struct PointsConfiguration: Codable, Equatable {
             StreakTier(minimumStreakDay: 30, multiplier: 1.35),
             StreakTier(minimumStreakDay: 60, multiplier: 1.5)
         ],
-        evidenceBonusWithPhoto: 1.2,
+        evidenceBonusWithPhoto: 1.0,
         evidenceBonusWithoutPhoto: 1.0,
         priorityMultiplierActive: 1.3,
         priorityMultiplierInactive: 1.0,

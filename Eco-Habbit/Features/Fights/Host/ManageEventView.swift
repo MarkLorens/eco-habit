@@ -1,26 +1,25 @@
 import SwiftUI
 
-/// PRD §6.5.1 — signup count, attendance count, and the attendee roster.
-/// The roster is **host-visible only** (§10); it is never shown to attendees.
+/// The organiser's view of their own Fight: publish it, show the check-in code
+/// at the venue, edit or cancel it.
 struct ManageEventView: View {
     @EnvironmentObject private var app: AppState
     let fight: Fight
 
     @State private var showingEdit = false
-    @State private var showingScanner = false
+    @State private var showingCode = false
     @State private var confirmingCancel = false
 
     /// Read back through `app` so the view follows publish/cancel edits.
     private var current: Fight { app.fight(id: fight.id) ?? fight }
-    private var scans: [HostScan] { app.scans(for: current) }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.S.x4) {
                 statusCard
-                counts
+                codeCard
+                headcount
                 actions
-                roster
             }
             .padding(.horizontal, Theme.S.x4)
             .padding(.top, Theme.S.x3)
@@ -30,7 +29,7 @@ struct ManageEventView: View {
         .navigationTitle("Manage")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingEdit) { EventFormView(editing: current, app: app) }
-        .fullScreenCover(isPresented: $showingScanner) { ScannerView(fight: current) }
+        .sheet(isPresented: $showingCode) { FightCodeView(fight: current) }
         .confirmationDialog(
             "Cancel this Fight?",
             isPresented: $confirmingCancel,
@@ -39,7 +38,7 @@ struct ManageEventView: View {
             Button("Cancel the Fight", role: .destructive) { Task { await app.cancelHostedFight(current) } }
             Button("Keep it", role: .cancel) {}
         } message: {
-            Text("It stays visible to anyone signed up, marked cancelled. This cannot be undone.")
+            Text("It stays visible to anyone who saved it, marked cancelled. This cannot be undone.")
         }
     }
 
@@ -89,24 +88,60 @@ struct ManageEventView: View {
         }
     }
 
-    private var counts: some View {
-        HStack(spacing: Theme.S.x3) {
-            countTile("\(app.signupCount(for: current))", "Signed up")
-            countTile("\(scans.count)", "Checked in")
+    /// The code, inline, so the organiser can read it out without opening
+    /// anything. The full-screen version is for holding up to a queue.
+    @ViewBuilder
+    private var codeCard: some View {
+        if current.status == .published {
+            EHCard {
+                VStack(alignment: .leading, spacing: Theme.S.x2) {
+                    Text("Check-in code")
+                        .font(Theme.F.body(11.5, weight: .semibold))
+                        .foregroundStyle(Theme.C.neutral600)
+                        .textCase(.uppercase)
+
+                    HStack(spacing: Theme.S.x3) {
+                        Text(current.checkInCode)
+                            .font(.system(size: 30, weight: .bold, design: .monospaced))
+                            .tracking(4)
+                            .foregroundStyle(Theme.C.text)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button("Show") { showingCode = true }
+                            .font(Theme.F.body(14, weight: .bold))
+                            .foregroundStyle(Theme.C.accent700)
+                    }
+
+                    Text("Attendees scan or type this. Everyone uses the same code.")
+                        .font(Theme.F.body(12.5))
+                        .foregroundStyle(Theme.C.neutral600)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
-    private func countTile(_ value: String, _ label: String) -> some View {
+    /// **This device only.** One phone cannot see another's attendance without a
+    /// server, so this counts the organiser's own check-in and nothing else. It
+    /// becomes a real headcount when attendance is a Firestore query — labelled
+    /// honestly until then rather than implying a roster that doesn't exist.
+    private var headcount: some View {
         EHCard {
-            VStack(spacing: 2) {
-                Text(value)
+            HStack(spacing: Theme.S.x3) {
+                Text("\(app.checkInCount(for: current))")
                     .font(Theme.F.heading(28))
                     .foregroundStyle(Theme.C.text)
-                Text(label)
-                    .font(Theme.F.body(12, weight: .semibold))
-                    .foregroundStyle(Theme.C.neutral600)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("checked in on this device")
+                        .font(Theme.F.body(13.5, weight: .semibold))
+                        .foregroundStyle(Theme.C.text)
+                    Text("A live headcount across everyone's phones needs the shared database — not wired up yet.")
+                        .font(Theme.F.body(12))
+                        .foregroundStyle(Theme.C.neutral600)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
             }
-            .frame(maxWidth: .infinity)
         }
     }
 
@@ -122,13 +157,14 @@ struct ManageEventView: View {
                     .foregroundStyle(Theme.C.neutral600)
 
             case .published:
-                Button("Scan attendees") { showingScanner = true }
+                Button("Show the code") { showingCode = true }
                     .buttonStyle(PrimaryButtonStyle())
-                    .disabled(!current.isCheckInOpen())
                 if !current.isCheckInOpen() {
-                    Text("Scanning opens an hour before the start.")
+                    Text("Attendees can't check in until an hour before the start.")
                         .font(Theme.F.body(12))
                         .foregroundStyle(Theme.C.neutral600)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
             case .cancelled:
@@ -148,35 +184,4 @@ struct ManageEventView: View {
         }
     }
 
-    private var roster: some View {
-        VStack(alignment: .leading, spacing: Theme.S.x2) {
-            SectionHeading(text: "Attendees")
-
-            if scans.isEmpty {
-                Text("Nobody scanned yet. The roster fills as you scan codes at the venue.")
-                    .font(Theme.F.body(13))
-                    .foregroundStyle(Theme.C.neutral600)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                EHCard(padding: 4) {
-                    VStack(spacing: 0) {
-                        ForEach(Array(scans.enumerated()), id: \.element.id) { index, scan in
-                            SettingsRow(
-                                title: scan.attendeeLabel,
-                                showsDivider: index < scans.count - 1
-                            ) {
-                                Text(scan.scannedAt.formatted(date: .omitted, time: .shortened))
-                                    .font(Theme.F.body(12.5))
-                                    .foregroundStyle(Theme.C.neutral600)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Text("Only you can see this list (§10).")
-                .font(Theme.F.body(11.5))
-                .foregroundStyle(Theme.C.neutral500)
-        }
-    }
 }

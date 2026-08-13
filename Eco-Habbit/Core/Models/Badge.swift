@@ -15,8 +15,15 @@ nonisolated enum BadgeType: String, Codable, CaseIterable {
     case streak             // dari UserState.currentStreak
     case categoryMilestone  // dari jumlah aksi satu kategori; wajib isi targetCategory
     case evidence           // dari jumlah foto bukti
-    case event              // dari jumlah event dihadiri
+    case event              // dari jumlah Fight dihadiri
     case points             // dari UserState.currentPoints
+
+    /// Diberikan penyelenggara Fight, bukan dicapai lewat hitungan.
+    ///
+    /// Tetap memakai `threshold` seperti tipe lain (selalu 1) supaya evaluator
+    /// badge tidak perlu cabang khusus: nilainya 1 begitu id badge ini masuk ke
+    /// `UserState.earnedFightBadgeIds`.
+    case fightReward
 }
 
 nonisolated struct Badge: Identifiable, Codable, Hashable {

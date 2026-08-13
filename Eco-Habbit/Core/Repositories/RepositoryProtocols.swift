@@ -4,7 +4,7 @@
 //
 //  Created by Tio Dwi Ardhana on 11/08/26.
 //
-//  Butuh   : Activity, ActivityLog, Event, EventLog, Badge, UserState, Category
+//  Butuh   : Activity, ActivityLog, Badge, UserState, Category
 //  Dipakai : MockRepositories.swift, semua Service di Services/
 //
 //  Semua kontrak data access dikumpulkan di satu file supaya bisa dibaca sekaligus.
@@ -39,29 +39,24 @@ protocol ActivityLogRepositoryProtocol: Sendable {
     func fetchAllLogs(userId: String) async throws -> [ActivityLog]
 
     func save(_ log: ActivityLog) async throws
+
+    /// Wipes this user's logs. Needed by "reset local data" — clearing only
+    /// `UserState` leaves every log behind, so the day's activities come
+    /// straight back and their dedup keys still block re-logging.
+    func deleteAll(userId: String) async throws
 }
 
-protocol EventRepositoryProtocol: Sendable {
-    func fetchAllEvents() async throws -> [Event]
-    func fetchEvent(id: String) async throws -> Event?
-}
-
-protocol EventLogRepositoryProtocol: Sendable {
-    func fetchLog(dedupKey: String) async throws -> EventLog?
-
-    /// Klaim pada satu bulan, untuk menghitung cap bulanan.
-    func fetchLogs(userId: String, monthKey: String) async throws -> [EventLog]
-
-    func fetchAllLogs(userId: String) async throws -> [EventLog]
-
-    func save(_ log: EventLog) async throws
-}
+// Fights have no repository protocol. Everything about them — saved bookmarks,
+// attendance, hosted drafts — lives inside `UserState`, so `FightRepository` is a
+// namespace of pure functions over it rather than a data-access boundary. That
+// changes when Fights become their own Firestore collection.
 
 /// Status badge per user. Katalog badge-nya statis, yang disimpan adalah
 /// `isUnlocked` + `unlockedDate` milik user.
 protocol BadgeRepositoryProtocol: Sendable {
     func fetchBadges(userId: String) async throws -> [Badge]
     func save(_ badges: [Badge], userId: String) async throws
+    func deleteAll(userId: String) async throws
 }
 
 protocol UserStateRepositoryProtocol: Sendable {

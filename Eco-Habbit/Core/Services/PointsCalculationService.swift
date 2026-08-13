@@ -45,7 +45,7 @@ nonisolated struct PointsCalculationService {
     /// Menghitung poin satu pencatatan.
     ///
     /// - Parameter basePointsUsedToday: jumlah poin DASAR yang sudah terpakai
-    ///   hari ini dari aksi harian. Event tidak ikut dihitung di sini.
+    ///   hari ini dari aksi harian. Poin Fight tidak ikut dihitung di sini.
     func breakdown(
         activity: Activity,
         hasEvidence: Bool,

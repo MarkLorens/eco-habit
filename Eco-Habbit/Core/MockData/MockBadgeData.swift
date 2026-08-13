@@ -18,7 +18,65 @@ import Foundation
 nonisolated enum MockBadgeData {
 
     static let all: [Badge] = streakBadges + categoryBadges + evidenceBadges
-        + eventBadges + pointBadges
+        + eventBadges + pointBadges + fightRewards
+
+    // MARK: - Hadiah Fight
+
+    /// Daftar TETAP yang bisa dipilih penyelenggara saat membuat Fight.
+    ///
+    /// Sengaja tidak berupa teks bebas: nama badge karangan sendiri membuat
+    /// koleksi user berantakan dan tidak ada yang bisa menjamin mutunya. Enam
+    /// pilihan menutup jenis Fight yang ada, dan menambah pilihan cukup menambah
+    /// satu baris di sini.
+    ///
+    /// `threshold: 1` — lihat `BadgeType.fightReward`.
+    static let fightRewards: [Badge] = [
+        Badge(id: "fight_badge_shoreline",
+              name: "Shoreline Keeper",
+              description: "Kamu ikut membersihkan garis pantai bersama orang lain.",
+              type: .fightReward,
+              criteria: "Hadiri Fight bersih-bersih pantai atau sungai.",
+              threshold: 1),
+
+        Badge(id: "fight_badge_planter",
+              name: "Planter",
+              description: "Pohon yang kamu tanam akan hidup lebih lama darimu.",
+              type: .fightReward,
+              criteria: "Hadiri Fight penanaman pohon atau mangrove.",
+              threshold: 1),
+
+        Badge(id: "fight_badge_reef",
+              name: "Reef Mender",
+              description: "Terumbu tumbuh lambat. Kamu memberi awalannya.",
+              type: .fightReward,
+              criteria: "Hadiri Fight restorasi terumbu.",
+              threshold: 1),
+
+        Badge(id: "fight_badge_sorter",
+              name: "Drive Volunteer",
+              description: "Sehari memilah yang orang lain buang begitu saja.",
+              type: .fightReward,
+              criteria: "Hadiri Fight pengumpulan atau pemilahan sampah.",
+              threshold: 1),
+
+        Badge(id: "fight_badge_learner",
+              name: "Workshop Graduate",
+              description: "Kamu datang untuk belajar, bukan cuma hadir.",
+              type: .fightReward,
+              criteria: "Hadiri Fight berbentuk workshop.",
+              threshold: 1),
+
+        Badge(id: "fight_badge_wildlife",
+              name: "Wildlife Ally",
+              description: "Sebagian makhluk tidak akan pernah tahu kamu menolong.",
+              type: .fightReward,
+              criteria: "Hadiri Fight perlindungan satwa.",
+              threshold: 1)
+    ]
+
+    static func fightReward(withID id: String) -> Badge? {
+        fightRewards.first { $0.id == id }
+    }
 
     // MARK: - Streak
 
@@ -108,7 +166,7 @@ nonisolated enum MockBadgeData {
               threshold: 25)
     ]
 
-    // MARK: - Event
+    // MARK: - Fight attendance
 
     static let eventBadges: [Badge] = [
         Badge(id: "badge_event_1",
@@ -166,9 +224,14 @@ nonisolated enum MockBadgeData {
     static func validate() -> [String] {
         var problems: [String] = []
 
-        let minimumCount = 15
+        // 15 badge capaian + 6 hadiah Fight.
+        let minimumCount = 21
         if all.count < minimumCount {
             problems.append("Jumlah badge \(all.count), minimal \(minimumCount).")
+        }
+
+        for badge in fightRewards where badge.threshold != 1 {
+            problems.append("\(badge.id): hadiah Fight harus threshold 1, bukan \(badge.threshold).")
         }
 
         let duplicateIDs = Dictionary(grouping: all, by: \.id)
@@ -191,7 +254,7 @@ nonisolated enum MockBadgeData {
                 if badge.targetCategory == nil {
                     problems.append("\(badge.id): .categoryMilestone tanpa targetCategory.")
                 }
-            case .streak, .evidence, .event, .points:
+            case .streak, .evidence, .event, .points, .fightReward:
                 if badge.targetCategory != nil {
                     problems.append(
                         "\(badge.id): targetCategory tidak relevan untuk \(badge.type.rawValue)."

@@ -5,7 +5,7 @@
 //  Created by Tio Dwi Ardhana on 12/08/26.
 //
 //  Butuh   : Badge, UserState, Category
-//  Dipakai : ActivityLoggingService, EventClaimService, unit test
+//  Dipakai : ActivityLoggingService, FightRepository, unit test
 //
 
 import Foundation
@@ -34,6 +34,11 @@ nonisolated struct BadgeEvaluationService {
         case .categoryMilestone:
             guard let category = badge.targetCategory else { return 0 }
             return state.actionCount(for: category)
+
+        // Threshold is 1, so this reads as "earned or not" without the evaluator
+        // needing to know anything special about Fight rewards.
+        case .fightReward:
+            return state.earnedFightBadgeIds.contains(badge.id) ? 1 : 0
         }
     }
 

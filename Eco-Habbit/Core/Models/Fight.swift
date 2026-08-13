@@ -1,10 +1,45 @@
 import Foundation
 
-/// PRD §4 — a real-world, scheduled, location-based sustainability event.
+/// The scale of an event and what attending it pays.
 ///
-/// Fights are the collective layer: habits are what you do alone, Fights are what you do
-/// together, and the reward reflects that — **+10 Vitality**, more than three consecutive
-/// perfect days of habits, delivered in a single afternoon.
+/// Lives here because a Fight is the only kind of event in the app. It used to
+/// be shared with a separate `Event` type that you claimed with a code; that
+/// system was deleted and its one good idea — a tier table as the single source
+/// of event points — moved here.
+nonisolated enum EventTier: String, Codable, CaseIterable {
+    case micro       // under an hour
+    case standard    // half a day, organised
+    case major       // full-day event
+
+    var points: Int {
+        switch self {
+        case .micro:    return 40
+        case .standard: return 75
+        case .major:    return 120
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .micro:    return "Micro"
+        case .standard: return "Standard"
+        case .major:    return "Major"
+        }
+    }
+}
+
+/// A real-world, scheduled, location-based sustainability event.
+///
+/// Fights are the collective layer: habits are what you do alone, Fights are what
+/// you do together, and the reward reflects that — a single afternoon is worth
+/// more than a week of daily actions, capped monthly so it cannot replace them.
+///
+/// **Check-in direction:** the organiser publishes one `checkInCode` for the whole
+/// Fight and the attendee scans or types it. The reverse — the host scanning each
+/// attendee's personal QR — was how this worked before, and it needed a
+/// cross-user write with no server to authorise it. One shared code means the
+/// attendee's own device credits the attendee, which is a write it is already
+/// allowed to make.
 struct Fight: Identifiable, Codable, Hashable {
     let id: String
     /// `var` from here down because a host edits a published event in place
@@ -27,13 +62,36 @@ struct Fight: Identifiable, Codable, Hashable {
     /// Exhibit seed data is labelled so it can never be mistaken for a real event (§8).
     var isDemo: Bool = false
 
-    /// Attending pays out on the same scale as claiming an `Event`, and against
-    /// the same monthly cap. A Fight is hosted and scanned where an Event is
-    /// merely claimed, but there is no reason for the two to use different
-    /// economies — the numbers all live in `PointsConfiguration`.
     var tier: EventTier = .standard
 
     var attendancePoints: Int { tier.points }
+
+    /// The one code for this Fight, shown by the organiser at the venue and
+    /// entered — scanned or typed — by every attendee.
+    ///
+    /// Short and unambiguous on purpose: it has to survive being read off a
+    /// screen across a table and typed by someone standing on a beach. The
+    /// alphabet excludes `0/O` and `1/I`.
+    var checkInCode: String = Fight.makeCheckInCode()
+
+    /// A badge the organiser attaches as a reward, chosen from
+    /// `MockBadgeData.fightRewards`. `nil` = points only.
+    var rewardBadgeId: String?
+
+    static func makeCheckInCode() -> String {
+        let alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        return String((0..<6).map { _ in alphabet.randomElement()! })
+    }
+
+    /// Codes are compared case- and whitespace-insensitively — the attendee is
+    /// typing this by hand, and rejecting "k7m 2qa" teaches them nothing.
+    func matchesCheckInCode(_ entered: String) -> Bool {
+        let normalise = { (s: String) in
+            s.uppercased().filter { !$0.isWhitespace && $0 != "-" }
+        }
+        let candidate = normalise(entered)
+        return !candidate.isEmpty && candidate == normalise(checkInCode)
+    }
 
     enum Status: String, Codable {
         case draft, published, cancelled
@@ -114,41 +172,18 @@ enum FightType: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
-/// A user's signup for one Fight. PRD §4.5: the check-in token is generated at signup
-/// and lives on the attendee's phone.
-struct FightSignup: Codable, Hashable, Identifiable {
-    var id: String { fightId }
-    let fightId: String
-    let signedUpAt: Date
-    /// Rendered as the QR the host scans. Scoped to `(user, event)`.
-    let checkInToken: String
-    var cancelledAt: Date?
-
-    var isActive: Bool { cancelledAt == nil }
-}
-
-/// Proof of attendance. In Phase 10 this becomes `/attendance/{eventId}_{userId}` and the
-/// composite ID gives uniqueness for free (PRD §9.3); locally the same guarantee comes
-/// from `FightRepository` refusing a second write.
+/// Proof of attendance, written on the attendee's **own** device when they enter
+/// the organiser's code.
+///
+/// In Firestore this becomes `/attendance/{fightId}_{uid}`, where the composite
+/// ID gives one-check-in-per-attendee for free with no race. Locally the same
+/// guarantee comes from `FightRepository` refusing a second write.
 struct FightAttendance: Codable, Hashable, Identifiable {
     var id: String { fightId }
     let fightId: String
     let checkedInAt: Date
-    /// The day Vitality is credited against — written at check-in, never re-derived.
+    /// The day the points were credited against — written at check-in, never re-derived.
     let localDate: String
-}
-
-/// One scan on the **host's** device (PRD §6.5.1).
-///
-/// Distinct from `FightAttendance`, which is the attendee's own record. Until
-/// Phase 10 these cannot be the same thing: awarding Vitality to another user is
-/// a cross-user write, and there is no server to authorise it. The host records
-/// who they scanned; the attendee's device credits itself.
-struct HostScan: Codable, Hashable, Identifiable {
-    var id: String { token }
-    let fightId: String
-    let token: String
-    /// What the host sees in the roster. Parsed out of the token.
-    let attendeeLabel: String
-    let scannedAt: Date
+    /// The badge awarded alongside the points, if the organiser set one.
+    var awardedBadgeId: String?
 }

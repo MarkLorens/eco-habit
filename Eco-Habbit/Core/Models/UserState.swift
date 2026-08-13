@@ -76,12 +76,12 @@ nonisolated struct UserState: Codable, Hashable {
     /// priorityMultiplier selalu 1.0 untuk semua user.
     var currentProvinceCode: String?
 
-    // MARK: - Fights (hosted events, QR check-in)
+    // MARK: - Fights
     //
-    // Ported from the Vincent branch and kept: this branch's `Event` is a
-    // read-only catalogue you claim, with no host, no QR and no attendance.
-    // `Fight` is the organisation-hosted event from PRD §4 / §6.5.1. The two
-    // coexist deliberately — an Event is claimed, a Fight is hosted and scanned.
+    // A Fight is the only kind of event in the app. There used to be a second,
+    // parallel `Event` type you claimed with a code — same economy, same monthly
+    // cap, no host and no attendance — that was never reachable from any screen.
+    // It has been deleted; this is the one system.
 
     var displayName: String = ""
 
@@ -95,12 +95,20 @@ nonisolated struct UserState: Codable, Hashable {
     var isOrganization: Bool = false
     var orgName: String = ""
 
-    /// Keyed by fight id.
-    var fightSignups: [String: FightSignup] = [:]
+    /// Fights the user bookmarked. A private shortlist — no commitment, and the
+    /// organiser never sees it. Check-in does not require it.
+    var savedFightIds: [String] = []
+
+    /// Keyed by fight id. Written when the user enters the organiser's code.
     var fightAttendance: [String: FightAttendance] = [:]
-    /// Events this account hosts, and the scans taken on this device.
+
+    /// Badges earned by attending a Fight whose organiser attached one.
+    /// Separate from the badge store because it is what `BadgeEvaluationService`
+    /// reads to decide the badge is unlocked.
+    var earnedFightBadgeIds: [String] = []
+
+    /// Fights this account hosts.
     var hostedFights: [Fight] = []
-    var hostScans: [String: [HostScan]] = [:]
 
     init(
         userId: String,
@@ -120,10 +128,10 @@ nonisolated struct UserState: Codable, Hashable {
         notificationsEnabled: Bool = true,
         isOrganization: Bool = false,
         orgName: String = "",
-        fightSignups: [String: FightSignup] = [:],
+        savedFightIds: [String] = [],
         fightAttendance: [String: FightAttendance] = [:],
-        hostedFights: [Fight] = [],
-        hostScans: [String: [HostScan]] = [:]
+        earnedFightBadgeIds: [String] = [],
+        hostedFights: [Fight] = []
     ) {
         self.userId = userId
         self.currentPoints = currentPoints
@@ -142,10 +150,10 @@ nonisolated struct UserState: Codable, Hashable {
         self.notificationsEnabled = notificationsEnabled
         self.isOrganization = isOrganization
         self.orgName = orgName
-        self.fightSignups = fightSignups
+        self.savedFightIds = savedFightIds
         self.fightAttendance = fightAttendance
+        self.earnedFightBadgeIds = earnedFightBadgeIds
         self.hostedFights = hostedFights
-        self.hostScans = hostScans
     }
 
     // MARK: - Helper hitungan kategori

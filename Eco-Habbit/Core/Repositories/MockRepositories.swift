@@ -33,25 +33,6 @@ nonisolated struct MockActivityRepository: ActivityRepositoryProtocol {
     }
 }
 
-// MARK: - Event (katalog, read-only)
-
-nonisolated struct MockEventRepository: EventRepositoryProtocol {
-
-    let events: [Event]
-
-    init(events: [Event] = MockEventData.all) {
-        self.events = events
-    }
-
-    func fetchAllEvents() async throws -> [Event] {
-        events
-    }
-
-    func fetchEvent(id: String) async throws -> Event? {
-        events.first { $0.id == id }
-    }
-}
-
 // MARK: - Activity log
 
 actor MockActivityLogRepository: ActivityLogRepositoryProtocol {
@@ -109,52 +90,13 @@ actor MockActivityLogRepository: ActivityLogRepositoryProtocol {
         cache = logs
         try await store.save(logs, forKey: storageKey)
     }
-}
 
-// MARK: - Event log
-
-actor MockEventLogRepository: EventLogRepositoryProtocol {
-
-    private let store: KeyValueStoring
-    private let storageKey = "event_logs"
-    private var cache: [EventLog]?
-
-    init(store: KeyValueStoring = LocalJSONFileStore()) {
-        self.store = store
-    }
-
-    private func allLogs() async throws -> [EventLog] {
-        if let cache { return cache }
-        let loaded = try await store.load([EventLog].self, forKey: storageKey) ?? []
-        cache = loaded
-        return loaded
-    }
-
-    func fetchLog(dedupKey: String) async throws -> EventLog? {
-        try await allLogs().first { $0.dedupKey == dedupKey }
-    }
-
-    func fetchLogs(userId: String, monthKey: String) async throws -> [EventLog] {
-        try await allLogs().filter { $0.userId == userId && $0.monthKey == monthKey }
-    }
-
-    func fetchAllLogs(userId: String) async throws -> [EventLog] {
-        try await allLogs()
-            .filter { $0.userId == userId }
-            .sorted { $0.claimedAt < $1.claimedAt }
-    }
-
-    func save(_ log: EventLog) async throws {
-        var logs = try await allLogs()
-
-        if let existingIndex = logs.firstIndex(where: { $0.dedupKey == log.dedupKey }) {
-            logs[existingIndex] = log
-        } else {
-            logs.append(log)
-        }
-
-        cache = logs
-        try await store.save(logs, forKey: storageKey)
+    /// Drops this user's logs. `cache` must be updated in the same breath as
+    /// the file, or the next read serves the deleted rows straight back.
+    func deleteAll(userId: String) async throws {
+        let remaining = try await allLogs().filter { $0.userId != userId }
+        cache = remaining
+        try await store.save(remaining, forKey: storageKey)
     }
 }
 
@@ -195,6 +137,12 @@ actor MockBadgeRepository: BadgeRepositoryProtocol {
 
     func save(_ badges: [Badge], userId: String) async throws {
         try await store.save(badges, forKey: storageKey(userId: userId))
+    }
+
+    /// Removes the stored unlock state; `fetchBadges` then rebuilds from the
+    /// catalogue with everything locked again.
+    func deleteAll(userId: String) async throws {
+        try await store.removeValue(forKey: storageKey(userId: userId))
     }
 }
 

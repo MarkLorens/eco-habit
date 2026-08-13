@@ -4,13 +4,12 @@ import SwiftUI
 // no longer re-exports Combine — ObservableObject needs it named directly.
 import Combine
 
-/// PRD §6.5.1 — full-screen QR scanner with a running tally and clear per-scan
-/// feedback.
+/// The attendee pointing their camera at the organiser's code.
 ///
-/// The host scans the attendee (§4.5), never the reverse: the host controls the
-/// physical space, so a host-displayed code could be photographed and shared
-/// with people who never showed up.
-struct ScannerView: View {
+/// The scanner knows which Fight it was opened from, so a scanned string only has
+/// to match that Fight's `checkInCode` — there is nothing to parse and no token
+/// format to keep in sync between two devices.
+struct CheckInScannerView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
     let fight: Fight
@@ -36,7 +35,7 @@ struct ScannerView: View {
                         .foregroundStyle(.white.opacity(0.5))
                     Text(scanner.permissionDenied
                          ? "Camera access is off.\nTurn it on in iOS Settings."
-                         : "No camera on this device.")
+                         : "No camera on this device.\nType the code instead.")
                         .font(Theme.F.body(14))
                         .foregroundStyle(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
@@ -49,7 +48,7 @@ struct ScannerView: View {
                 header
                 Spacer()
                 if let feedback { banner(feedback) }
-                tally
+                hint
             }
         }
         .task { await scanner.start() }
@@ -103,36 +102,39 @@ struct ScannerView: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
-    private var tally: some View {
-        VStack(spacing: 2) {
-            Text("\(app.scans(for: fight).count)")
-                .font(Theme.F.heading(34))
-                .foregroundStyle(.white)
-            Text("checked in")
-                .font(Theme.F.body(13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.8))
-        }
-        .padding(.vertical, Theme.S.x3)
-        .frame(maxWidth: .infinity)
-        .background(.black.opacity(0.4))
+    private var hint: some View {
+        Text("Point at the code the organiser is showing")
+            .font(Theme.F.body(13, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.vertical, Theme.S.x4)
+            .frame(maxWidth: .infinity)
+            .background(.black.opacity(0.4))
     }
 
     // MARK: - Scanning
 
     private func handle(_ code: String) async {
-        let result = await app.recordScan(code, for: fight)
+        let result = await app.checkIn(to: fight, code: code)
 
         let feedback: Feedback = switch result {
-        case .accepted(let who): Feedback(message: "\(who) checked in", good: true)
-        case .duplicate(let who): Feedback(message: "\(who) already scanned", good: false)
-        case .wrongEvent: Feedback(message: "That code is for another Fight", good: false)
-        case .unreadable: Feedback(message: "Not an Eco-Habit code", good: false)
+        case .checkedIn(let points, _, let badge):
+            Feedback(message: badge.map { "+\(points) pts · \($0.name)" } ?? "Checked in · +\(points) pts",
+                     good: true)
+        case .wrongCode: Feedback(message: "That code isn't for this Fight", good: false)
+        case .alreadyCheckedIn: Feedback(message: "Already checked in", good: false)
         case .windowClosed: Feedback(message: "Check-in isn't open yet", good: false)
         case .eventCancelled: Feedback(message: "This Fight is cancelled", good: false)
         }
 
         withAnimation(.spring(response: 0.3)) { self.feedback = feedback }
         UINotificationFeedbackGenerator().notificationOccurred(feedback.good ? .success : .warning)
+
+        // A successful check-in is terminal — there is nothing to scan twice.
+        if feedback.good {
+            try? await Task.sleep(for: .seconds(1.4))
+            dismiss()
+            return
+        }
 
         Task {
             try? await Task.sleep(for: .seconds(2))
