@@ -8,6 +8,7 @@ struct Badge: Identifiable, Codable, Hashable {
     let tier: String
     let detail: String
     let requirement: Requirement
+    let icon: String
 
     enum Requirement: Codable, Hashable {
         case totalActions(Int)

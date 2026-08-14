@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct BadgeDetailView: View {
+    @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var badgeDetail: Badge?
     
@@ -33,11 +34,19 @@ struct BadgeDetailView: View {
                 ScrollView{
                     LazyVGrid(columns: badgeColumns, spacing: Tokens.Spacing.lg){
                         ForEach(MockData.badges) { badge in
+                            let unlocked = app.isUnlocked(badge)
                             Button{
                                 badgeDetail = badge
                             } label: {
-                                Avatar(type: .avatarBig, icon: "energy-icon")
+                                if unlocked {
+                                    Avatar(type: .avatarBig, icon: badge.icon)
+
+                                } else {
+                                    Locked()
+                                }
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(badge.name), \(unlocked ? "unlocked" : "locked")")
                         }
                     }
                 }
@@ -46,6 +55,28 @@ struct BadgeDetailView: View {
         }
     }
 }
-#Preview {
+
+private struct Locked: View {
+    let badgeSize: CGFloat = avatarType.avatarBig.size
+    var body: some View{
+        ZStack (alignment: .center){
+            Circle()
+                .fill(Tokens.Semantic.statIcon)
+                .frame(width: badgeSize, height: badgeSize)
+            Image(systemName: "lock.fill")
+                .textStyle(Tokens.Typography.hero)
+                .foregroundStyle(Tokens.Palette.white)
+        }
+    }
+}
+
+
+#Preview("Badges · mostly unlocked") {
     BadgeDetailView()
+        .environmentObject(AppState(data: .preview(vitality: 92, streak: 34, actions: 120)))
+}
+
+#Preview("Badges · fresh account") {
+    BadgeDetailView()
+        .environmentObject(AppState(data: .preview(streak: 0, actions: 0)))
 }
