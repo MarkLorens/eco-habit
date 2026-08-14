@@ -32,15 +32,20 @@ struct CategoryDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Tokens.Spacing.sm) {
-                ForEach(filteredActivity) { row in
-                    ActivityListCard(title: row.habit.name,
-                                     points: PointsEngine.tierPoints(row.habit.tier),
-                                     icon: category.icon,
-                                     tint: category.tint,
-                                     background: category.background,
-                                     isChecked: row.isCompletedToday,
-                                     onToggle: { toggle(row) }
-                    )
+                if filteredActivity.isEmpty {
+                    noMatches
+                        .frame(minHeight: 400, alignment: .center)
+                } else {
+                    ForEach(filteredActivity) { row in
+                        ActivityListCard(title: row.habit.name,
+                                         points: PointsEngine.tierPoints(row.habit.tier),
+                                         icon: category.icon,
+                                         tint: category.tint,
+                                         background: category.background,
+                                         isChecked: row.isCompletedToday,
+                                         onToggle: { toggle(row) }
+                        )
+                    }
                 }
             }
             .padding(Tokens.Spacing.md)
@@ -107,6 +112,27 @@ struct CategoryDetailView: View {
                 .frame(width: 130 * category.iconScale, height: 130 * category.iconScale)
         }
         .padding([.horizontal], Tokens.Spacing.sm)
+    }
+
+    // For empty search
+    private var noMatches: some View {
+        VStack(spacing: Tokens.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .textStyle(Tokens.Typography.icon)
+                .foregroundStyle(Tokens.Semantic.footnote)
+
+            Text("We can't seem to find “\(searchText)”")
+                .textStyle(Tokens.Typography.title)
+                .foregroundStyle(Tokens.Semantic.text)
+                .multilineTextAlignment(.center)
+
+            Text("Try a shorter word, or clear the search to see all \(app.rows(in: category).count).")
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Semantic.footnote)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, Tokens.Spacing.xl)
     }
 
     private func toggle(_ row: HabitRow) {

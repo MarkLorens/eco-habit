@@ -12,7 +12,8 @@ struct AppSearchBar: View{
     var prompt: String = "Search"
     
     @FocusState private var isFocused: Bool
-    
+    @StateObject private var dictation = DictationService()
+
     var body: some View{
         HStack{
             Image(systemName: "leaf.fill")
@@ -32,12 +33,43 @@ struct AppSearchBar: View{
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                 
-                Image(systemName: "microphone")
-                    .foregroundStyle(Tokens.Semantic.footnote)
+                if dictation.isSupported {
+                    Button {
+                        isFocused = false
+                        dictation.toggle()
+                    } label: {
+                        Image(systemName: dictation.isRecording ? "microphone.fill" : "microphone")
+                            .foregroundStyle(dictation.isRecording
+                                             ? Tokens.Palette.orange
+                                             : Tokens.Semantic.footnote)
+                            // Sized here rather than on the Button so the tap area is the
+                            // whole 44pt square, not just the glyph.
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(dictation.isRecording ? "Stop dictating" : "Dictate search")
+                }
             }
             .padding(.horizontal, Tokens.Spacing.md)
-            .padding(.vertical, Tokens.Spacing.md)
+            // The 44pt mic sets the capsule's height on its own; adding the usual
+            // vertical padding on top would make it noticeably taller than before.
             .glassed(in: .capsule, fallback: Tokens.Semantic.buttonTintDefault)
+            .onChange(of: dictation.transcript) { _, spoken in
+                guard !spoken.isEmpty else { return }
+                text = spoken
+            }
+            .alert(
+                "Dictation unavailable",
+                isPresented: Binding(
+                    get: { dictation.errorMessage != nil },
+                    set: { if !$0 { dictation.errorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(dictation.errorMessage ?? "")
+            }
             
             if !text.isEmpty{
                 Button {
