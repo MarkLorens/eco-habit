@@ -155,11 +155,11 @@ struct ProfileView: View {
                 }
             }
             LazyVGrid(columns: badgeColumns) {
-                ForEach(MockData.badges.prefix(4)) { badge in
+                ForEach(MockData.badges.filter(app.isUnlocked).prefix(4)) { badge in
                     Button {
                         badgeDetail = badge
                     } label: {
-                        Avatar(type: .avatarSmall, icon: Tokens.Icons.energyIcon)
+                        Avatar(type: .avatarSmall, icon: badge.icon)
                     }
                 }
             }
@@ -360,7 +360,7 @@ private struct BadgeDetailSheet: View {
  
     var body: some View {
         VStack(spacing: Tokens.Spacing.md) {
-            Avatar(type: .avatarBig, icon: "actions-icon")
+            Avatar(type: .avatarBig, icon: badge.icon)
  
             Text(badge.name)
                 .textStyle(Tokens.Typography.hero)

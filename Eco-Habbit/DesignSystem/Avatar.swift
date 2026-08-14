@@ -14,12 +14,10 @@ enum avatarType{
     
     var size: CGFloat{
         switch self{
-        case .user:
-            100
-        case .avatarBig:
-            100
         case .avatarSmall:
             75
+        default:
+            100
         }
     }
     
