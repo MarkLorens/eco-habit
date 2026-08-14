@@ -11,6 +11,7 @@ enum ButtonAction {
     case forward
     case close
     case share
+    case love
     
     var action: String {
         switch self {
@@ -18,6 +19,7 @@ enum ButtonAction {
         case .forward: "chevron.right"
         case .close: "xmark"
         case .share: "square.and.arrow.up"
+        case .love: "heart.fill"
         }
     }
 }
