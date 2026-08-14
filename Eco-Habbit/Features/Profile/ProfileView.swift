@@ -180,7 +180,7 @@ struct ProfileView: View {
                     .textStyle(Tokens.Typography.title)
                     .foregroundStyle(Tokens.Semantic.text)
             }
-            ScrollView(.horizontal){
+            ScrollView(.horizontal, showsIndicators: false){
                 HStack(spacing: Tokens.Spacing.lg){
                     recapCards(caption: "Your July Recap", icon: Tokens.Icons.actionIcon, background: Tokens.Palette.limeCard)
                     recapCards(caption: "All Time", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard)
