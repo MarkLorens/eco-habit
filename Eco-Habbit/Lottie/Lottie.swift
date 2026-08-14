@@ -28,7 +28,7 @@ struct DotLottieAsset: View {
 struct Globe: View{
     var body: some View{
         DotLottieAsset(name: "globe")
-            .frame(width: 160, height: 160)
+            .frame(width: 500, height: 500)
             .accessibilityHidden(true)
     }
 }

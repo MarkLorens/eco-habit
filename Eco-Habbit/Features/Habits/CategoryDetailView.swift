@@ -12,14 +12,27 @@ struct CategoryDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     let category: HabitCategory
-
     @State private var headerHeight: CGFloat = 0
     private let sheetTail: CGFloat = 56
+    
+    @State private var searchText = ""
+    
+    var filteredActivity: [HabitRow] {
+        let rows = app.rows(in: category)
+        
+        guard !searchText.isEmpty else {
+            return rows
+        }
+        
+        return rows.filter {
+            $0.habit.name.localizedCaseInsensitiveContains(searchText)
+        }
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: Tokens.Spacing.sm) {
-                ForEach(app.rows(in: category)) { row in
+                ForEach(filteredActivity) { row in
                     ActivityListCard(title: row.habit.name,
                                      points: PointsEngine.tierPoints(row.habit.tier),
                                      icon: category.icon,
@@ -32,6 +45,11 @@ struct CategoryDetailView: View {
             }
             .padding(Tokens.Spacing.md)
             .padding(.top, headerHeight)
+        }
+        .safeAreaInset(edge: .bottom){
+            AppSearchBar(text: $searchText)
+                .padding(.horizontal, Tokens.Spacing.md)
+                .padding(.vertical, Tokens.Spacing.md)
         }
         .background(alignment: .top) {
             UnevenRoundedRectangle(
@@ -69,6 +87,7 @@ struct CategoryDetailView: View {
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
     }
+    
 
     private var header: some View {
         HStack {
