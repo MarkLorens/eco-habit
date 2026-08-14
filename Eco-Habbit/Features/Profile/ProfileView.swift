@@ -12,6 +12,7 @@ struct ProfileView: View {
     @EnvironmentObject private var app: AppState
 
     @State private var badgeDetail: Badge?
+    @State private var showingBadges = false
 
     private let badgeColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
     
@@ -84,6 +85,9 @@ struct ProfileView: View {
                 badgeDetail = nil
             }
         }
+        .fullScreenCover(isPresented: $showingBadges){
+            BadgeDetailView()
+        }
     }
 
     private var identity: some View {
@@ -147,7 +151,7 @@ struct ProfileView: View {
                     .foregroundStyle(Tokens.Semantic.text)
                 Spacer()
                 NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .forward){
-                    print("tapped")
+                    showingBadges = true
                 }
             }
             LazyVGrid(columns: badgeColumns) {
@@ -157,7 +161,6 @@ struct ProfileView: View {
                     } label: {
                         Avatar(type: .avatarSmall, icon: Tokens.Icons.energyIcon)
                     }
-                    .buttonStyle(PlainPressStyle())
                 }
             }
         }
@@ -183,10 +186,10 @@ struct ProfileView: View {
             }
             ScrollView(.horizontal, showsIndicators: false){
                 HStack(spacing: Tokens.Spacing.lg){
-                    recapCards(caption: "Your July Recap", icon: Tokens.Icons.actionIcon, background: Tokens.Palette.limeCard)
-                    recapCards(caption: "All Time", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard)
-                    recapCards(caption: "2026", icon: Tokens.Icons.wasteIcon, background: Tokens.Palette.purpleCard)
-                    recapCards(caption: "I'm hiding", icon: Tokens.Icons.mobilityIcon, background: Tokens.Palette.greenCard)
+                    RecapCards(caption: "Your July Recap", icon: Tokens.Icons.actionIcon, background: Tokens.Palette.limeCard)
+                    RecapCards(caption: "All Time", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard)
+                    RecapCards(caption: "2026", icon: Tokens.Icons.wasteIcon, background: Tokens.Palette.purpleCard)
+                    RecapCards(caption: "I'm hiding", icon: Tokens.Icons.mobilityIcon, background: Tokens.Palette.greenCard)
                 }
             }
         }
@@ -259,7 +262,7 @@ struct ProfileView: View {
     }
 }
 
-private struct recapCards: View {
+private struct RecapCards: View {
     private let caption: String
     private let icon: String
     private let background: Color
