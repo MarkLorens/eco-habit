@@ -6,21 +6,25 @@
 //
 import SwiftUI
 
-enum NavigateDirection {
-    case left
-    case right
+enum ButtonAction {
+    case back
+    case forward
+    case close
+    case share
     
-    var chevron: String {
+    var action: String {
         switch self {
-        case .left: "chevron.left"
-        case .right: "chevron.right"
+        case .back: "chevron.left"
+        case .forward: "chevron.right"
+        case .close: "xmark"
+        case .share: "square.and.arrow.up"
         }
     }
 }
 
 struct NavigateBadge: View {
     let background: Color
-    let direction: NavigateDirection
+    let buttonAction: ButtonAction
     
     var body: some View {
         ZStack{
@@ -34,7 +38,7 @@ struct NavigateBadge: View {
                 .foregroundStyle(background).opacity(1)
                 .shadow(color: background.opacity(0.8), radius: 2, x: 0, y: 1)
                 .shadow(color: background.opacity(0.4), radius: 10, x: 0, y: 6)
-            Image(systemName: direction.chevron)
+            Image(systemName: buttonAction.action)
                 .textStyle(Tokens.Typography.title)
             
         }
@@ -43,24 +47,24 @@ struct NavigateBadge: View {
 
 struct NavigateButton: View {
     let background: Color
-    let direction: NavigateDirection
+    let buttonAction: ButtonAction
     let action: () -> Void
     
-    init(background: Color, direction: NavigateDirection, action: @escaping () -> Void) {
+    init(background: Color, buttonAction: ButtonAction, action: @escaping () -> Void) {
         self.background = background
-        self.direction = direction
+        self.buttonAction = buttonAction
         self.action = action
     }
     var body: some View {
         Button(action: action) {
-            NavigateBadge(background: background, direction: direction)
+            NavigateBadge(background: background, buttonAction: buttonAction)
         }
         .buttonStyle(.plain)
     }
 }
 
 #Preview{
-    NavigateButton(background: Tokens.Palette.yellowCard, direction: .left) {
+    NavigateButton(background: Tokens.Palette.yellowCard, buttonAction: .close) {
         print("Tapped!")
     }
 }

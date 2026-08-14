@@ -79,9 +79,10 @@ struct ProfileView: View {
                 }
             }
         }
-        .sheet(item: $badgeDetail) { badge in
-            BadgeDetailSheet(badge: badge, unlocked: app.isUnlocked(badge))
-                .presentationDetents([.height(340)])
+        .modalCard(item: $badgeDetail) { badge in
+            BadgeDetailSheet(badge: badge, unlocked: app.isUnlocked(badge)){
+                badgeDetail = nil
+            }
         }
     }
 
@@ -145,7 +146,7 @@ struct ProfileView: View {
                     .textStyle(Tokens.Typography.title)
                     .foregroundStyle(Tokens.Semantic.text)
                 Spacer()
-                NavigateButton(background: Tokens.Semantic.buttonTintDefault, direction: .right){
+                NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .forward){
                     print("tapped")
                 }
             }
@@ -347,93 +348,73 @@ private struct StatTile: View {
     ProfileView()
         .environmentObject(AppState(data: .preview()))
 }
-
-/// Everything at zero: all-locked badge grid, "0" stat tiles, no favourites,
-/// notifications off, empty history count.
-#Preview("Fresh account") {
-    ProfileView()
-        .environmentObject(AppState(data: .preview(
-            vitality: VitalityEngine.startingVitality,
-            streak: 0,
-            longestStreak: 0,
-            actions: 0,
-            favourites: [],
-            notifications: false
-        )))
-}
-
-/// Clears every unlockable threshold — 100 actions, 30-day streak, 86 Vitality,
-/// 3 Foundations — and pushes the stat tiles to three digits.
-#Preview("Everything unlocked") {
-    ProfileView()
-        .environmentObject(AppState(data: .preview(
-            vitality: 92,
-            streak: 34,
-            longestStreak: 41,
-            actions: 120,
-            favourites: Set(HabitCategory.allCases)
-        )))
-}
-
-/// The badge grid is four fixed columns with a 26pt two-line label, so it is the
-/// first thing to break at large type. The long name also stresses `initials`.
-#Preview("Long name · large type") {
-    ProfileView()
-        .environmentObject(AppState(data: .preview(
-            name: "Anandamayi Wirawan-Kusumaningrum"
-        )))
-        .environment(\.dynamicTypeSize, .accessibility1)
-}
 #endif
 
 private struct BadgeDetailSheet: View {
-    @Environment(\.dismiss) private var dismiss
     let badge: Badge
     let unlocked: Bool
-
+    let onClose: () -> Void
+ 
     var body: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(
-                        unlocked
-                        ? AnyShapeStyle(LinearGradient(
-                            colors: [Theme.C.accent500, Theme.C.accent2_500],
-                            startPoint: .topLeading, endPoint: .bottomTrailing))
-                        : AnyShapeStyle(Theme.C.neutral200)
-                    )
-                    .frame(width: 72, height: 72)
-
-                Image(systemName: unlocked ? "star.fill" : "lock.fill")
-                    .font(.system(size: unlocked ? 28 : 22, weight: .semibold))
-                    .foregroundStyle(unlocked ? .white : Theme.C.neutral500)
-            }
-            .padding(.top, 28)
-
+        VStack(spacing: Tokens.Spacing.md) {
+            Avatar(type: .avatarBig, icon: "actions-icon")
+ 
             Text(badge.name)
-                .font(Theme.F.heading(19))
-                .foregroundStyle(Theme.C.text)
-
-            EHTag(text: badge.tier, style: .neutral, fontSize: 12)
-
-            Text(badge.detail)
-                .font(Theme.F.body(13.5))
-                .foregroundStyle(Theme.C.neutral700)
+                .textStyle(Tokens.Typography.hero)
+                .foregroundStyle(Tokens.Semantic.text)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            Text(unlocked ? "Unlocked" : "Still locked")
-                .font(Theme.F.body(12, weight: .semibold))
-                .foregroundStyle(unlocked ? Theme.C.accent2_700 : Theme.C.neutral600)
-
-            Spacer()
-
-            Button("Close") { dismiss() }
-                .buttonStyle(SecondaryButtonStyle(height: 44))
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+ 
+            Text(badge.detail)
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Semantic.footnote)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
-        .background(Theme.C.bg)
+        .padding(Tokens.Spacing.xl)
+        .overlay(alignment: .topTrailing){
+            NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .close) { onClose() }
+        }
+        .padding(Tokens.Spacing.lg)
     }
 }
+
+#if DEBUG
+#Preview("Badge · unlocked") {
+    BadgeDetailSheet(badge: MockData.badges[0], unlocked: true) { print("tapped") }
+        .frame(height: 340)
+}
+
+#Preview("Badge · locked") {
+    BadgeDetailSheet(badge: MockData.badges[0], unlocked: false) { print("tapped") }
+        .frame(height: 340)
+}
+
+#Preview("Badge · longest copy") {
+    let longest = MockData.badges.max { $0.detail.count < $1.detail.count } ?? MockData.badges[0]
+    BadgeDetailSheet(badge: longest, unlocked: true) { print("tapped") }
+        .frame(height: 340)
+}
+
+#Preview("Badge · longest · large type") {
+    let longest = MockData.badges.max { $0.detail.count < $1.detail.count } ?? MockData.badges[0]
+    BadgeDetailSheet(badge: longest, unlocked: false) { print("tapped") }
+        .frame(height: 340)
+        .environment(\.dynamicTypeSize, .accessibility1)
+}
+
+#Preview("Badge · in a sheet") {
+    struct Harness: View {
+        @State private var badge: Badge? = MockData.badges.first
+        var body: some View {
+            Theme.C.bg
+                .ignoresSafeArea()
+                .sheet(item: $badge) { badge in
+                    BadgeDetailSheet(badge: badge, unlocked: true) { print("tapped") }
+                        .presentationDetents([.height(340)])
+                }
+        }
+    }
+    return Harness()
+}
+#endif
