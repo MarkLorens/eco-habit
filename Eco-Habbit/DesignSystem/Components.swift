@@ -332,3 +332,17 @@ struct ChevronRight: View {
             .foregroundStyle(Theme.C.neutral400)
     }
 }
+
+struct OurFightCategoryIcon: View {
+    let color: Color
+    
+    var body: some View {
+        Capsule()
+            .fill(color)
+            .frame(width: 10, height: 85)
+    }
+}
+
+#Preview {
+    OurFightCategoryIcon(color: Tokens.Palette.purple)
+}
