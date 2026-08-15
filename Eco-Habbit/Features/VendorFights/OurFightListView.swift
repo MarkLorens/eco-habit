@@ -1,0 +1,75 @@
+//
+//  OurFightListView.swift
+//  Eco-Habbit
+//
+//  Created by Hardy Tee on 15/08/26.
+//
+
+import Foundation
+import SwiftUI
+
+struct OurFightListView: View {
+    @EnvironmentObject private var app: AppState
+
+    var body: some View {
+        NavigationStack(path: $app.actionsPath) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.sm){
+                        
+                        HStack{
+                            Text("Our Fights")
+                                .textStyle(Tokens.Typography.hero)
+                                .foregroundStyle(Tokens.Semantic.text)
+                            
+                            Spacer()
+                            
+                            NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .plus){ print("add fight") }
+                        }
+                        
+                        Text("Take action together for a greener tomorrow")
+                            .textStyle(Tokens.Typography.footnote)
+                            .foregroundStyle(Tokens.Semantic.footnote)
+                    }
+                    .padding(.horizontal, Tokens.Spacing.xxl)
+//                    LazyVGrid(
+//                        columns: [GridItem(.flexible(), spacing: Tokens.Spacing.md), GridItem(.flexible())],
+//                        spacing: Tokens.Spacing.xl
+//                    ){
+//                        ForEach(sortedCategories) { category in
+//                            NavigationLink(value: category) {
+//                                Cards(
+//                                    title: category.title,
+//                                    caption: category.caption,
+//                                    icon: category.icon,
+//                                    background: category.background,
+//                                    tint: category.tint
+//                                )
+//                            }
+//                            .buttonStyle(.plain)
+//                        }
+//                    }
+//                    .padding(Tokens.Spacing.md)
+                }
+            }
+            .background(Tokens.Palette.white)
+            .navigationDestination(for: HabitCategory.self) { category in
+                CategoryDetailView(category: category)
+            }
+        }
+    }
+
+//    private var sortedCategories: [HabitCategory] {
+//        HabitCategory.allCases.sorted { lhs, rhs in
+//            let l = app.favouriteCategories.contains(lhs)
+//            let r = app.favouriteCategories.contains(rhs)
+//            if l != r { return l }
+//            return lhs.rawValue < rhs.rawValue
+//        }
+//    }
+}
+
+#Preview {
+    OurFightListView()
+        .environmentObject(AppState.preview)
+}
