@@ -10,11 +10,11 @@ import SwiftUI
 
 struct OurFightListView: View {
     @EnvironmentObject private var app: AppState
-
+    
     var body: some View {
         NavigationStack(path: $app.actionsPath) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
                     VStack(alignment: .leading, spacing: Tokens.Spacing.sm){
                         
                         HStack{
@@ -32,24 +32,19 @@ struct OurFightListView: View {
                             .foregroundStyle(Tokens.Semantic.footnote)
                     }
                     .padding(.horizontal, Tokens.Spacing.xxl)
-//                    LazyVGrid(
-//                        columns: [GridItem(.flexible(), spacing: Tokens.Spacing.md), GridItem(.flexible())],
-//                        spacing: Tokens.Spacing.xl
-//                    ){
-//                        ForEach(sortedCategories) { category in
-//                            NavigationLink(value: category) {
-//                                Cards(
-//                                    title: category.title,
-//                                    caption: category.caption,
-//                                    icon: category.icon,
-//                                    background: category.background,
-//                                    tint: category.tint
-//                                )
-//                            }
-//                            .buttonStyle(.plain)
-//                        }
-//                    }
-//                    .padding(Tokens.Spacing.md)
+                    
+                    ForEach(0..<6, id: \.self) { _ in
+                        ExpandableFightWrapper(
+                            title: "Pick N Choose",
+                            caption: "Let's collect items that can be reused and share them with others who need them",
+                            category: Tokens.Palette.purple,
+                            date: "Wed, 9 Sep • 15.00",
+                            location: "Kuta Art Market",
+                            picture: "our-fight-example",
+                            status: false
+                        )
+                    }
+                    .padding(.horizontal, Tokens.Spacing.xl)
                 }
             }
             .background(Tokens.Palette.white)
@@ -58,15 +53,6 @@ struct OurFightListView: View {
             }
         }
     }
-
-//    private var sortedCategories: [HabitCategory] {
-//        HabitCategory.allCases.sorted { lhs, rhs in
-//            let l = app.favouriteCategories.contains(lhs)
-//            let r = app.favouriteCategories.contains(rhs)
-//            if l != r { return l }
-//            return lhs.rawValue < rhs.rawValue
-//        }
-//    }
 }
 
 #Preview {

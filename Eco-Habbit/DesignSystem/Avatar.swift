@@ -11,11 +11,14 @@ enum avatarType{
     case user
     case avatarBig
     case avatarSmall
+    case avatarOurFight
     
     var size: CGFloat{
         switch self{
         case .avatarSmall:
             75
+        case .avatarOurFight:
+            38
         default:
             100
         }
@@ -54,13 +57,30 @@ struct Avatar: View {
     }
 }
 
+struct AvatarIcon: View {
+    private let type: avatarType
+    private let icon: String
+    
+    init(type: avatarType, icon: String) {
+        self.type = type
+        self.icon = icon
+    }
+    
+    var body: some View{
+        Image(icon)
+            .resizable()
+            .scaledToFit()
+            .frame(width: type.size - 15, alignment: .center)
+    }
+}
+
 #Preview {
     VStack{
         Avatar(type: .user, icon: Tokens.Icons.wasteIcon)
         Avatar(type: .avatarBig, icon: Tokens.Icons.energyIcon)
-        Avatar(type: .avatarSmall, icon: Tokens.Icons.mobilityIcon)
+        AvatarIcon(type: .avatarOurFight, icon: Tokens.Icons.mobilityIcon)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Tokens.Palette.limeCard)
+//    .background(Tokens.Palette.limeCard)
     .ignoresSafeArea()
 }
