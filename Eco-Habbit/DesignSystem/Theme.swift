@@ -104,17 +104,9 @@ enum Theme {
 
 // MARK: - Helpers
 
-extension Color {
-    init(hex: UInt32) {
-        self.init(
-            .sRGB,
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255,
-            opacity: 1
-        )
-    }
-}
+// `Color(hex:)` now lives in Tokens.swift, at Mark's request — Theme is being
+// deprecated in favour of Tokens, so the surviving copy belongs there. Two
+// declarations in one module is an ambiguous-init compile error, not a warning.
 
 extension View {
     func elevation(_ shadow: Theme.Shadow) -> some View {

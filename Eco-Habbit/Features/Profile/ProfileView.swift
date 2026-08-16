@@ -1,28 +1,76 @@
 import SwiftUI
 
+private struct HeaderHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+
 struct ProfileView: View {
     @EnvironmentObject private var app: AppState
 
     @State private var badgeDetail: Badge?
+    @State private var showingBadges = false
 
     private let badgeColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
+    
+    @State private var headerHeight: CGFloat = 0
+    private let sheetTail: CGFloat = 56
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    identity
                     stats
                     badges
-                    settings
+                    recap
+//                    settings
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 8)
+                // The identity block is an overlay, so it takes up no layout space —
+                // without this the stats row starts at the top of the ScrollView and
+                // renders behind it.
+                .padding(.top, headerHeight)
                 .tabContentInsets()
             }
-            .background(Theme.C.bg)
+            .background(alignment: .top) {
+                UnevenRoundedRectangle(
+                    bottomLeadingRadius: 40,
+                    bottomTrailingRadius: 40,
+                    style: .continuous
+                )
+                .fill(Tokens.Semantic.profileBg)
+                .frame(height: headerHeight + sheetTail)
+            }
+            .overlay(alignment: .top) {
+                identity
+                    .padding(.horizontal, Tokens.Spacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        UnevenRoundedRectangle(
+                            bottomLeadingRadius: 40,
+                            bottomTrailingRadius: 40,
+                            style: .continuous
+                        )
+                        .fill(Tokens.Semantic.profileBg)
+                        .ignoresSafeArea(edges: .top)
+                    )
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: HeaderHeightKey.self,
+                                value: proxy.size.height
+                            )
+                        }
+                    )
+            }
+            .onPreferenceChange(HeaderHeightKey.self) { headerHeight = $0 }
+            .background(Tokens.Palette.white.ignoresSafeArea())
             .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
+                case .favourites: FavouriteCategoriesView()
                 case .notifications: NotificationSettingsView()
                 case .privacy: PrivacySettingsView()
                 case .history: ActivityHistoryView()
@@ -32,38 +80,29 @@ struct ProfileView: View {
                 }
             }
         }
-        .tint(Theme.C.accent)
-        .sheet(item: $badgeDetail) { badge in
-            BadgeDetailSheet(badge: badge, unlocked: badge.isUnlocked)
-                .presentationDetents([.height(340)])
+        .modalCard(item: $badgeDetail) { badge in
+            BadgeDetailSheet(badge: badge, unlocked: app.hasEarned(badge.id)){
+                badgeDetail = nil
+            }
+        }
+        .fullScreenCover(isPresented: $showingBadges){
+            BadgeDetailView()
         }
     }
 
     private var identity: some View {
-        HStack(spacing: 14) {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Theme.C.accent300, Theme.C.accent2_300],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
+        VStack(alignment: .center, spacing: Tokens.Spacing.xl) {
+            Avatar(type: .user, icon: Tokens.Icons.wasteIcon)
+                .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Tokens.Palette.white, lineWidth: 5)
                     )
-                )
-                .frame(width: 60, height: 60)
-                .overlay(
-                    Text(initials)
-                        .font(Theme.F.heading(20))
-                        .foregroundStyle(.white)
-                )
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(app.displayName)
-                    .font(Theme.F.heading(19))
-                    .foregroundStyle(Theme.C.text)
-                EHTag(text: app.earthStage.displayName, style: .accent)
-            }
-
-            Spacer()
+            Text(app.displayName)
+                .textStyle(Tokens.Typography.title2)
+                .foregroundStyle(Tokens.Semantic.text)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var initials: String {
@@ -72,54 +111,60 @@ struct ProfileView: View {
     }
 
     private var stats: some View {
-        HStack(spacing: 10) {
-            StatTile(value: "\(app.currentPoints)", label: "Points")
-            StatTile(value: "\(app.displayStreak())", label: "Day streak")
-            StatTile(value: "\(app.unlockedBadgeCount)", label: "Badges")
+        HStack(alignment: .center, spacing: 10) {
+            StatTile(value: "\(app.displayStreak())", label: "Day streak", icon: "flame.fill")
+            Divider()
+                .frame(width: 1)
+                .overlay(Tokens.Semantic.statIcon)
+            StatTile(value: "\(app.vitality)", label: "Vitality", icon: "smoke.fill")
+            Divider()
+                .frame(width: 1)
+                .overlay(Tokens.Semantic.statIcon)
+            StatTile(value: "\(app.unlockedBadgeCount)", label: "Badges", icon: "medal.star.fill")
         }
-        .padding(.top, 18)
+        .padding([.vertical], Tokens.Spacing.md)
+        .background{
+            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards)
+                .fill(Tokens.Palette.white)
+                .shadow(
+                    color: .black.opacity(0.08),
+                    radius: 2,
+                    x: 0,
+                    y: 1
+                )
+                .shadow(
+                    color: .black.opacity(0.17),
+                    radius: 8,
+                    x: 0,
+                    y: 4
+                )
+        }
+        .padding(.top, Tokens.Spacing.xl)
+        
     }
 
     private var badges: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeading(text: "Badges")
-
-            LazyVGrid(columns: badgeColumns, spacing: 14) {
-                ForEach(app.badges) { badge in
-                    let unlocked = badge.isUnlocked
+        VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
+            HStack{
+                Text("Badges")
+                    .textStyle(Tokens.Typography.title)
+                    .foregroundStyle(Tokens.Semantic.text)
+                Spacer()
+                NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .forward){
+                    showingBadges = true
+                }
+            }
+            LazyVGrid(columns: badgeColumns) {
+                ForEach(app.badges.filter(\.isUnlocked).prefix(4)) { badge in
                     Button {
                         badgeDetail = badge
                     } label: {
-                        VStack(spacing: 6) {
-                            ZStack {
-                                Circle()
-                                    .fill(
-                                        unlocked
-                                        ? AnyShapeStyle(LinearGradient(
-                                            colors: [Theme.C.accent500, Theme.C.accent2_500],
-                                            startPoint: .topLeading, endPoint: .bottomTrailing))
-                                        : AnyShapeStyle(Theme.C.neutral200)
-                                    )
-                                    .frame(width: 52, height: 52)
-
-                                Image(systemName: unlocked ? "star.fill" : "lock.fill")
-                                    .font(.system(size: unlocked ? 20 : 16, weight: .semibold))
-                                    .foregroundStyle(unlocked ? .white : Theme.C.neutral500)
-                            }
-
-                            Text(badge.name)
-                                .font(Theme.F.body(10.5))
-                                .foregroundStyle(Theme.C.neutral700)
-                                .multilineTextAlignment(.center)
-                                .lineLimit(2)
-                                .frame(height: 26, alignment: .top)
-                        }
+                        Avatar(type: .avatarSmall, icon: badge.icon)
                     }
-                    .buttonStyle(PlainPressStyle())
                 }
             }
         }
-        .padding(.top, 24)
+        .padding(.top, Tokens.Spacing.xxl)
     }
 
     /// Whether the Activity history row still needs its divider — false in
@@ -131,10 +176,41 @@ struct ProfileView: View {
         false
         #endif
     }
+    
+    private var recap: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
+            HStack{
+                Text("Recap")
+                    .textStyle(Tokens.Typography.title)
+                    .foregroundStyle(Tokens.Semantic.text)
+            }
+            ScrollView(.horizontal, showsIndicators: false){
+                HStack(spacing: Tokens.Spacing.lg){
+                    RecapCards(caption: "Your July Recap", icon: Tokens.Icons.actionIcon, background: Tokens.Palette.limeCard)
+                    RecapCards(caption: "All Time", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard)
+                    RecapCards(caption: "2026", icon: Tokens.Icons.wasteIcon, background: Tokens.Palette.purpleCard)
+                    RecapCards(caption: "I'm hiding", icon: Tokens.Icons.mobilityIcon, background: Tokens.Palette.greenCard)
+                }
+            }
+        }
+        .padding(.top, Tokens.Spacing.xxl)
+    }
 
     private var settings: some View {
         EHCard(padding: 4) {
             VStack(spacing: 0) {
+                NavigationLink(value: ProfileRoute.favourites) {
+                    SettingsRow(title: "Favorite categories") {
+                        HStack(spacing: 6) {
+                            Text("\(app.favouriteCategories.count)")
+                                .font(Theme.F.body(13))
+                                .foregroundStyle(Theme.C.neutral600)
+                            ChevronRight()
+                        }
+                    }
+                }
+                .buttonStyle(PlainPressStyle())
+
                 NavigationLink(value: ProfileRoute.notifications) {
                     SettingsRow(title: "Notifications") {
                         HStack(spacing: 6) {
@@ -186,6 +262,35 @@ struct ProfileView: View {
     }
 }
 
+private struct RecapCards: View {
+    private let caption: String
+    private let icon: String
+    private let background: Color
+    
+    init(caption: String, icon: String, background: Color) {
+        self.caption = caption
+        self.icon = icon
+        self.background = background
+    }
+    
+    var body: some View {
+        HStack(spacing: Tokens.Spacing.xxl){
+            Text(caption)
+                .textStyle(Tokens.Typography.body)
+                .foregroundStyle(Tokens.Semantic.text)
+            Image(icon)
+                .resizable()
+                .scaledToFit()
+        }
+        .frame(maxWidth: 127, maxHeight: 148, alignment: .bottom)
+        .padding([.horizontal], Tokens.Spacing.md)
+        .padding([.vertical], Tokens.Spacing.lg)
+        .background{
+            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards)
+                .fill(background)
+        }
+    }
+}
 private struct SignOutFooter: ViewModifier {
     @EnvironmentObject private var app: AppState
     @State private var confirmingReset = false
@@ -194,7 +299,7 @@ private struct SignOutFooter: ViewModifier {
         VStack(spacing: 10) {
             content
 
-            // No log out while `userId` is fixed — it returns with Firebase Auth.
+            Button("Log out") { app.logOut() }
                 .buttonStyle(SecondaryButtonStyle(height: 46))
                 .padding(.top, 14)
 
@@ -211,7 +316,7 @@ private struct SignOutFooter: ViewModifier {
 }
 
 enum ProfileRoute: Hashable {
-    case notifications, privacy, history
+    case favourites, notifications, privacy, history
     #if DEBUG
     case debug
     #endif
@@ -220,71 +325,99 @@ enum ProfileRoute: Hashable {
 private struct StatTile: View {
     let value: String
     let label: String
+    let icon: String
 
     var body: some View {
-        EHCard(padding: 12) {
-            VStack(spacing: 2) {
-                Text(value)
-                    .font(Theme.F.heading(18))
-                    .foregroundStyle(Theme.C.text)
-                    .contentTransition(.numericText())
-                Text(label)
-                    .font(Theme.F.body(11))
-                    .foregroundStyle(Theme.C.neutral600)
+        VStack(spacing: Tokens.Spacing.sm) {
+            Image(systemName: icon)
+                .resizable()
+                .scaledToFit()
+                .frame(height: 30)
+                .foregroundStyle(Tokens.Semantic.statIcon)
+            Text(value)
+                .textStyle(Tokens.Typography.hero)
+            Text(label)
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Semantic.footnote)
             }
             .frame(maxWidth: .infinity)
         }
-    }
 }
+
+#if DEBUG
+// ProfileView owns its own NavigationStack, so these don't add one.
+
+#Preview("Profile") {
+    ProfileView()
+        .environmentObject(AppState.preview)
+}
+#endif
 
 private struct BadgeDetailSheet: View {
-    @Environment(\.dismiss) private var dismiss
     let badge: Badge
     let unlocked: Bool
-
+    let onClose: () -> Void
+ 
     var body: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(
-                        unlocked
-                        ? AnyShapeStyle(LinearGradient(
-                            colors: [Theme.C.accent500, Theme.C.accent2_500],
-                            startPoint: .topLeading, endPoint: .bottomTrailing))
-                        : AnyShapeStyle(Theme.C.neutral200)
-                    )
-                    .frame(width: 72, height: 72)
-
-                Image(systemName: unlocked ? "star.fill" : "lock.fill")
-                    .font(.system(size: unlocked ? 28 : 22, weight: .semibold))
-                    .foregroundStyle(unlocked ? .white : Theme.C.neutral500)
-            }
-            .padding(.top, 28)
-
+        VStack(spacing: Tokens.Spacing.md) {
+            Avatar(type: .avatarBig, icon: badge.icon)
+ 
             Text(badge.name)
-                .font(Theme.F.heading(19))
-                .foregroundStyle(Theme.C.text)
-
-            EHTag(text: badge.type.rawValue, style: .neutral, fontSize: 12)
-
-            Text(badge.description)
-                .font(Theme.F.body(13.5))
-                .foregroundStyle(Theme.C.neutral700)
+                .textStyle(Tokens.Typography.hero)
+                .foregroundStyle(Tokens.Semantic.text)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            Text(unlocked ? "Unlocked" : "Still locked")
-                .font(Theme.F.body(12, weight: .semibold))
-                .foregroundStyle(unlocked ? Theme.C.accent2_700 : Theme.C.neutral600)
-
-            Spacer()
-
-            Button("Close") { dismiss() }
-                .buttonStyle(SecondaryButtonStyle(height: 44))
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
+ 
+            Text(badge.description)
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Semantic.footnote)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
-        .background(Theme.C.bg)
+        .padding(Tokens.Spacing.xl)
+        .overlay(alignment: .topTrailing){
+            NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .close) { onClose() }
+        }
+        .padding(Tokens.Spacing.lg)
     }
 }
+
+#if DEBUG
+#Preview("Badge · unlocked") {
+    BadgeDetailSheet(badge: MockBadgeData.all[0], unlocked: true) { print("tapped") }
+        .frame(height: 340)
+}
+
+#Preview("Badge · locked") {
+    BadgeDetailSheet(badge: MockBadgeData.all[0], unlocked: false) { print("tapped") }
+        .frame(height: 340)
+}
+
+#Preview("Badge · longest copy") {
+    let longest = MockBadgeData.all.max { $0.description.count < $1.description.count } ?? MockBadgeData.all[0]
+    BadgeDetailSheet(badge: longest, unlocked: true) { print("tapped") }
+        .frame(height: 340)
+}
+
+#Preview("Badge · longest · large type") {
+    let longest = MockBadgeData.all.max { $0.description.count < $1.description.count } ?? MockBadgeData.all[0]
+    BadgeDetailSheet(badge: longest, unlocked: false) { print("tapped") }
+        .frame(height: 340)
+        .environment(\.dynamicTypeSize, .accessibility1)
+}
+
+#Preview("Badge · in a sheet") {
+    struct Harness: View {
+        @State private var badge: Badge? = MockBadgeData.all.first
+        var body: some View {
+            Theme.C.bg
+                .ignoresSafeArea()
+                .sheet(item: $badge) { badge in
+                    BadgeDetailSheet(badge: badge, unlocked: true) { print("tapped") }
+                        .presentationDetents([.height(340)])
+                }
+        }
+    }
+    return Harness()
+}
+#endif

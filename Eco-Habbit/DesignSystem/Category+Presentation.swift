@@ -109,3 +109,85 @@ extension Category {
         .mobility, .foodConsumption
     ]
 }
+
+// MARK: - Mark's naming
+//
+// `title` and `caption` are the names his screens use, and they return exactly
+// the same strings `shortTitle` and `tagline` already did — main's
+// `HabitCategory.title`/`caption` were character-for-character identical. They
+// exist so his views port verbatim instead of being edited line by line, which
+// is how a "port" quietly turns into a redesign.
+extension Category {
+
+    var title: String { shortTitle }
+    var caption: String { tagline }
+
+    /// Mark's flat card art, added alongside the mascots rather than replacing
+    /// them — `CategoryIconView` draws these, the category header draws mascots.
+    var icon: String {
+        switch self {
+        case .energy:           return Tokens.Icons.energyIcon
+        case .wasteManagement:  return Tokens.Icons.wasteIcon
+        case .actions:          return Tokens.Icons.actionIcon
+        case .water:            return Tokens.Icons.waterIcon
+        case .mobility:         return Tokens.Icons.mobilityIcon
+        case .foodConsumption:  return Tokens.Icons.consumptionIcon
+        }
+    }
+
+    /// The larger screen-header variant of the same art.
+    var iconDetail: String {
+        switch self {
+        case .energy:           return Tokens.Icons.energyDetail
+        case .wasteManagement:  return Tokens.Icons.wasteDetail
+        case .actions:          return Tokens.Icons.actionDetail
+        case .water:            return Tokens.Icons.waterDetail
+        case .mobility:         return Tokens.Icons.mobilityDetail
+        case .foodConsumption:  return Tokens.Icons.consumptionDetail
+        }
+    }
+}
+
+// MARK: - Mark's category detail screen
+//
+// `tint` is the page background and `background` is the colour behind the points
+// tag on each row. They are deliberately not folded into `cardBackground` and
+// `pillTextColor`, which the older grid and rows still use — the two screens were
+// designed against different palettes and merging them would change both.
+extension Category {
+
+    var tint: Color {
+        switch self {
+        case .energy:           return Tokens.Palette.yellowCard
+        case .wasteManagement:  return Tokens.Palette.purpleCard
+        case .actions:          return Tokens.Palette.limeCard
+        case .water:            return Tokens.Palette.blueCard
+        case .mobility:         return Tokens.Palette.greenCard
+        case .foodConsumption:  return Tokens.Palette.orangeCard
+        }
+    }
+
+    var background: Color {
+        switch self {
+        case .energy:           return Tokens.Semantic.pointTagYellow
+        case .wasteManagement:  return Tokens.Semantic.pointTagPurple
+        case .actions:          return Tokens.Semantic.pointTagLime
+        case .water:            return Tokens.Semantic.pointTagBlue
+        case .mobility:         return Tokens.Semantic.pointTagGreen
+        case .foodConsumption:  return Tokens.Semantic.pointTagOrange
+        }
+    }
+
+    /// Per-category nudge so the header art reads at the same optical size —
+    /// the illustrations have different amounts of whitespace around them.
+    var iconScale: CGFloat {
+        switch self {
+        case .energy:           return 0.95
+        case .wasteManagement:  return 1.04
+        case .actions:          return 1.23
+        case .water:            return 0.87
+        case .mobility:         return 0.96
+        case .foodConsumption:  return 1.06
+        }
+    }
+}

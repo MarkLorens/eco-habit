@@ -255,7 +255,9 @@ struct FightDetailView: View {
 ///
 /// Typing is not a fallback for a broken camera — it is the faster option when
 /// twenty people are queuing at a beach and one phone is holding the QR.
-private struct CheckInSheet: View {
+/// Shared with `OurFightListView`, which reaches check-in from its card
+/// rather than from a pushed detail screen.
+struct CheckInSheet: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
     let fight: Fight

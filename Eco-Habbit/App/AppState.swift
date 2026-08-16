@@ -40,6 +40,10 @@ final class AppState: ObservableObject {
 
     // Transient UI state that shouldn't survive a relaunch.
     @Published var selectedTab: AppTab = .home
+    /// Navigation inside the Actions tab. Published rather than owned by the tab
+    /// shell so the screen can push and the tab bar can react to the same value —
+    /// that is how the bar hides on a category detail.
+    @Published var actionsPath = NavigationPath()
     @Published var isCameraPresented = false
     @Published var toast: Toast?
     @Published var lastAward: Award?
@@ -184,6 +188,77 @@ final class AppState: ObservableObject {
     /// award outlive its catalogue entry instead of vanishing with it.
     var badges: [Badge] {
         BadgeEvaluationService().display(catalogue: MockBadgeData.all, earned: earnedBadges)
+    }
+
+    /// Planet health, 0–100 — the number the profile labels "Vitality".
+    ///
+    /// The Vitality *engine* was retired with Tio's economy, but the idea it
+    /// measured did not go anywhere: how close this Earth is to being restored.
+    /// Derived from the same threshold the sixth stage uses, so it reaches 100
+    /// exactly when the Earth does.
+    var vitality: Int {
+        let restored = config.threshold(for: .restored)
+        guard restored > 0 else { return 0 }
+        return min(100, currentPoints * 100 / restored)
+    }
+
+    var favouriteCategories: Set<Category> {
+        Set(userState.favouriteCategoryIdsRaw.compactMap(Category.init(rawValue:)))
+    }
+
+    func updateFavourites(_ categories: Set<Category>) {
+        Task { await mutateUser { $0.favouriteCategoryIdsRaw = categories.map(\.rawValue).sorted() } }
+    }
+
+    /// There are no accounts yet, so this reports rather than pretends.
+    /// It becomes real with Firebase Auth; the button exists now so the screen
+    /// is not rebuilt around it later.
+    func logOut() {
+        toast = Toast(kind: .info, message: "Accounts arrive with sign-in.")
+    }
+
+    // MARK: - What the home screen reads
+    //
+    // Named as Mark's `HomeView` expects so it ports without edits. Each one is
+    // this economy's equivalent of a Vitality-era number, not a revival of it.
+
+    /// 0–100, the same scale `GlobeView` was drawn against.
+    var globeHealth: Double { Double(vitality) }
+
+    var stage: EarthStage { earthStage }
+    func streakDaysValue() -> Int { displayStreak() }
+
+    /// The daily allowance, in base points — the thing the cap actually meters.
+    /// Both the figure and the bar come from it so they cannot disagree, which
+    /// they would if the number counted multiplied points and the bar counted
+    /// the allowance.
+    var dailyPoints: Int { basePointsUsedToday }
+    var dailyTarget: Int { config.dailyBasePointsCap }
+    var dailyProgress: Double {
+        guard dailyTarget > 0 else { return 0 }
+        return min(1, Double(dailyPoints) / Double(dailyTarget))
+    }
+
+    /// The vitality percentage at which a stage begins — `VitalityStage.range`
+    /// was hardcoded 0–100; here it is derived from the point thresholds.
+    func vitalityFloor(for stage: EarthStage) -> Int {
+        let restored = config.threshold(for: .restored)
+        guard restored > 0 else { return 0 }
+        return config.threshold(for: stage) * 100 / restored
+    }
+
+    /// Up to three things worth doing today: not yet done, favourites first.
+    var suggestedActivities: [Activity] {
+        let pending = MockActivityData.all.filter { !isCompletedToday($0.id) }
+        let favourites = favouriteCategories
+        return Array(
+            pending.sorted { lhs, rhs in
+                let l = favourites.contains(lhs.category)
+                let r = favourites.contains(rhs.category)
+                if l != r { return l }
+                return false
+            }.prefix(3)
+        )
     }
 
     var unlockedBadgeCount: Int { earnedBadges.count }

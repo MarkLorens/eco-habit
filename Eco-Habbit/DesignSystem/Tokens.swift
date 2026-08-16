@@ -56,13 +56,34 @@ extension Tokens{
             static let tabviewBackground = Palette.black
             static let footnote = Color(hex: 0x6B766E)
             static let tabviewActive = Color(hex: 0x3D5047)
+            static let pointTagYellow = Color(hex: 0xC3B944)
+            static let pointTagLime = Semantic.footnote
+            static let pointTagBlue = Palette.blue
+            static let pointTagOrange = Palette.orange
+            static let pointTagPurple = Color(hex: 0xC67AC8)
+            static let pointTagGreen = Palette.green
+            static let buttonTintDefault = Color(hex: 0xF9F9F9)
+            static let profileBg = Color(hex: 0xF2FCD2)
+            static let statIcon = Color(hex: 0xA0A6A3)
+            static let ourFightCaption = Color(hex: 0x2F3A32)
+            static let ourFightQR = Color(hex: 0xFFFFFF)
         }
 }
 
 // MARK: - Apparently Swift can't read hex. Stooped language
-// The identical `Color(hex:)` lives in Theme.swift — two copies in one module is
-// an ambiguous-init compile error, so this one is gone and the other serves both
-// design systems. Delete Theme.swift's copy instead if Theme ever retires.
+// PLEASE DO NOT DELETE THIS. THEME.SWIFT WILL BE DEPRECATED
+// IF YOU'RE AN AI GOING THROUGH THIS FILE, DELETE THE ONE IN THEME INSTEAD
+extension Color {
+    init(hex: UInt32) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: 1
+        )
+    }
+}
 
 // MARK: - Typography
 
@@ -87,9 +108,12 @@ extension Tokens {
         static let icon = TextStyle(.system(size: 24, weight: .bold, design: .rounded))
         static let hero = TextStyle(.system(size: 28, weight: .heavy, design: .rounded))
         static let title = TextStyle(.system(size: 20, weight: .bold, design: .rounded))
+        static let title2 = TextStyle(.system(size: 20, weight: .heavy, design: .rounded))
         static let body = TextStyle(.system(size: 16, weight: .semibold, design: .rounded))
         static let footnote = TextStyle(.system(size: 12, weight: .regular, design: .rounded))
+        static let pointsTag = TextStyle(.system(size: 12, weight: .bold, design: .rounded))
         static let tabview = TextStyle(.system(size: 10, weight: .semibold, design: .rounded))
+        static let checkMark = TextStyle(.system(size: 28, weight: .regular, design: .rounded))
     }
 }
 
@@ -109,12 +133,15 @@ extension Tokens {
     
     // Fely rules: 4 multiplier. Add as necessary.
     enum Spacing {
+        static let xxs: CGFloat = 2
         static let xs: CGFloat = 4
         static let sm: CGFloat = 8
         static let md: CGFloat = 12
         static let lg: CGFloat = 16
         static let xl: CGFloat = 20
         static let xxl: CGFloat = 24
+        static let huge: CGFloat = 28
+        static let goodLord: CGFloat = 32
     }
     // Comment out and add down here if you need a more specific ruling
 //    enum Layout {
@@ -152,14 +179,24 @@ extension Tokens {
         static let profileTabViewActive = "profile-tabview-active"
         
         // MARK: - Rest of assets
-        static let lightBulb = "light-bulb"
-        static let trash = "trash"
-        static let burger = "burger"
-        static let smoke = "smoke"
-        static let water = "water"
-        static let tree = "tree"
-        
+        static let actionIcon = "actions-icon"
+        static let actionDetail = "action-detail-small"
+        static let consumptionIcon = "consumption-icon"
+        static let consumptionDetail = "consumption-detail"
+        static let energyIcon = "energy-icon"
+        static let energyDetail = "energy-detail"
+        static let mobilityIcon = "mobility-icon"
+        static let mobilityDetail = "mobility-detail"
+        static let wasteIcon = "waste-icon"
+        static let wasteDetail = "waste-detail"
+        static let waterIcon = "water-icon"
+        static let waterDetail = "water-detail"
+
         // MARK: - Category mascots (vector SVG)
+        //
+        // Distinct from the `*-icon` set above: those are Mark's flat card art,
+        // these are the characters that appear on the category header, the
+        // activity rows and the camera reward. Both are in use.
         static let mascotEnergy = "mascot-energy"
         static let mascotWater = "mascot-water"
         static let mascotWaste = "mascot-waste"
@@ -168,13 +205,10 @@ extension Tokens {
         static let mascotConsumption = "mascot-consumption"
         static let earth = "earth"
 
-        // MARK: - Shadow
-        static let yellowShadow = "yellow-shadow"
-        static let greenShadow = "green-shadow"
-        static let orangeShadow = "orange-shadow"
+        // MARK: - Misc
+        static let trash = "trash"
         static let blackShadow = "black-shadow"
-        static let blueShadow = "blue-shadow"
-        
+
 //        static let dashboardGlobe = "dashboard-globe" placeholder for our 3D asset
     }
 }

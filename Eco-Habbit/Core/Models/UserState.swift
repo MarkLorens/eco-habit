@@ -95,6 +95,13 @@ nonisolated struct UserState: Codable, Hashable {
     var isOrganization: Bool = false
     var orgName: String = ""
 
+    /// Categories the user pinned to the top of the activity list. Two or three.
+    ///
+    /// Stored as raw ids rather than `[Category]` for the same reason
+    /// `actionCountsByCategoryRaw` is: an enum-keyed collection does not
+    /// round-trip through JSON as a plain list.
+    var favouriteCategoryIdsRaw: [String] = []
+
     /// Fights the user bookmarked. A private shortlist — no commitment, and the
     /// organiser never sees it. Check-in does not require it.
     var savedFightIds: [String] = []
@@ -123,6 +130,7 @@ nonisolated struct UserState: Codable, Hashable {
         notificationsEnabled: Bool = true,
         isOrganization: Bool = false,
         orgName: String = "",
+        favouriteCategoryIdsRaw: [String] = [],
         savedFightIds: [String] = [],
         fightAttendance: [String: FightAttendance] = [:],
         hostedFights: [Fight] = []
@@ -144,6 +152,7 @@ nonisolated struct UserState: Codable, Hashable {
         self.notificationsEnabled = notificationsEnabled
         self.isOrganization = isOrganization
         self.orgName = orgName
+        self.favouriteCategoryIdsRaw = favouriteCategoryIdsRaw
         self.savedFightIds = savedFightIds
         self.fightAttendance = fightAttendance
         self.hostedFights = hostedFights
