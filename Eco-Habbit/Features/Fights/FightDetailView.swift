@@ -263,7 +263,6 @@ struct CheckInSheet: View {
     let fight: Fight
 
     @State private var code = ""
-    @State private var showingScanner = false
     @FocusState private var isFocused: Bool
 
     private var canSubmit: Bool {
@@ -280,7 +279,10 @@ struct CheckInSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 Button {
-                    showingScanner = true
+                    // Scanning lives in the camera now — one scanner, reachable
+                    // from the tab bar as well as from here.
+                    dismiss()
+                    app.isCameraPresented = true
                 } label: {
                     Label("Scan the code", systemImage: "qrcode.viewfinder")
                 }
@@ -325,11 +327,9 @@ struct CheckInSheet: View {
                     Button("Cancel") { dismiss() }
                 }
             }
-            .fullScreenCover(isPresented: $showingScanner) {
-                CheckInScannerView(fight: fight)
-            }
-            // The scanner dismisses itself on success; follow it out so the user
-            // isn't left staring at a code field for something already done.
+            // Following a check-in that happened elsewhere — the camera, say —
+            // so the user is not left staring at a code field for something
+            // already done.
             .onChange(of: app.hasAttended(fight)) { _, attended in
                 if attended { dismiss() }
             }

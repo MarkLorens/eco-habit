@@ -109,18 +109,27 @@ struct OurFightListView: View {
 
     // MARK: - What the button does
 
+    /// The single button on Hardy's card carries whatever this Fight needs next.
+    ///
+    /// A draft was the gap: an organiser could create a Fight and show its code,
+    /// but nothing in this screen reached Publish — so the code was live-looking
+    /// and permanently un-checkable-into.
     private func actionTitle(for fight: Fight) -> String {
         if app.hasAttended(fight) { return "Checked in" }
-        if app.isHost(of: fight) { return "Show QR Code" }
-        return "See QR Code"
+        guard app.isHost(of: fight) else { return "See QR Code" }
+        return fight.status == .draft ? "Publish" : "Show QR Code"
     }
 
     private func act(on fight: Fight) {
         if app.hasAttended(fight) { return }
-        if app.isHost(of: fight) {
-            showingCodeFor = fight
-        } else {
+        guard app.isHost(of: fight) else {
             checkingInTo = fight
+            return
+        }
+        if fight.status == .draft {
+            Task { await app.publishFight(fight) }
+        } else {
+            showingCodeFor = fight
         }
     }
 }

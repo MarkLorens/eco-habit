@@ -66,7 +66,10 @@ struct FightCodeView: View {
 
     private var qrCard: some View {
         Group {
-            if let image = Self.qr(from: fight.checkInCode) {
+            // The QR carries the scheme; the text below carries the bare code.
+            // Scanning and typing are different jobs — a camera needs to know
+            // this belongs to the app, a person typing does not.
+            if let image = Self.qr(from: fight.checkInPayload) {
                 Image(uiImage: image)
                     .interpolation(.none)      // keep the modules crisp when scaled up
                     .resizable()

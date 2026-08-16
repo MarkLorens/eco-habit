@@ -82,6 +82,26 @@ struct TimeTravelMenu: View {
                 LabeledContent("Badges", value: "\(app.unlockedBadgeCount) / \(app.badges.count)")
             }
 
+            Section {
+                ForEach(app.allFights) { fight in
+                    LabeledContent {
+                        Text(fight.isCheckInOpen() ? "open" : "closed")
+                            .foregroundStyle(fight.isCheckInOpen() ? .green : .secondary)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(fight.title).lineLimit(1)
+                            Text("\(fight.checkInCode) · \(FightFormat.countdown(fight))")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                Text("Fights — check-in codes")
+            } footer: {
+                Text("Only a Fight with an open window can be checked into. The seeded set deliberately keeps exactly one open at any time, so scanning any other code is refused — which looks like a broken scanner until you can see this list.")
+            }
+
             Section("Monthly event quota") {
                 LabeledContent("Used", value: "\(app.userState.effectiveMonthlyEventPoints()) / \(app.config.monthlyEventPointsCap)")
                 LabeledContent("Attended", value: "\(app.userState.attendedEventIDs.count)")

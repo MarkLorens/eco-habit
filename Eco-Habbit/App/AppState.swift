@@ -32,7 +32,13 @@ final class AppState: ObservableObject {
     /// Every award this user owns. The badge *catalogue* is bundled; this is the
     /// record of what they actually earned, and it is what survives a badge being
     /// renamed or retired.
-    @Published private(set) var earnedBadges: [EarnedBadge] = []
+    @Published private(set) var earnedBadges: [EarnedBadge] = [] {
+        // Every assignment bumps the revision, which is what `badges` caches
+        // against. The count is NOT usable as a key: earn one, reset, earn a
+        // different one, and the count returns to 1 with entirely different
+        // contents — a stale cache showing a badge the user no longer owns.
+        didSet { badgeRevision &+= 1 }
+    }
     /// Set when a badge is awarded, so a view can play the celebration once.
     @Published private(set) var recentlyUnlockedBadges: [EarnedBadge] = []
     @Published private(set) var lastDecay: DecayOutcome?
@@ -47,6 +53,12 @@ final class AppState: ObservableObject {
     @Published var isCameraPresented = false
     @Published var toast: Toast?
     @Published var lastAward: Award?
+
+    #if DEBUG
+    /// Survives leaving and re-entering Profile, so testing does not mean
+    /// retyping the password on every tab switch. Resets on relaunch.
+    @Published var isDebugUnlocked = false
+    #endif
 
     // MARK: - Dependencies
 
@@ -68,6 +80,12 @@ final class AppState: ObservableObject {
     private let provincePriority: any ProvincePriorityProviding = MockProvincePriorityProvider()
 
     private let seedDemoDataIfEmpty: Bool
+
+    // Cache for `badges`, keyed on a revision bumped by every `earnedBadges`
+    // assignment rather than on anything derived from its contents.
+    private var cachedBadges: [Badge]?
+    private var cachedBadgesKey = -1
+    private var badgeRevision = 0
 
     // MARK: - Init
 
@@ -186,8 +204,18 @@ final class AppState: ObservableObject {
     /// and the awards are the user's. Keeping them apart is what lets a badge's
     /// wording be edited without rewriting anybody's history, and what lets an
     /// award outlive its catalogue entry instead of vanishing with it.
+    /// Cached against a revision of `earnedBadges`, the only thing it depends on.
+    ///
+    /// The join itself is cheap, but this is read from inside the profile grid's
+    /// `ForEach` and by `unlockedBadgeCount` beside it, so it was rebuilding the
+    /// dictionary and remapping all 21 catalogue entries several times per redraw.
     var badges: [Badge] {
-        BadgeEvaluationService().display(catalogue: MockBadgeData.all, earned: earnedBadges)
+        if let cachedBadges, cachedBadgesKey == badgeRevision { return cachedBadges }
+        let built = BadgeEvaluationService().display(catalogue: MockBadgeData.all,
+                                                    earned: earnedBadges)
+        cachedBadges = built
+        cachedBadgesKey = badgeRevision
+        return built
     }
 
     /// Planet health, 0–100 — the number the profile labels "Vitality".
@@ -354,7 +382,11 @@ final class AppState: ObservableObject {
                 earnedBadges = (try? await badgeRepository.fetchEarned(userId: userId)) ?? earnedBadges
             }
             await refreshTodayLogs(now: now)
-            await refreshHistory()
+            // `history` is newest-first and this log is the newest, so prepending
+            // is the whole update. Re-reading the repository would fetch, filter
+            // and re-sort every log the user has ever made to learn one fact the
+            // write already told us.
+            history.insert(outcome.log, at: 0)
             lastAward = Award(activity: activity, points: outcome.breakdown.finalPoints)
             toast = Toast(kind: .success,
                           message: "\(activity.name) · +\(outcome.breakdown.finalPoints) pts")
@@ -382,7 +414,15 @@ final class AppState: ObservableObject {
     var pastFights: [Fight] { FightRepository.attended(allFights, in: userState) }
     /// The dashboard's "what's next" — a saved Fight if there is one, otherwise
     /// the soonest public Fight, so the card is never empty for a new user.
-    var nextFight: Fight? { savedFights.first ?? upcomingFights.first }
+    ///
+    /// Reads `allFights` once. Going through `savedFights` and `upcomingFights`
+    /// concatenated the seeds with the hosted list twice per access, and the home
+    /// screen reads this on every redraw.
+    var nextFight: Fight? {
+        let all = allFights
+        return FightRepository.saved(all, in: userState).first
+            ?? FightRepository.upcoming(all).first
+    }
     var hostedFights: [Fight] { FightRepository.hostedFights(in: userState) }
 
     var isOrganization: Bool { userState.isOrganization }
@@ -391,6 +431,15 @@ final class AppState: ObservableObject {
         userState.displayName.isEmpty ? MockUserStateData.demoDisplayName : userState.displayName
     }
     var firstName: String { displayName.split(separator: " ").first.map(String.init) ?? displayName }
+
+    /// The Fight a scanned or typed code belongs to.
+    ///
+    /// Searches `allFights` rather than only published ones so an organiser can
+    /// test their own draft's code — `FightRepository.checkIn` still refuses a
+    /// draft, and refusing it there gives a reason instead of "no such code".
+    func fight(matchingCode code: String) -> Fight? {
+        allFights.first { $0.matchesCheckInCode(code) }
+    }
 
     func isSaved(_ fight: Fight) -> Bool { FightRepository.isSaved(fight.id, in: userState) }
     func hasAttended(_ fight: Fight) -> Bool { FightRepository.hasAttended(fight.id, in: userState) }
@@ -438,8 +487,15 @@ final class AppState: ObservableObject {
             toast = Toast(kind: .warning, message: "That code doesn't match this Fight.")
         case .alreadyCheckedIn:
             toast = Toast(kind: .info, message: "Already checked in.")
+        case .notPublished:
+            toast = Toast(kind: .warning,
+                          message: "\(fight.title) is still a draft — publish it before anyone can check in.")
         case .windowClosed:
-            toast = Toast(kind: .warning, message: "Check-in opens an hour before the start.")
+            // Naming the Fight and when it starts matters more than the rule:
+            // with several codes in circulation, "opens an hour before" does not
+            // tell you *which* one you just pointed at.
+            toast = Toast(kind: .warning,
+                          message: "\(fight.title) — \(FightFormat.countdown(fight)). Check-in opens an hour before.")
         case .eventCancelled:
             toast = Toast(kind: .warning, message: "The organiser cancelled this Fight.")
         }

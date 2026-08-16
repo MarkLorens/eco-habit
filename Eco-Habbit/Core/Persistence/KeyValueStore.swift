@@ -37,7 +37,13 @@ nonisolated struct LocalJSONFileStore: KeyValueStoring {
     private static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
+        // Readable output is worth having while developing and worth nothing in
+        // a shipped app: the whole log array is re-encoded on every write, and
+        // indentation runs it 2-3x larger than it needs to be. `.iso8601` stays
+        // in both — that is a correctness choice, not a formatting one.
+        #if DEBUG
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        #endif
         return encoder
     }
 

@@ -13,9 +13,24 @@ struct VisualSearchView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var camera = CameraService()
 
-    /// Set once a log lands, to drive the reward animation.
-    @State private var award: (activity: Activity, points: Int)?
+    /// What the reward animation should show. Set by a logged activity or by a
+    /// Fight check-in — the overlay does not care which.
+    private struct Reward {
+        let icon: Image
+        let title: String
+        let points: Int
+        let tint: Color
+        var badgeName: String?
+        /// A Fight is a discrete errand, so the camera closes afterwards; an
+        /// activity is one of many, so it stays open for the next one.
+        var closesCamera: Bool
+    }
+
+    @State private var award: Reward?
     @State private var showAward = false
+
+    /// The last code that failed, so holding it in frame does not re-report.
+    @State private var lastRejectedCode: String?
 
     var body: some View {
         ZStack {
@@ -38,14 +53,27 @@ struct VisualSearchView: View {
                 bottomContent
             }
 
+            // `ToastLayer` also lives in `RootView`, but a `fullScreenCover`
+            // presents in its own layer *above* the presenting view's overlays —
+            // so every message raised in here was rendering behind the camera and
+            // only appearing once it was dismissed. It needs its own copy.
+            ToastLayer()
+
             if showAward, let award {
-                AwardOverlay(activity: award.activity,
+                AwardOverlay(icon: award.icon,
+                             title: award.title,
                              points: award.points,
-                             onFinished: awardFinished)
+                             tint: award.tint,
+                             badgeName: award.badgeName,
+                             onFinished: { awardFinished(closesCamera: award.closesCamera) })
             }
         }
         .task { await camera.start() }
         .onDisappear { camera.stop() }
+        .onChange(of: camera.scannedFightCode) { _, code in
+            guard let code else { return }
+            checkIn(withCode: code)
+        }
         .onChange(of: camera.verdict) { _, verdict in
             // A confident, direct match needs no confirmation — log it.
             if case .confident(let match) = verdict,
@@ -357,7 +385,14 @@ struct VisualSearchView: View {
                 camera.reset()
                 return
             }
-            award = (activity, outcome.breakdown.finalPoints)
+            award = Reward(
+                icon: Image(activity.category.mascotName),
+                title: activity.name,
+                points: outcome.breakdown.finalPoints,
+                tint: activity.category.accentColor,
+                badgeName: outcome.unlockedBadges.first?.name,
+                closesCamera: false
+            )
             // No transition animation here. The overlay runs its own timeline
             // and takes itself away; wrapping it in one would fight that.
             showAward = true
@@ -369,10 +404,78 @@ struct VisualSearchView: View {
 
     /// Called by the overlay once it has floated off, so the two never disagree
     /// about how long the animation is.
-    private func awardFinished() {
+    private func awardFinished(closesCamera: Bool) {
         showAward = false
         award = nil
         camera.reset()
+        camera.rearmScanner()
+        // A Fight check-in is a finished errand. Leaving the viewfinder up makes
+        // the user work out for themselves that it landed.
+        if closesCamera { dismiss() }
+    }
+
+    // MARK: - Fight check-in
+
+    /// A Fight QR was recognised. Non-Fight codes never reach here — the camera
+    /// drops anything without the `ecohabit://fight/` scheme.
+    private func checkIn(withCode code: String) {
+        // A reward already playing owns the screen.
+        guard !showAward else { return }
+
+        // A QR sitting in frame is re-reported on every metadata callback, many
+        // times a second. Without this, one poster that cannot be checked into
+        // raises the same toast dozens of times — which is what made the message
+        // look "late": it was a backlog draining after the camera closed.
+        guard code != lastRejectedCode else { return }
+
+        guard let fight = app.fight(matchingCode: code) else {
+            reject(code, "That code isn't for any Fight here.")
+            return
+        }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        Task {
+            let result = await app.checkIn(to: fight, code: code)
+
+            // `AppState.checkIn` raises the toast for the window, the cancelled
+            // state and a second scan. The camera stays open for those — none of
+            // them mean the user did anything wrong — but the code is parked so
+            // it does not fire again while it is still in view.
+            guard case .checkedIn(let points, _, let badge) = result else {
+                lastRejectedCode = code
+                rearmAfterCooldown()
+                return
+            }
+
+            award = Reward(
+                icon: Image(systemName: fight.type.symbol),
+                title: fight.title,
+                points: points,
+                tint: fight.type.tint,
+                badgeName: badge?.name,
+                closesCamera: true
+            )
+            lastRejectedCode = nil
+            showAward = true
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        }
+    }
+
+    private func reject(_ code: String, _ message: String) {
+        lastRejectedCode = code
+        app.toast = Toast(kind: .warning, message: message)
+        rearmAfterCooldown()
+    }
+
+    /// Long enough for the toast to be read before the same code could be
+    /// reported again, and long enough that pointing away and back re-reports.
+    private func rearmAfterCooldown() {
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            camera.rearmScanner()
+            lastRejectedCode = nil
+        }
     }
 
     // MARK: - Simulator
@@ -409,8 +512,15 @@ struct VisualSearchView: View {
 /// timing lives here rather than in a `Task.sleep` on the far side of the app
 /// that has to be kept in step by hand.
 private struct AwardOverlay: View {
-    let activity: Activity
+    /// Takes what it draws rather than a domain type, so the same timeline
+    /// serves a logged activity and a Fight check-in. Two callers, one
+    /// animation — a second copy would drift the moment either was retuned.
+    let icon: Image
+    let title: String
     let points: Int
+    let tint: Color
+    /// Named under the points when a Fight hands one over.
+    var badgeName: String? = nil
     var onFinished: () -> Void = {}
 
     /// Honours Settings → Accessibility → Motion.
@@ -423,7 +533,6 @@ private struct AwardOverlay: View {
     @State private var showName = false
     @State private var floatAway = false   // everything rises and fades
 
-    private var tint: Color { activity.category.accentColor }
     private static let sparkCount = 10
 
     var body: some View {
@@ -431,7 +540,7 @@ private struct AwardOverlay: View {
             legibilityWash
 
             VStack(spacing: 2) {
-                icon
+                iconBurst
                 number
                 name
             }
@@ -457,7 +566,8 @@ private struct AwardOverlay: View {
         .opacity(floatAway ? 0 : 1)
     }
 
-    private var icon: some View {
+    /// The icon plus the ring and sparks that leave from behind it.
+    private var iconBurst: some View {
         ZStack {
             // Ring leaving from behind the icon reads as impact.
             Circle()
@@ -468,8 +578,11 @@ private struct AwardOverlay: View {
 
             sparks
 
-            Image(activity.category.mascotName)
+            icon
                 .resizable().scaledToFit()
+                // Applies to the SF Symbol a Fight passes; the category mascots
+                // render with their own colours and ignore it.
+                .foregroundStyle(tint)
                 .frame(width: 104, height: 104)
                 .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
                 // Overshoot past 1.0 and settle — the punch that makes it feel
@@ -499,12 +612,19 @@ private struct AwardOverlay: View {
                 .textCase(.uppercase)
                 .tracking(2)
 
-            Text(activity.name)
+            Text(title)
                 .font(Theme.F.body(16, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.95))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Theme.S.x6)
+
+            if let badgeName {
+                Label(badgeName, systemImage: "rosette")
+                    .font(Theme.F.body(13, weight: .bold))
+                    .foregroundStyle(tint)
+                    .padding(.top, 4)
+            }
         }
         .shadow(color: .black.opacity(0.6), radius: 6, y: 2)
         .opacity(showName ? 1 : 0)
@@ -580,8 +700,11 @@ private struct AwardOverlay: View {
                     .ignoresSafeArea()
 
                 AwardOverlay(
-                    activity: samples[run % samples.count],
-                    points: [7, 14, 20, 27][run % 4]
+                    icon: Image(samples[run % samples.count].category.mascotName),
+                    title: samples[run % samples.count].name,
+                    points: [7, 14, 20, 27][run % 4],
+                    tint: samples[run % samples.count].category.accentColor,
+                    badgeName: run.isMultiple(of: 3) ? "Shoreline Keeper" : nil
                 )
                 .id(run)   // new identity each tap, so onAppear fires again
 

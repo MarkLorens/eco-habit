@@ -19,6 +19,11 @@ struct ProfileView: View {
     @State private var headerHeight: CGFloat = 0
     private let sheetTail: CGFloat = 56
 
+    #if DEBUG
+    @State private var showingDebugGate = false
+    @State private var showingDebugTools = false
+    #endif
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -68,15 +73,25 @@ struct ProfileView: View {
             }
             .onPreferenceChange(HeaderHeightKey.self) { headerHeight = $0 }
             .background(Tokens.Palette.white.ignoresSafeArea())
-            .navigationDestination(for: ProfileRoute.self) { route in
+            #if DEBUG
+        .sheet(isPresented: $showingDebugGate, onDismiss: {
+            if app.isDebugUnlocked { showingDebugTools = true }
+        }) {
+            DebugGate()
+        }
+        .sheet(isPresented: $showingDebugTools) {
+            // `TimeTravelMenu` has no stack of its own — it was written to be
+            // pushed into Profile's. Presented as a sheet it needs one for the
+            // title bar.
+            NavigationStack { TimeTravelMenu() }
+        }
+        #endif
+        .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
                 case .favourites: FavouriteCategoriesView()
                 case .notifications: NotificationSettingsView()
                 case .privacy: PrivacySettingsView()
                 case .history: ActivityHistoryView()
-                #if DEBUG
-                case .debug: TimeTravelMenu()
-                #endif
                 }
             }
         }
@@ -90,7 +105,26 @@ struct ProfileView: View {
         }
     }
 
+    /// Long-press the avatar to reach the debug tools.
+    ///
+    /// No visible affordance on purpose: an exhibition visitor should find
+    /// nothing to poke at, and a row labelled "Debug tools" is an invitation.
+    /// `#if DEBUG`, so in Release the gesture does not exist at all.
     private var identity: some View {
+        identityContent
+        #if DEBUG
+            .onLongPressGesture(minimumDuration: 0.8) {
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                if app.isDebugUnlocked {
+                    showingDebugTools = true
+                } else {
+                    showingDebugGate = true
+                }
+            }
+        #endif
+    }
+
+    private var identityContent: some View {
         VStack(alignment: .center, spacing: Tokens.Spacing.xl) {
             Avatar(type: .user, icon: Tokens.Icons.wasteIcon)
                 .clipShape(Circle())
@@ -229,7 +263,7 @@ struct ProfileView: View {
                 .buttonStyle(PlainPressStyle())
 
                 NavigationLink(value: ProfileRoute.history) {
-                    SettingsRow(title: "Activity history", showsDivider: debugRowVisible) {
+                    SettingsRow(title: "Activity history", showsDivider: false) {
                         HStack(spacing: 6) {
                             Text("\(app.totalActionsLogged)")
                                 .font(Theme.F.body(13))
@@ -240,21 +274,6 @@ struct ProfileView: View {
                 }
                 .buttonStyle(PlainPressStyle())
 
-                #if DEBUG
-                // Compiled out of Release entirely — this is the time-travel and
-                // host-verification surface, not a user feature.
-                NavigationLink(value: ProfileRoute.debug) {
-                    SettingsRow(title: "Debug tools", showsDivider: false) {
-                        HStack(spacing: 6) {
-                            Text(app.isOrganization ? "Org" : "")
-                                .font(Theme.F.body(13))
-                                .foregroundStyle(Theme.C.neutral600)
-                            ChevronRight()
-                        }
-                    }
-                }
-                .buttonStyle(PlainPressStyle())
-                #endif
             }
         }
         .padding(.top, 24)
@@ -317,9 +336,6 @@ private struct SignOutFooter: ViewModifier {
 
 enum ProfileRoute: Hashable {
     case favourites, notifications, privacy, history
-    #if DEBUG
-    case debug
-    #endif
 }
 
 private struct StatTile: View {

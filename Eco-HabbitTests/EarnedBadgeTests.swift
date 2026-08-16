@@ -182,3 +182,54 @@ final class EarnedBadgeTests: XCTestCase {
         XCTAssertFalse(app.badges.isEmpty, "the catalogue itself must survive")
     }
 }
+
+/// The `AppState.badges` cache.
+///
+/// It is keyed on a revision counter rather than on anything derived from the
+/// awards themselves. An earlier version keyed on `earnedBadges.count`, which
+/// looks sound because awards are append-only — until a reset drops the count
+/// back and a *different* badge brings it to the same number again.
+final class BadgeCacheTests: XCTestCase {
+
+    @MainActor
+    private func freshApp() async -> AppState {
+        let app = AppState(userId: "badge-cache-user",
+                           store: InMemoryKeyValueStore(),
+                           seedDemoDataIfEmpty: false)
+        await app.bootstrap()
+        return app
+    }
+
+    @MainActor
+    func testEarningResettingAndEarningAgainDoesNotServeAStaleBadge() async {
+        let app = await freshApp()
+
+        // Earn a streak badge, and read `badges` so the cache is populated.
+        await app.debugSetStreak(7)
+        await app.logActivity(MockActivityData.all[0])
+        XCTAssertTrue(app.badges.contains { $0.id == "badge_streak_7" && $0.isUnlocked })
+
+        // Reset takes the count to 0 — deliberately without reading `badges`,
+        // which is what made the count-based key look correct.
+        await app.resetEverything()
+
+        // Earn a *different* badge. The count is 1 again, as it was before.
+        await app.debugSetStreak(30)
+        await app.logActivity(MockActivityData.all[0])
+
+        let unlocked = Set(app.badges.filter(\.isUnlocked).map(\.id))
+        XCTAssertTrue(unlocked.contains("badge_streak_30"))
+        XCTAssertEqual(app.unlockedBadgeCount, app.badges.filter(\.isUnlocked).count,
+                       "the cached view and the award count disagree")
+    }
+
+    @MainActor
+    func testRepeatedReadsAreConsistent() async {
+        let app = await freshApp()
+        await app.debugSetStreak(7)
+        await app.logActivity(MockActivityData.all[0])
+
+        XCTAssertEqual(app.badges.map(\.id), app.badges.map(\.id))
+        XCTAssertEqual(app.badges.filter(\.isUnlocked).count, app.unlockedBadgeCount)
+    }
+}

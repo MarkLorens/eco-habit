@@ -17,6 +17,9 @@ enum FightRepository {
         case wrongCode
         case alreadyCheckedIn
         case windowClosed
+        /// Still a draft. Distinct from `windowClosed` because the fix is
+        /// completely different — publish it, rather than wait.
+        case notPublished
         case eventCancelled
     }
 
@@ -72,6 +75,9 @@ enum FightRepository {
         // Order matters: a wrong code should say so even outside the window,
         // but a *right* code outside the window is the more useful message.
         guard fight.matchesCheckInCode(code) else { return .wrongCode }
+        // Order matters: an unpublished Fight reported as "the window is shut"
+        // sends the organiser away to wait for a time that will never arrive.
+        guard fight.status == .published else { return .notPublished }
         guard fight.isCheckInOpen(at: now) else { return .windowClosed }
 
         let config = PointsConfiguration.default

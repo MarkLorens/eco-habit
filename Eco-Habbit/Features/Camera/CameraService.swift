@@ -28,12 +28,22 @@ final class CameraService: NSObject, ObservableObject {
     @Published private(set) var classifierError: String?
     @Published private(set) var isReady = false
 
+    /// A Fight check-in code seen in the viewfinder, already unwrapped from its
+    /// `ecohabit://fight/` payload. Cleared by `rearmScanner()`.
+    ///
+    /// Unlike the habit classifier this runs **continuously** — QR detection is
+    /// hardware-accelerated and effectively free, and a code is either in frame
+    /// or it is not, so there is nothing for a shutter press to disambiguate.
+    @Published private(set) var scannedFightCode: String?
+
     let session = AVCaptureSession()
 
     private let videoOutput = AVCaptureVideoDataOutput()
+    private let metadataOutput = AVCaptureMetadataOutput()
     private let frameQueue = DispatchQueue(label: "eco.camera.frames", qos: .userInitiated)
     private let processor = FrameProcessor()
     private var isConfigured = false
+    private var isScannerArmed = true
 
     func start() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -57,9 +67,11 @@ final class CameraService: NSObject, ObservableObject {
 
         processor.onResult = { [weak self] frame, result in
             Task { @MainActor in
-                self?.lastFrame = frame
-                self?.verdict = result
-                self?.isAnalysing = false
+                guard let self else { return }
+                self.setFrameDelivery(false)
+                self.lastFrame = frame
+                self.verdict = result
+                self.isAnalysing = false
             }
         }
 
@@ -72,6 +84,7 @@ final class CameraService: NSObject, ObservableObject {
 
     func stop() {
         guard isConfigured else { return }
+        setFrameDelivery(false)
         let session = self.session
         Task.detached { session.stopRunning() }
         isRunning = false
@@ -87,11 +100,19 @@ final class CameraService: NSObject, ObservableObject {
     /// 0 means no distractors are bundled — regenerate `habit_vectors.json`.
     var distractorCount: Int { (try? HabitClassifier.shared.get())?.distractorCount ?? 0 }
 
+    /// Frames only flow while a capture is in flight.
+    private func setFrameDelivery(_ on: Bool) {
+        videoOutput.connection(with: .video)?.isEnabled = on
+    }
+
     /// Classify the next frame. Resolves into `verdict`.
     func capture() {
         guard isReady, !isAnalysing else { return }
         isAnalysing = true
         verdict = nil
+        // Order matters: arm the processor only once frames can actually arrive,
+        // or the request sits unconsumed and the shutter appears to hang.
+        setFrameDelivery(true)
         processor.requestCapture()
     }
 
@@ -99,9 +120,22 @@ final class CameraService: NSObject, ObservableObject {
     /// Back to a clean viewfinder — the verdict *and* the detection readout go,
     /// so what's on screen always belongs to the shot you just took.
     func reset() {
+        // Covers the abandoned-capture case: a shutter press that never resolved
+        // because the view was dismissed would otherwise leave frames flowing.
+        setFrameDelivery(false)
         verdict = nil
         lastFrame = .empty
         isAnalysing = false
+    }
+
+    /// Ready to read the next code.
+    ///
+    /// Needed because a QR held in frame is re-reported on every metadata
+    /// callback; without disarming, one poster would fire check-in dozens of
+    /// times a second.
+    func rearmScanner() {
+        scannedFightCode = nil
+        isScannerArmed = true
     }
 
     private func configureIfNeeded() -> Bool {
@@ -130,6 +164,28 @@ final class CameraService: NSObject, ObservableObject {
         ]
         videoOutput.setSampleBufferDelegate(processor, queue: frameQueue)
         if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
+
+        // Idle until the shutter. The viewfinder is an `AVCaptureVideoPreviewLayer`
+        // reading the session directly, so this output feeds nothing on screen —
+        // it exists only to hand one frame to the classifier. Left running it
+        // delivers 480x270 BGRA at 30 fps, about 15.6 MB/s of buffers allocated
+        // and immediately discarded, which is felt as heat long before it would
+        // ever be seen as lag.
+        //
+        // `isEnabled` stops delivery without begin/commitConfiguration, so there
+        // is no reconfiguration stall and the preview never flickers.
+        setFrameDelivery(false)
+
+        // QR rides the same session as the frame stream — no second capture
+        // stack, nothing to tear down when switching between the two jobs.
+        if session.canAddOutput(metadataOutput) {
+            session.addOutput(metadataOutput)
+            metadataOutput.setMetadataObjectsDelegate(self, queue: .main)
+            // MUST come after `addOutput`. Before it, `.qr` is not yet an
+            // available type and the assignment silently does nothing — the
+            // camera then runs perfectly and never sees a single code.
+            metadataOutput.metadataObjectTypes = [.qr]
+        }
 
         session.commitConfiguration()
 
@@ -218,6 +274,36 @@ struct CameraPreview: UIViewRepresentable {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
         var videoPreviewLayer: AVCaptureVideoPreviewLayer {
             layer as! AVCaptureVideoPreviewLayer
+        }
+    }
+}
+
+// MARK: - QR
+
+extension CameraService: AVCaptureMetadataOutputObjectsDelegate {
+
+    /// Reports only codes carrying this app's scheme.
+    ///
+    /// Everything else — a wifi QR, a restaurant menu, a payment code — is
+    /// dropped here without a toast or any visible reaction. The camera is a
+    /// habit scanner most of the time, and interrupting that to say "this is not
+    /// a Fight" about a poster nobody was pointing at would be noise.
+    nonisolated func metadataOutput(
+        _ output: AVCaptureMetadataOutput,
+        didOutput metadataObjects: [AVMetadataObject],
+        from connection: AVCaptureConnection
+    ) {
+        let payloads = metadataObjects
+            .compactMap { $0 as? AVMetadataMachineReadableCodeObject }
+            .compactMap(\.stringValue)
+
+        MainActor.assumeIsolated {
+            guard isScannerArmed,
+                  let code = payloads.lazy.compactMap(Fight.code(fromPayload:)).first
+            else { return }
+
+            isScannerArmed = false
+            scannedFightCode = code
         }
     }
 }
