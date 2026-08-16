@@ -35,10 +35,11 @@ nonisolated struct BadgeEvaluationService {
             guard let category = badge.targetCategory else { return 0 }
             return state.actionCount(for: category)
 
-        // Threshold is 1, so this reads as "earned or not" without the evaluator
-        // needing to know anything special about Fight rewards.
+        // Nothing counts toward a Fight reward. It is handed over by an organiser
+        // at check-in, so it has no progress and `newlyUnlocked` skips it — see
+        // there for why inferring it from a threshold of 1 was a mistake.
         case .fightReward:
-            return state.earnedFightBadgeIds.contains(badge.id) ? 1 : 0
+            return 0
         }
     }
 
@@ -49,28 +50,57 @@ nonisolated struct BadgeEvaluationService {
         return min(1.0, value / Double(badge.threshold))
     }
 
-    /// Badge yang BARU terbuka. Yang sudah terbuka tidak pernah diperiksa lagi.
+    /// Awards to write for badges the user has just reached.
     ///
-    /// Sekali terbuka, permanen — termasuk saat poin turun karena decay. Badge
-    /// bertipe `.points` justru menjadi rekaman permanennya sendiri: user yang
-    /// pernah menyentuh 1.000 poin tetap memegang badge itu walau poinnya
-    /// kemudian tergerus, dan tidak perlu penghitung terpisah untuk mengingatnya.
-    func newlyUnlocked(from badges: [Badge],
-                       state: UserState,
-                       at date: Date = Date()) -> [Badge] {
+    /// **Earned is permanent** — passing `alreadyEarned` is what guarantees it. A
+    /// `.points` badge is its own permanent record: somebody who once touched
+    /// 1,000 points keeps it after decay takes those points away, and no separate
+    /// high-water mark is needed to remember that.
+    ///
+    /// `.fightReward` badges are excluded outright. They are given by an organiser
+    /// at check-in, so there is nothing to count and no threshold to cross —
+    /// modelling them as "threshold 1, satisfied by a flag on `UserState`" made the
+    /// evaluator responsible for a fact it had no way of knowing, and put half the
+    /// record in one place and half in another.
+    func newlyEarned(from badges: [Badge],
+                     state: UserState,
+                     alreadyEarned: Set<String>,
+                     at date: Date = Date()) -> [EarnedBadge] {
         badges
-            .filter { !$0.isUnlocked }
+            .filter { $0.type != .fightReward }
+            .filter { !alreadyEarned.contains($0.id) }
             .filter { currentValue(for: $0, state: state) >= $0.threshold }
-            .map { $0.unlocked(at: date) }
+            .map { EarnedBadge(awarding: $0, at: date, source: .threshold($0.threshold)) }
     }
 
-    /// Menggabungkan badge yang baru terbuka ke dalam daftar lengkap.
-    func merged(_ badges: [Badge], with unlocked: [Badge]) -> [Badge] {
-        guard !unlocked.isEmpty else { return badges }
+    /// The catalogue joined with what the user owns, for display.
+    ///
+    /// An award whose catalogue entry has gone is rebuilt from its own snapshot
+    /// rather than dropped — losing a badge because someone edited a data file is
+    /// exactly the failure this design exists to prevent.
+    func display(catalogue: [Badge], earned: [EarnedBadge]) -> [Badge] {
+        let earnedById = Dictionary(earned.map { ($0.badgeId, $0) },
+                                    uniquingKeysWith: { first, _ in first })
 
-        let unlockedByID = Dictionary(unlocked.map { ($0.id, $0) },
-                                      uniquingKeysWith: { first, _ in first })
+        let listed = catalogue.map { badge -> Badge in
+            guard let award = earnedById[badge.id] else { return badge }
+            return badge.unlocked(at: award.earnedAt)
+        }
 
-        return badges.map { unlockedByID[$0.id] ?? $0 }
+        let catalogueIds = Set(catalogue.map(\.id))
+        let orphans = earned
+            .filter { !catalogueIds.contains($0.badgeId) }
+            .map { award in
+                Badge(id: award.badgeId,
+                      name: award.name,
+                      description: "Earned before this badge was retired.",
+                      type: .fightReward,
+                      criteria: "",
+                      threshold: 1,
+                      isUnlocked: true,
+                      unlockedDate: award.earnedAt)
+            }
+
+        return listed + orphans
     }
 }

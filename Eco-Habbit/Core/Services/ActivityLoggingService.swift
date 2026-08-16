@@ -20,7 +20,7 @@ nonisolated struct LoggedActivityOutcome {
     let log: ActivityLog
     let breakdown: PointsBreakdown
     let streak: StreakOutcome
-    let unlockedBadges: [Badge]
+    let unlockedBadges: [EarnedBadge]
     let userState: UserState
 }
 
@@ -148,11 +148,17 @@ nonisolated struct ActivityLoggingService {
               now: now,
               to: &state)
 
-        let allBadges = try await badgeRepository.fetchBadges(userId: userId)
-        let unlocked = badgeService.newlyUnlocked(from: allBadges, state: state, at: now)
-        if !unlocked.isEmpty {
-            try await badgeRepository.save(badgeService.merged(allBadges, with: unlocked),
-                                           userId: userId)
+        // Only the awards are written — one small record each, rather than the
+        // whole catalogue with two flags flipped.
+        let earned = try await badgeRepository.fetchEarned(userId: userId)
+        let unlocked = badgeService.newlyEarned(
+            from: MockBadgeData.all,
+            state: state,
+            alreadyEarned: Set(earned.map(\.badgeId)),
+            at: now
+        )
+        for award in unlocked {
+            try await badgeRepository.award(award, userId: userId)
         }
 
         try await userStateRepository.save(state)

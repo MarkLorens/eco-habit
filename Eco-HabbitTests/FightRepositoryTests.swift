@@ -221,7 +221,8 @@ final class FightRepositoryTests: XCTestCase {
             return XCTFail("expected a check-in")
         }
         XCTAssertEqual(badge?.id, "fight_badge_shoreline")
-        XCTAssertEqual(s.earnedFightBadgeIds, ["fight_badge_shoreline"])
+        // The award record is written by the caller; what belongs to check-in is
+        // reporting the badge and stamping it on the attendance record.
         XCTAssertEqual(s.fightAttendance[f.id]?.awardedBadgeId, "fight_badge_shoreline")
     }
 
@@ -246,23 +247,25 @@ final class FightRepositoryTests: XCTestCase {
         ) else { return XCTFail("expected a check-in") }
 
         XCTAssertNil(badge)
-        XCTAssertTrue(s.earnedFightBadgeIds.isEmpty)
+        XCTAssertNil(s.fightAttendance["f1"]?.awardedBadgeId)
     }
 
-    /// The badge evaluator has to see the Fight reward as unlocked without any
-    /// special-casing — that is why `threshold` is 1.
-    func testEarnedFightBadgeUnlocksThroughTheNormalEvaluator() {
+    /// A Fight reward must NEVER come out of threshold evaluation.
+    ///
+    /// It used to, via a threshold of 1 satisfied by a flag on `UserState` — which
+    /// made the evaluator responsible for a fact it had no way to know, and split
+    /// the record across two places. It is now awarded directly at check-in.
+    func testFightRewardsAreNeverProducedByThresholdEvaluation() {
         var s = state()
         FightRepository.checkIn(
             to: fight(startsIn: 0, badge: "fight_badge_shoreline"), code: code, in: &s, now: now
         )
 
-        let unlocked = BadgeEvaluationService()
-            .newlyUnlocked(from: MockBadgeData.all, state: s, at: now)
+        let earned = BadgeEvaluationService()
+            .newlyEarned(from: MockBadgeData.all, state: s, alreadyEarned: [], at: now)
 
-        XCTAssertTrue(unlocked.contains { $0.id == "fight_badge_shoreline" })
-        XCTAssertFalse(unlocked.contains { $0.id == "fight_badge_planter" },
-                       "only the badge this Fight awarded")
+        XCTAssertFalse(earned.contains { $0.badgeId.hasPrefix("fight_badge_") },
+                       "Fight rewards are given, not reached — the evaluator must skip them")
     }
 
     // MARK: - Reads

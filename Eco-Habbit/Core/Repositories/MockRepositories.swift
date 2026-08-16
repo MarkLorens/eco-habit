@@ -102,45 +102,42 @@ actor MockActivityLogRepository: ActivityLogRepositoryProtocol {
 
 // MARK: - Badge
 
+/// Stores only what was earned. The catalogue is bundled and joined on for
+/// display, so nothing here knows what a badge is called or what it takes.
+///
+/// The file it writes maps one-to-one onto the Firestore shape it replaces —
+/// `users/{uid}/badges/{badgeId}`, one small document per award — so the Firebase
+/// implementation of this protocol is a transcription rather than a redesign.
 actor MockBadgeRepository: BadgeRepositoryProtocol {
 
     private let store: KeyValueStoring
-    private let catalog: [Badge]
 
-    init(store: KeyValueStoring = LocalJSONFileStore(),
-         catalog: [Badge] = MockBadgeData.all) {
+    init(store: KeyValueStoring = LocalJSONFileStore()) {
         self.store = store
-        self.catalog = catalog
     }
 
     private func storageKey(userId: String) -> String {
-        "badges_\(userId)"
+        "earned_badges_\(userId)"
     }
 
-    /// Selalu mulai dari katalog, lalu tempelkan status unlock yang tersimpan.
+    func fetchEarned(userId: String) async throws -> [EarnedBadge] {
+        let stored = try await store.load([EarnedBadge].self,
+                                          forKey: storageKey(userId: userId)) ?? []
+        return stored.sorted { $0.earnedAt < $1.earnedAt }
+    }
+
+    /// Keeps the first award and ignores the rest.
     ///
-    /// Kalau langsung mengembalikan array tersimpan, badge baru yang ditambahkan
-    /// ke katalog setelah user sempat menyimpan tidak akan pernah muncul untuknya,
-    /// dan badge yang dihapus dari katalog akan terus muncul.
-    func fetchBadges(userId: String) async throws -> [Badge] {
-        let stored = try await store.load([Badge].self, forKey: storageKey(userId: userId)) ?? []
-        let unlockedByID = Dictionary(
-            stored.filter(\.isUnlocked).map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        return catalog.map { badge in
-            guard let unlocked = unlockedByID[badge.id] else { return badge }
-            return badge.unlocked(at: unlocked.unlockedDate ?? Date())
-        }
+    /// Overwriting would move `earnedAt` forward every time something re-checked
+    /// a badge the user already had, which quietly rewrites their history — and
+    /// "when did I earn this" is the whole reason the date is stored.
+    func award(_ badge: EarnedBadge, userId: String) async throws {
+        var earned = try await fetchEarned(userId: userId)
+        guard !earned.contains(where: { $0.badgeId == badge.badgeId }) else { return }
+        earned.append(badge)
+        try await store.save(earned, forKey: storageKey(userId: userId))
     }
 
-    func save(_ badges: [Badge], userId: String) async throws {
-        try await store.save(badges, forKey: storageKey(userId: userId))
-    }
-
-    /// Removes the stored unlock state; `fetchBadges` then rebuilds from the
-    /// catalogue with everything locked again.
     func deleteAll(userId: String) async throws {
         try await store.removeValue(forKey: storageKey(userId: userId))
     }

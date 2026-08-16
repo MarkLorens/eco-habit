@@ -102,11 +102,6 @@ nonisolated struct UserState: Codable, Hashable {
     /// Keyed by fight id. Written when the user enters the organiser's code.
     var fightAttendance: [String: FightAttendance] = [:]
 
-    /// Badges earned by attending a Fight whose organiser attached one.
-    /// Separate from the badge store because it is what `BadgeEvaluationService`
-    /// reads to decide the badge is unlocked.
-    var earnedFightBadgeIds: [String] = []
-
     /// Fights this account hosts.
     var hostedFights: [Fight] = []
 
@@ -130,7 +125,6 @@ nonisolated struct UserState: Codable, Hashable {
         orgName: String = "",
         savedFightIds: [String] = [],
         fightAttendance: [String: FightAttendance] = [:],
-        earnedFightBadgeIds: [String] = [],
         hostedFights: [Fight] = []
     ) {
         self.userId = userId
@@ -152,7 +146,6 @@ nonisolated struct UserState: Codable, Hashable {
         self.orgName = orgName
         self.savedFightIds = savedFightIds
         self.fightAttendance = fightAttendance
-        self.earnedFightBadgeIds = earnedFightBadgeIds
         self.hostedFights = hostedFights
     }
 

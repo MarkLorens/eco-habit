@@ -16,7 +16,6 @@ final class AppState: ObservableObject {
     // MARK: - Published state
 
     @Published private(set) var userState: UserState
-    @Published private(set) var badges: [Badge] = []
     /// Derived from today's logs, never stored separately.
     @Published private(set) var completedTodayIDs: Set<String> = []
     /// Today's logs in full. Kept, not just their ids, so a row that is already
@@ -30,8 +29,12 @@ final class AppState: ObservableObject {
     /// Every log, newest first. Derived from the log repository, never stored
     /// separately — the logs are the record.
     @Published private(set) var history: [ActivityLog] = []
-    /// Set when a badge unlocks, so a view can play the celebration once.
-    @Published private(set) var recentlyUnlockedBadges: [Badge] = []
+    /// Every award this user owns. The badge *catalogue* is bundled; this is the
+    /// record of what they actually earned, and it is what survives a badge being
+    /// renamed or retired.
+    @Published private(set) var earnedBadges: [EarnedBadge] = []
+    /// Set when a badge is awarded, so a view can play the celebration once.
+    @Published private(set) var recentlyUnlockedBadges: [EarnedBadge] = []
     @Published private(set) var lastDecay: DecayOutcome?
     @Published private(set) var isReady = false
 
@@ -115,7 +118,7 @@ final class AppState: ObservableObject {
 
             userState = state
             lastDecay = outcome
-            badges = try await badgeRepository.fetchBadges(userId: userId)
+            earnedBadges = try await badgeRepository.fetchEarned(userId: userId)
             await refreshTodayLogs(now: now)
             await refreshHistory()
         } catch {
@@ -173,8 +176,27 @@ final class AppState: ObservableObject {
         return max(0, config.threshold(for: next) - userState.currentPoints)
     }
 
-    var unlockedBadgeCount: Int { badges.filter(\.isUnlocked).count }
+    /// The bundled catalogue joined with what this user earned.
+    ///
+    /// Derived, not stored — the catalogue is content that ships with the build
+    /// and the awards are the user's. Keeping them apart is what lets a badge's
+    /// wording be edited without rewriting anybody's history, and what lets an
+    /// award outlive its catalogue entry instead of vanishing with it.
+    var badges: [Badge] {
+        BadgeEvaluationService().display(catalogue: MockBadgeData.all, earned: earnedBadges)
+    }
+
+    var unlockedBadgeCount: Int { earnedBadges.count }
     var totalActionsLogged: Int { history.count }
+
+    func hasEarned(_ badgeId: String) -> Bool {
+        earnedBadges.contains { $0.badgeId == badgeId }
+    }
+
+    /// Progress toward a badge not yet earned, 0–1, for the profile grid.
+    func progress(towards badge: Badge) -> Double {
+        BadgeEvaluationService().progress(for: badge, state: userState)
+    }
 
     var remainingDailyBasePoints: Int {
         max(0, config.dailyBasePointsCap - basePointsUsedToday)
@@ -254,7 +276,7 @@ final class AppState: ObservableObject {
             userState = outcome.userState
             recentlyUnlockedBadges = outcome.unlockedBadges
             if !outcome.unlockedBadges.isEmpty {
-                badges = (try? await badgeRepository.fetchBadges(userId: userId)) ?? badges
+                earnedBadges = (try? await badgeRepository.fetchEarned(userId: userId)) ?? earnedBadges
             }
             await refreshTodayLogs(now: now)
             await refreshHistory()
@@ -323,18 +345,13 @@ final class AppState: ObservableObject {
 
         switch result {
         case .checkedIn(let points, let capped, let badge):
-            // The Fight badge is granted by attending, so the badge store has to
-            // be re-read for the unlock to show up on the profile.
+            // A Fight badge is *given*, not reached, so it is written straight
+            // here rather than inferred by the threshold evaluator.
             if let badge {
-                let all = (try? await badgeRepository.fetchBadges(userId: userId)) ?? badges
-                let unlocked = BadgeEvaluationService()
-                    .newlyUnlocked(from: all, state: userState)
-                if !unlocked.isEmpty {
-                    let merged = BadgeEvaluationService().merged(all, with: unlocked)
-                    try? await badgeRepository.save(merged, userId: userId)
-                    badges = merged
-                    recentlyUnlockedBadges = unlocked
-                }
+                let award = EarnedBadge(awarding: badge, source: .fight(fightId: fight.id))
+                try? await badgeRepository.award(award, userId: userId)
+                earnedBadges = (try? await badgeRepository.fetchEarned(userId: userId)) ?? earnedBadges
+                recentlyUnlockedBadges = [award]
                 toast = Toast(kind: .success,
                               message: "Checked in · +\(points) pts · \(badge.name) unlocked")
             } else {
@@ -426,13 +443,39 @@ final class AppState: ObservableObject {
         recentlyUnlockedBadges = []
         lastAward = nil
         lastDecay = nil
-        badges = (try? await badgeRepository.fetchBadges(userId: userId)) ?? []
+        earnedBadges = (try? await badgeRepository.fetchEarned(userId: userId)) ?? []
 
         selectedTab = .home
         toast = Toast(kind: .info, message: "Local data cleared.")
     }
 
     // MARK: - Plumbing
+
+    #if DEBUG
+    /// Force the streak, for the debug menu.
+    ///
+    /// **`lastActivityDate` has to move too.** The streak the app displays is
+    /// derived from that date, not read off the counter: `displayStreak` returns
+    /// 0 once the last activity is more than a day old, however large the stored
+    /// number, and `prospectiveStreak` — which prices every row on the actions
+    /// list — would compute a fresh streak of 1. Setting the counter alone looks
+    /// like the control is broken.
+    ///
+    /// Stamped to *now* rather than yesterday so the number you type is the
+    /// number you get: with a same-day gap the streak neither advances nor
+    /// resets on the next log.
+    func debugSetStreak(_ days: Int, now: Date = Date()) async {
+        await mutateUser { state in
+            state.currentStreak = max(0, days)
+            state.lastActivityDate = days > 0 ? now : nil
+            // A stale freeze period would make the next gap behave oddly.
+            state.streakFreezeUsedPeriod = nil
+        }
+        toast = Toast(kind: .info, message: days > 0
+            ? "Streak set to \(days) — multiplier ×\(streakMultiplier().formatted(.number.precision(.fractionLength(0...2))))"
+            : "Streak cleared.")
+    }
+    #endif
 
     /// Mutate the user record and persist it. The Fight repository is a set of
     /// pure functions over `UserState`, so this is the only place they touch

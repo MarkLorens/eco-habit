@@ -51,11 +51,20 @@ protocol ActivityLogRepositoryProtocol: Sendable {
 // namespace of pure functions over it rather than a data-access boundary. That
 // changes when Fights become their own Firestore collection.
 
-/// Status badge per user. Katalog badge-nya statis, yang disimpan adalah
-/// `isUnlocked` + `unlockedDate` milik user.
+/// An **append-only award log**, not a mirror of the badge catalogue.
+///
+/// Only what the user actually earned is stored. The catalogue stays bundled and
+/// is joined on at display time, so a badge's copy can be edited without touching
+/// anybody's record — and an award survives its catalogue entry being removed.
 protocol BadgeRepositoryProtocol: Sendable {
-    func fetchBadges(userId: String) async throws -> [Badge]
-    func save(_ badges: [Badge], userId: String) async throws
+    func fetchEarned(userId: String) async throws -> [EarnedBadge]
+
+    /// Records an award. **Idempotent**: awarding a badge that is already earned
+    /// leaves the original `earnedAt` alone rather than moving it, which is what
+    /// makes `badges/{badgeId}` safe as a Firestore document id and means the
+    /// caller never has to read before writing.
+    func award(_ badge: EarnedBadge, userId: String) async throws
+
     func deleteAll(userId: String) async throws
 }
 

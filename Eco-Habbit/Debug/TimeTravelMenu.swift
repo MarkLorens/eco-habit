@@ -12,6 +12,13 @@ import SwiftUI
 struct TimeTravelMenu: View {
     @EnvironmentObject private var app: AppState
     @State private var targetDate = Date()
+    @State private var draftStreak = 0
+
+    /// The tier boundaries from `PointsConfiguration`, not a hand-typed list —
+    /// retuning the tiers retunes these buttons with them.
+    private var tierDays: [Int] {
+        ([0] + app.config.streakTiers.map(\.minimumStreakDay)).sorted()
+    }
 
     /// No `NavigationStack` — this screen is pushed into the one Profile owns,
     /// and nesting a second stack renders blank and pops straight back out.
@@ -27,12 +34,48 @@ struct TimeTravelMenu: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section {
+                Stepper(value: $draftStreak, in: 0...500) {
+                    LabeledContent("Set streak", value: "\(draftStreak) days")
+                }
+
+                // Jump straight to a boundary — the interesting values are the
+                // tier edges, and stepping to 60 one tap at a time is nobody's
+                // idea of a debug tool.
+                HStack(spacing: 6) {
+                    ForEach(tierDays, id: \.self) { day in
+                        Button("\(day)") { draftStreak = day }
+                            .buttonStyle(.bordered)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .font(.footnote)
+
+                LabeledContent(
+                    "Multiplier at \(draftStreak)",
+                    value: "×\(app.config.streakMultiplier(forStreak: draftStreak).formatted(.number.precision(.fractionLength(0...2))))"
+                )
+
+                Button("Apply") {
+                    Task { await app.debugSetStreak(draftStreak) }
+                }
+            } header: {
+                Text("Streak")
+            } footer: {
+                Text("Also stamps the last-activity date to now — the streak on screen is derived from that date, so the counter alone would keep displaying 0. Tiers: \(app.config.streakTiers.map { "day \($0.minimumStreakDay) ×\($0.multiplier.formatted(.number.precision(.fractionLength(0...2))))" }.joined(separator: ", ")).")
+            }
+
             Section("Current state") {
                 LabeledContent("Points", value: "\(app.currentPoints)")
                 LabeledContent("Stage", value: app.earthStage.displayName)
                 LabeledContent("To next stage", value: app.pointsToNextStage.map(String.init) ?? "max")
                 LabeledContent("Streak (stored)", value: "\(app.userState.currentStreak)")
                 LabeledContent("Streak (displayed)", value: "\(app.displayStreak())")
+                // What the actions list actually prices with — the streak the
+                // NEXT log will reach, which is one ahead on a fresh day.
+                LabeledContent("Streak (next log)", value: "\(app.prospectiveStreak())")
+                LabeledContent("Multiplier in force",
+                               value: "×\(app.streakMultiplier().formatted(.number.precision(.fractionLength(0...2))))")
                 LabeledContent("Freeze available", value: app.userState.isStreakFreezeAvailable() ? "yes" : "no")
                 LabeledContent("Logged today", value: "\(app.completedTodayIDs.count)")
                 LabeledContent("Logs, all time", value: "\(app.history.count)")
@@ -68,6 +111,7 @@ struct TimeTravelMenu: View {
         }
         .navigationTitle("Time Travel")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { draftStreak = app.userState.currentStreak }
     }
 }
 #endif

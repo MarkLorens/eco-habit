@@ -172,3 +172,55 @@ final class ProjectedPointsTests: XCTestCase {
         XCTAssertEqual(config.evidenceBonus(hasEvidence: false), 1.0, accuracy: 0.0001)
     }
 }
+
+/// The debug streak control.
+///
+/// Pinned because the obvious implementation is wrong: writing `currentStreak`
+/// alone leaves `lastActivityDate` stale, and every number the user actually
+/// sees is derived from that date rather than from the counter.
+final class DebugStreakTests: XCTestCase {
+
+    @MainActor
+    private func freshApp() async -> AppState {
+        let app = AppState(userId: "debug-streak-user",
+                           store: InMemoryKeyValueStore(),
+                           seedDemoDataIfEmpty: false)
+        await app.bootstrap()
+        return app
+    }
+
+    @MainActor
+    func testSettingTheStreakMovesEveryNumberTheUserSees() async {
+        let app = await freshApp()
+        await app.debugSetStreak(30)
+
+        XCTAssertEqual(app.userState.currentStreak, 30)
+        XCTAssertEqual(app.displayStreak(), 30, "stored but not displayed — lastActivityDate is stale")
+        XCTAssertEqual(app.prospectiveStreak(), 30, "the actions list would price from the wrong streak")
+        XCTAssertEqual(app.streakMultiplier(), 1.35, accuracy: 0.0001)
+    }
+
+    /// Same-day stamping means the number you set is the number you keep.
+    @MainActor
+    func testTheStreakHoldsAfterLoggingSomething() async {
+        let app = await freshApp()
+        await app.debugSetStreak(7)
+
+        await app.logActivity(MockActivityData.all[0])
+
+        XCTAssertEqual(app.userState.currentStreak, 7, "logging must not advance a same-day streak")
+        XCTAssertEqual(app.streakMultiplier(), 1.1, accuracy: 0.0001)
+    }
+
+    @MainActor
+    func testClearingToZeroAlsoClearsTheDate() async {
+        let app = await freshApp()
+        await app.debugSetStreak(30)
+        await app.debugSetStreak(0)
+
+        XCTAssertEqual(app.userState.currentStreak, 0)
+        XCTAssertNil(app.userState.lastActivityDate)
+        XCTAssertEqual(app.displayStreak(), 0)
+        XCTAssertEqual(app.streakMultiplier(), 1.0, accuracy: 0.0001)
+    }
+}

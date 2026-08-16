@@ -81,14 +81,10 @@ enum FightRepository {
 
         // The badge is awarded even when the points are capped. Attendance
         // happened; the quota limits the score, not the record of showing up.
-        var badge: Badge?
-        if let badgeId = fight.rewardBadgeId,
-           let reward = MockBadgeData.fightReward(withID: badgeId) {
-            if !state.earnedFightBadgeIds.contains(badgeId) {
-                state.earnedFightBadgeIds.append(badgeId)
-            }
-            badge = reward
-        }
+        // Only reported, never recorded here. The award is written by the
+        // caller as an `EarnedBadge`, so "what did I earn and when" lives in one
+        // place instead of being split between a flag here and a badge store.
+        let badge = fight.rewardBadgeId.flatMap(MockBadgeData.fightReward(withID:))
 
         state.fightAttendance[fight.id] = FightAttendance(
             fightId: fight.id,

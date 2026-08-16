@@ -39,8 +39,9 @@ struct VisualSearchView: View {
             }
 
             if showAward, let award {
-                AwardOverlay(activity: award.activity, points: award.points)
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                AwardOverlay(activity: award.activity,
+                             points: award.points,
+                             onFinished: awardFinished)
             }
         }
         .task { await camera.start() }
@@ -357,12 +358,21 @@ struct VisualSearchView: View {
                 return
             }
             award = (activity, outcome.breakdown.finalPoints)
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) { showAward = true }
-
-            try? await Task.sleep(for: .seconds(2.2))
-            withAnimation(.easeOut(duration: 0.25)) { showAward = false }
-            camera.reset()
+            // No transition animation here. The overlay runs its own timeline
+            // and takes itself away; wrapping it in one would fight that.
+            showAward = true
+            // The medium impact above acknowledged the shutter. This one is the
+            // reward, and it lands with the icon.
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
+    }
+
+    /// Called by the overlay once it has floated off, so the two never disagree
+    /// about how long the animation is.
+    private func awardFinished() {
+        showAward = false
+        award = nil
+        camera.reset()
     }
 
     // MARK: - Simulator
@@ -382,46 +392,211 @@ struct VisualSearchView: View {
     }
 }
 
-/// The "here's what you did" moment. Names the action rather than just showing
-/// a number, because the number means nothing without it.
+/// The pickup moment — deliberately **not** a card.
+///
+/// A game never puts a reward in a dialog. It happens on top of the world, it
+/// moves, and it takes itself away: the icon punches in over the live camera
+/// feed, the number is the hero, and the whole group drifts upward and
+/// dissolves. Nothing to dismiss and nothing boxed.
+///
+/// The one concession to a background is `legibilityWash` — a soft radial
+/// darkening under the middle of the burst. Without it white numerals vanish
+/// against a bright wall, which is the same reason games put a shadow or a
+/// gradient under floating combat text. It has no edge, so it never reads as a
+/// container.
+///
+/// Owns its whole lifecycle and calls `onFinished` when it has faded, so the
+/// timing lives here rather than in a `Task.sleep` on the far side of the app
+/// that has to be kept in step by hand.
 private struct AwardOverlay: View {
     let activity: Activity
     let points: Int
+    var onFinished: () -> Void = {}
 
-    @State private var pop = false
+    /// Honours Settings → Accessibility → Motion.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var punched = false     // icon slams in
+    @State private var burst = false       // ring + sparks
+    @State private var showNumber = false
+    @State private var counted = 0
+    @State private var showName = false
+    @State private var floatAway = false   // everything rises and fades
+
+    private var tint: Color { activity.category.accentColor }
+    private static let sparkCount = 10
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea()
+            legibilityWash
 
-            VStack(spacing: Theme.S.x3) {
-                Image(activity.category.mascotName)
-                    .resizable().scaledToFit()
-                    .frame(width: 96, height: 96)
-                    .scaleEffect(pop ? 1 : 0.6)
-
-                Text(activity.name)
-                    .font(Theme.F.heading(21))
-                    .foregroundStyle(Theme.C.text)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("+\(points) pts")
-                    .font(Theme.F.heading(34))
-                    .foregroundStyle(Theme.C.accent700)
-                    .scaleEffect(pop ? 1 : 0.5)
+            VStack(spacing: 2) {
+                icon
+                number
+                name
             }
-            .padding(.horizontal, Theme.S.x6)
-            .padding(.vertical, Theme.S.x8)
-            .frame(maxWidth: 320)
-            .background(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(activity.category.cardBackground)
-            )
-            .padding(.horizontal, Theme.S.x6)
+            // The exit: the entire group lifts and dissolves together, the way a
+            // collected item leaves rather than being closed.
+            .offset(y: floatAway ? -70 : 0)
+            .opacity(floatAway ? 0 : 1)
         }
-        .onAppear {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.6).delay(0.05)) { pop = true }
+        .allowsHitTesting(false)
+        .onAppear(perform: play)
+    }
+
+    // MARK: - Pieces
+
+    /// No border, no fill edge — it just makes the middle of the screen a little
+    /// deeper so white text survives a bright frame.
+    private var legibilityWash: some View {
+        RadialGradient(
+            colors: [.black.opacity(0.55), .black.opacity(0.28), .clear],
+            center: .center, startRadius: 10, endRadius: 260
+        )
+        .ignoresSafeArea()
+        .opacity(floatAway ? 0 : 1)
+    }
+
+    private var icon: some View {
+        ZStack {
+            // Ring leaving from behind the icon reads as impact.
+            Circle()
+                .stroke(tint, lineWidth: burst ? 1 : 7)
+                .frame(width: 104, height: 104)
+                .scaleEffect(burst ? 2.1 : 0.55)
+                .opacity(burst ? 0 : 0.95)
+
+            sparks
+
+            Image(activity.category.mascotName)
+                .resizable().scaledToFit()
+                .frame(width: 104, height: 104)
+                .shadow(color: .black.opacity(0.45), radius: 12, y: 4)
+                // Overshoot past 1.0 and settle — the punch that makes it feel
+                // like it arrived rather than appeared.
+                .scaleEffect(punched ? 1 : 0.35)
+                .rotationEffect(.degrees(punched ? 0 : -18))
+        }
+    }
+
+    /// The hero. Games make the number big and everything else small.
+    private var number: some View {
+        Text("+\(counted)")
+            .font(.system(size: 68, weight: .heavy, design: .rounded))
+            .foregroundStyle(.white)
+            .contentTransition(.numericText())
+            .shadow(color: .black.opacity(0.5), radius: 8, y: 3)
+            .shadow(color: tint.opacity(0.9), radius: 18)
+            .scaleEffect(showNumber ? 1 : 0.4)
+            .opacity(showNumber ? 1 : 0)
+    }
+
+    private var name: some View {
+        VStack(spacing: 1) {
+            Text("points")
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundStyle(tint)
+                .textCase(.uppercase)
+                .tracking(2)
+
+            Text(activity.name)
+                .font(Theme.F.body(16, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.95))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Theme.S.x6)
+        }
+        .shadow(color: .black.opacity(0.6), radius: 6, y: 2)
+        .opacity(showName ? 1 : 0)
+        .offset(y: showName ? 0 : 10)
+    }
+
+    private var sparks: some View {
+        ZStack {
+            ForEach(0..<Self.sparkCount, id: \.self) { i in
+                let angle = Double(i) / Double(Self.sparkCount) * 2 * .pi
+                // Alternating sizes so the ring of dots doesn't look mechanical.
+                let size: CGFloat = i.isMultiple(of: 2) ? 9 : 6
+                Circle()
+                    .fill(tint)
+                    .frame(width: size, height: size)
+                    .shadow(color: tint.opacity(0.8), radius: 6)
+                    .offset(x: burst ? cos(angle) * 108 : 0,
+                            y: burst ? sin(angle) * 108 : 0)
+                    .opacity(burst ? 0 : 1)
+                    .scaleEffect(burst ? 0.3 : 1)
+            }
+        }
+    }
+
+    // MARK: - Timeline
+
+    private func play() {
+        guard !reduceMotion else {
+            withAnimation(.easeOut(duration: 0.2)) {
+                punched = true; showNumber = true; showName = true
+            }
+            counted = points
+            finish(after: 1.5)
+            return
+        }
+
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.5)) { punched = true }
+        withAnimation(.easeOut(duration: 0.6).delay(0.05)) { burst = true }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.55).delay(0.12)) { showNumber = true }
+        withAnimation(.easeOut(duration: 0.45).delay(0.18)) { counted = points }
+        withAnimation(.easeOut(duration: 0.28).delay(0.26)) { showName = true }
+
+        // Hold long enough to read the action name, then leave.
+        withAnimation(.easeIn(duration: 0.55).delay(1.15)) { floatAway = true }
+        finish(after: 1.75)
+    }
+
+    private func finish(after seconds: Double) {
+        Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            onFinished()
         }
     }
 }
+
+// MARK: - Previews
+
+/// Tuning the sequence needs to see it many times over. Doing that through a
+/// real capture means walking around pointing a phone at a bottle for every
+/// 40 ms adjustment, so the overlay gets its own preview with a replay button.
+#Preview("Award — replay") {
+    struct Harness: View {
+        @State private var run = 0
+        private let samples = MockActivityData.all.filter { $0.evidenceStrength == .direct }
+
+        var body: some View {
+            ZStack {
+                // A busy, bright backdrop rather than flat black — this plays
+                // over a live camera feed, and the only real question is whether
+                // white numerals survive whatever is behind them.
+                LinearGradient(colors: [.orange, .white, .teal, .gray],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .ignoresSafeArea()
+
+                AwardOverlay(
+                    activity: samples[run % samples.count],
+                    points: [7, 14, 20, 27][run % 4]
+                )
+                .id(run)   // new identity each tap, so onAppear fires again
+
+                VStack {
+                    Spacer()
+                    Button("Replay") { run += 1 }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.bottom, 40)
+                }
+            }
+        }
+    }
+    return Harness()
+}
+
+// No reduce-motion preview: `accessibilityReduceMotion` is read-only in the
+// environment, so it cannot be forced from here. Check that path in the
+// simulator under Settings → Accessibility → Motion → Reduce Motion.
