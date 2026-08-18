@@ -319,6 +319,13 @@ final class AppState: ObservableObject {
             toast = Toast(kind: .warning, message: "Check-in opens an hour before the start.")
         case .eventCancelled:
             toast = Toast(kind: .warning, message: "The host cancelled this Fight.")
+        case .wrongCode:
+            toast = Toast(kind: .warning, message: "That code isn't for this Fight.")
+        case .notPublished:
+            // Distinct from windowClosed on purpose: a draft's window is often
+            // wide open, and saying "the window is shut" sends the organiser
+            // hunting a clock bug instead of pressing Publish.
+            toast = Toast(kind: .info, message: "This Fight isn't published yet.")
         }
         return result
     }
