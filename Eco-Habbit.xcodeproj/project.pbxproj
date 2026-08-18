@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		50E0E69C302DA48700E63E49 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 50E0E69B302DA48700E63E49 /* Lottie */; };
+		50884EA130342AF9002A28A2 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 50884EA030342AF9002A28A2 /* Lottie */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,7 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				50E0E69C302DA48700E63E49 /* Lottie in Frameworks */,
+				50884EA130342AF9002A28A2 /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,7 +70,7 @@
 			);
 			name = "Eco-Habbit";
 			packageProductDependencies = (
-				50E0E69B302DA48700E63E49 /* Lottie */,
+				50884EA030342AF9002A28A2 /* Lottie */,
 			);
 			productName = "Eco-Habbit";
 			productReference = 3725B3F33023DDC40036EE22 /* Eco-Habbit.app */;
@@ -101,7 +101,7 @@
 			mainGroup = 3725B3EA3023DDC40036EE22;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				50E0E69A302DA48700E63E49 /* XCRemoteSwiftPackageReference "lottie-ios" */,
+				50884E9F30342AF9002A28A2 /* XCRemoteSwiftPackageReference "lottie-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3725B3F43023DDC40036EE22 /* Products */;
@@ -268,9 +268,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Eco Habit";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Eco Habit uses the camera so you can snap a photo of your sustainable action and have it detected and rewarded.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Eco Habit uses your location to surface regional missions and events happening near you.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Eco Habit listens only while you hold the mic button in search, so you can dictate instead of typing.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Eco Habit lets you attach a photo from your library as evidence for an activity.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Eco Habit turns what you say in the search field into text. Audio is processed for that search only.";
 				INFOPLIST_KEY_UIAppFonts = "Caprasimo-Regular.ttf Figtree-Regular.ttf Figtree-SemiBold.ttf Figtree-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -308,9 +306,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Eco Habit";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Eco Habit uses the camera so you can snap a photo of your sustainable action and have it detected and rewarded.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Eco Habit uses your location to surface regional missions and events happening near you.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Eco Habit listens only while you hold the mic button in search, so you can dictate instead of typing.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Eco Habit lets you attach a photo from your library as evidence for an activity.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Eco Habit turns what you say in the search field into text. Audio is processed for that search only.";
 				INFOPLIST_KEY_UIAppFonts = "Caprasimo-Regular.ttf Figtree-Regular.ttf Figtree-SemiBold.ttf Figtree-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -359,7 +355,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		50E0E69A302DA48700E63E49 /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
+		50884E9F30342AF9002A28A2 /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/airbnb/lottie-ios.git";
 			requirement = {
@@ -370,9 +366,9 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		50E0E69B302DA48700E63E49 /* Lottie */ = {
+		50884EA030342AF9002A28A2 /* Lottie */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 50E0E69A302DA48700E63E49 /* XCRemoteSwiftPackageReference "lottie-ios" */;
+			package = 50884E9F30342AF9002A28A2 /* XCRemoteSwiftPackageReference "lottie-ios" */;
 			productName = Lottie;
 		};
 /* End XCSwiftPackageProductDependency section */
