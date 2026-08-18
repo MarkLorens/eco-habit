@@ -442,10 +442,12 @@ final class AppState: ObservableObject {
         }
 
         switch result {
-        case .logged(let points):
+        case .logged(let points, _):
             lastAward = Award(habit: habit, points: points)
             // Awarded here, after the log has landed, so the counters the
-            // criteria read are already up to date.
+            // criteria read are already up to date. Deliberately runs at the cap too:
+            // the action happened, so it counts towards every badge that counts
+            // actions, even on a day that has stopped paying points.
             awardNewBadges()
         case .alreadyLogged, .onCooldown, .retroactive:
             break
@@ -459,7 +461,12 @@ final class AppState: ObservableObject {
     func logAndToast(_ habit: Habit, source: HabitLog.Source) -> HabitRepository.LogResult {
         let result = logHabit(habit, source: source)
         switch result {
-        case .logged(let points):
+        // At the cap the log still lands — it is a real action and still counts for the
+        // streak, badges and history — but saying "+0 pts" reads as a broken app. Say
+        // what actually happened instead.
+        case .logged(_, atDailyCap: true):
+            toast = Toast(kind: .info, message: "\(habit.name) · logged — daily points cap reached")
+        case .logged(let points, _):
             toast = Toast(kind: .success, message: "\(habit.name) · +\(points) pts")
         case .alreadyLogged:
             toast = Toast(kind: .info, message: "Already logged today — back tomorrow.")

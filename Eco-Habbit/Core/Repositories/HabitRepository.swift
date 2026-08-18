@@ -14,7 +14,15 @@ import Foundation
 enum HabitRepository {
 
     enum LogResult: Equatable {
-        case logged(points: Int)
+        /// `atDailyCap` means today's base-points allowance was already spent, so this
+        /// log paid **nothing**. It is still a real log — it counts for the streak, for
+        /// badges, for category totals and for history — which is why it is a flag on
+        /// success rather than a refusal.
+        ///
+        /// Carried on the case rather than inferred from `points == 0` at each call
+        /// site, so a surface cannot forget: adding it here made the compiler point at
+        /// every screen that shows an award, which is how the camera's "+0" was found.
+        case logged(points: Int, atDailyCap: Bool)
         case alreadyLogged
         /// Logged recently enough that its cooldown has not elapsed.
         case onCooldown(daysRemaining: Int)
@@ -65,7 +73,11 @@ enum HabitRepository {
         // a total the user has long since climbed back past.
         state.decayBaselinePoints = nil
         state.lastDecayAppliedDay = nil
-        return .logged(points: breakdown.finalPoints)
+        // `countedBasePoints == 0` is the honest test, not `finalPoints == 0`: it is the
+        // cap clamping the base to nothing that makes the log worthless, and it does not
+        // depend on the multipliers happening to round to zero.
+        return .logged(points: breakdown.finalPoints,
+                       atDailyCap: breakdown.countedBasePoints == 0)
     }
 
     /// The streak moves when something is logged, not on a nightly score.
@@ -102,8 +114,23 @@ enum HabitRepository {
         points.basePointsUsed(in: logs(on: day, in: state))
     }
 
-    /// Un-logging is permitted within the same day only. Points reverse for free
-    /// because they are derived from `logs`.
+    /// Un-logging is permitted within the same day only.
+    ///
+    /// **The refund is not optional, and it used to be missing.** The comment here
+    /// claimed points reversed for free "because they are derived from `logs`", which
+    /// was true once and stopped being true when `log` started doing
+    /// `state.currentPoints += breakdown.finalPoints`. `currentPoints` is a stored
+    /// running total — `DecayService` *subtracts* from it, so it cannot be a pure sum of
+    /// the logs — and deleting a log therefore left the points it paid behind.
+    ///
+    /// That was an unbounded points farm, not a rounding error: toggling one checkbox
+    /// on and off paid out every time, and because the daily cap is measured from the
+    /// logs, undoing also handed the base-points allowance back. Five taps was 125
+    /// points with zero logs on record. `tools/EconomyCheck.swift` locks it.
+    ///
+    /// Clamped at zero because decay can have taken `currentPoints` below what this log
+    /// originally paid, and a negative Earth is not a state any of the stage maths
+    /// expects.
     @discardableResult
     static func unlog(_ habitId: String, on day: String, today: String, habits: [Habit], in state: inout PersistedState) -> Bool {
         guard day == today,
@@ -111,6 +138,7 @@ enum HabitRepository {
         else { return false }
 
         state.logs.removeAll { $0.id == log.id }
+        state.currentPoints = max(0, state.currentPoints - log.finalPoints)
         return true
     }
 
