@@ -13,6 +13,7 @@ struct ProfileView: View {
 
     @State private var badgeDetail: Badge?
     @State private var showingBadges = false
+    @State private var confirmingDelete = false
 
     private let badgeColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
     
@@ -98,11 +99,35 @@ struct ProfileView: View {
                         Circle()
                             .stroke(Tokens.Palette.white, lineWidth: 5)
                     )
+                    // The only route to the account actions. `SignOutFooter` hangs off
+                    // `settings`, which is commented out of `body`, so nothing on screen
+                    // reached `logOut` and nothing at all reached `deleteAccount` — which
+                    // App Review requires for any app with sign-in.
+                    //
+                    // `contextMenu` IS the long press, so there is no gesture to wire up
+                    // and no state to hold for the menu itself.
+                    .contextMenu {
+                        Button { app.logOut() } label: {
+                            Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                        Button(role: .destructive) { confirmingDelete = true } label: {
+                            Label("Delete account", systemImage: "trash")
+                        }
+                    }
+                    // Long press leaves no visual trace, so VoiceOver has to be told.
+                    .accessibilityLabel("Account")
+                    .accessibilityHint("Long press for log out and delete account")
             Text(app.userName)
                 .textStyle(Tokens.Typography.title2)
                 .foregroundStyle(Tokens.Semantic.text)
         }
         .frame(maxWidth: .infinity)
+        .alert("Delete account?", isPresented: $confirmingDelete) {
+            Button("Delete", role: .destructive) { Task { await app.deleteAccount() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your points, streak, history and badges are permanently deleted from this device and from our servers. This cannot be undone.")
+        }
     }
 
     private var initials: String {
