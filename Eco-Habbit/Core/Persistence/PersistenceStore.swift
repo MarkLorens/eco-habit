@@ -176,11 +176,22 @@ enum PersistenceStore {
         documents.appendingPathComponent("ecohabit-state-\(userId).json")
     }
 
-    static func load(userId: String) -> PersistedState {
+    /// `nil` means **this device has no copy of this account** — a fresh install, or a
+    /// device signing into the account for the first time.
+    ///
+    /// Optional rather than a blank `PersistedState`, because the caller has to be able
+    /// to tell those two apart. Returning a blank state for a missing file is what let
+    /// a reinstall upload zeros over a perfectly good server copy: the app could not
+    /// distinguish "no data yet" from "an account that is genuinely at zero", so it
+    /// treated the empty file as truth and echoed it upward.
+    static func load(userId: String) -> PersistedState? {
         migrateLegacyFile(to: userId)
-        guard let data = try? Data(contentsOf: url(for: userId)) else { return PersistedState() }
+        guard let data = try? Data(contentsOf: url(for: userId)) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
+        // A file that exists but will not decode is still "this device has been here".
+        // Falling back to blank keeps the app usable; `init(from:)` above is what makes
+        // reaching this line very unlikely.
         return (try? decoder.decode(PersistedState.self, from: data)) ?? PersistedState()
     }
 

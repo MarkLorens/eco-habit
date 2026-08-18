@@ -34,12 +34,34 @@ final class AppState: ObservableObject {
     /// which is what lets the economy checks and every `#Preview` run without Firebase.
     private let sync: UserStateSyncing?
 
+    /// Whether this session has reconciled with the server yet.
+    ///
+    /// **Nothing is written to Firestore while this is false**, and that is the whole
+    /// point. Deleting and reinstalling the app removes the local file but *not* the
+    /// sign-in — Firebase keeps its token in the keychain, which survives deletion — so
+    /// the app comes back already signed in with a blank `data`. `evaluateIfNeeded` and
+    /// `backfillGlobeStageAnnouncement` both mutate, `mutate` echoes to Firestore, and
+    /// the blank state therefore overwrote the real one *before* the pull that was
+    /// meant to restore it had even read it. Streak, points and Earth came back as
+    /// zero, on the server as well as on the phone.
+    ///
+    /// `merge: true` is no defence: `UserDocument` carries every scalar, so a blank
+    /// document merges `currentPoints: 0` straight over the real total.
+    private var remoteResolved = false
+
+    /// Whether this device already had a file for this account when it signed in.
+    ///
+    /// Decides which side wins for the scalars. See `pullRemoteState`.
+    private var hasLocalCopy = false
+
     init(userId: String? = nil,
          data: PersistedState? = nil,
          sync: UserStateSyncing? = nil) {
         self.userId = userId
         self.sync = sync
-        self.data = data ?? PersistenceStore.load(userId: userId ?? PersistenceStore.signedOutUserId)
+        let stored = PersistenceStore.load(userId: userId ?? PersistenceStore.signedOutUserId)
+        self.hasLocalCopy = stored != nil
+        self.data = data ?? stored ?? PersistedState()
         evaluateIfNeeded()
         backfillGlobeStageAnnouncement()
     }
@@ -50,8 +72,15 @@ final class AppState: ObservableObject {
     /// sign-in button *as well* gives two sources of truth that drift apart.
     func signedIn(uid: String, displayName: String? = nil) {
         guard userId != uid else { return }
+
+        // Closed until `pullRemoteState` has run. Everything below this line mutates,
+        // and on a reinstall `data` is blank — see `remoteResolved`.
+        remoteResolved = false
+
         userId = uid
-        data = PersistenceStore.load(userId: uid)
+        let stored = PersistenceStore.load(userId: uid)
+        hasLocalCopy = stored != nil
+        data = stored ?? PersistedState()
 
         // Apple hands over the name on the FIRST EVER sign-in for an Apple ID and never
         // again, not even after a reinstall. If it is not captured here it is gone.
@@ -66,21 +95,35 @@ final class AppState: ObservableObject {
         Task { await pullRemoteState(uid: uid) }
     }
 
-    /// Adopt the account's server-side state, if it has any.
+    /// Reconcile with the account's server-side state, then open the gate on writes.
     ///
-    /// **Remote wins on sign-in.** This is the case that matters: a reinstall, or a
-    /// second device, where the local file is empty and the server has the real history.
-    /// The reverse — remote empty, local populated — creates the document from what is
-    /// here, which is what makes an existing local account survive its first sign-in.
+    /// **The scalars — points, streak, Earth — are restored from the server only when
+    /// this device has no file of its own.** That one condition is what separates the
+    /// two cases, and they want opposite answers:
+    ///
+    /// - *Reinstalled, or a second device.* No local file. The server holds the only
+    ///   copy and must win, or the account starts from zero.
+    /// - *Used offline, now back on wifi.* A local file exists and is **ahead** of the
+    ///   server. Applying the server here would roll the user backwards and then push
+    ///   the rolled-back numbers up, making the loss permanent.
+    ///
+    /// Taking "remote always wins" got the first case right and the second one exactly
+    /// wrong. The local file is the working copy; Firestore is its backup, restored when
+    /// there is nothing to restore *to*.
+    ///
+    /// History is the exception and is always **merged both ways** — logs and badges are
+    /// immutable facts, so a union loses nothing regardless of which side is ahead.
     ///
     /// Silent on failure by design. No network means no sync, not a broken app; the
-    /// local file is the working copy either way.
+    /// local file is the working copy either way. `remoteResolved` stays false, so the
+    /// session simply stays local and reconciles on the next launch instead of writing
+    /// something it could not verify.
     private func pullRemoteState(uid: String) async {
         guard let sync else { return }
         do {
             var next = data
             if let remote = try await sync.fetch(userId: uid) {
-                remote.apply(to: &next)
+                if !hasLocalCopy { remote.apply(to: &next) }
             } else {
                 // Brand-new account: the local state becomes the server's first copy.
                 try await sync.push(UserDocument(next), userId: uid)
@@ -112,8 +155,21 @@ final class AppState: ObservableObject {
 
             data = next
             PersistenceStore.save(next, userId: uid)
+
+            // The two sides are now reconciled, so writes are safe. Opened BEFORE the
+            // evaluation below, deliberately: whatever that scores is based on the
+            // restored state and belongs on the server. Anything that mutated earlier
+            // in the launch was based on a state that had not been reconciled yet, and
+            // was correctly withheld.
+            remoteResolved = true
+            hasLocalCopy = true
+
             evaluateIfNeeded()
             backfillGlobeStageAnnouncement()
+
+            // What the evaluation just decided is not covered by the filtered pushes
+            // below — those only carry history. Send the scalars too.
+            pushRemoteState(data)
 
             // Push **only what the server does not already have**, so the two sides
             // agree after the first sign-in rather than diverging quietly.
@@ -136,7 +192,12 @@ final class AppState: ObservableObject {
     func signedOut() {
         guard userId != nil else { return }
         userId = nil
-        data = PersistenceStore.load(userId: PersistenceStore.signedOutUserId)
+        // Belt and braces — `pushRemoteState` already refuses without a `userId` — but
+        // leaving it open would mean the next sign-in could write before its own pull.
+        remoteResolved = false
+        let stored = PersistenceStore.load(userId: PersistenceStore.signedOutUserId)
+        hasLocalCopy = stored != nil
+        data = stored ?? PersistedState()
         selectedTab = .home
     }
 
@@ -621,6 +682,14 @@ final class AppState: ObservableObject {
         // deletes logs, since nothing in normal use un-earns a badge, and a reset
         // that clears the history but leaves the trophies is not what the button
         // says it does.
+        //
+        // Both flags are asserted rather than read: a reset is an explicit statement
+        // that the local (now empty) state is the truth, so writes are open and no
+        // later pull may restore over it. Residual race: a reset fired while the
+        // launch pull is still in flight can be overwritten by it, and the fix is to
+        // press it again. Not worth a generation token for a debug-menu action.
+        remoteResolved = true
+        hasLocalCopy = true
         pushRemoteState(data)
         if let sync, let userId {
             Task { try? await sync.purgeSubcollections(userId: userId) }
@@ -692,7 +761,10 @@ final class AppState: ObservableObject {
     /// funnels through `mutate`, so diffing here catches all of them — including the
     /// same-day undo and the reset — with nothing to remember to wire up later.
     private func syncSubcollections(before: PersistedState, after: PersistedState) {
-        guard let sync, let userId else { return }
+        // `remoteResolved` guards deletes as much as writes: before the pull, `before`
+        // is a blank state, so a merge would read every restored log as "added" and —
+        // worse — a wipe would read the server's history as "removed" and delete it.
+        guard let sync, let userId, remoteResolved else { return }
 
         let hadLogs = Set(before.logs.map(\.remoteId))
         let hasLogs = Set(after.logs.map(\.remoteId))
@@ -717,7 +789,7 @@ final class AppState: ObservableObject {
     /// plane. Firestore's own cache queues the write and replays it when the network
     /// returns, so a missed push is deferred rather than lost.
     private func pushRemoteState(_ state: PersistedState) {
-        guard let sync, let userId else { return }
+        guard let sync, let userId, remoteResolved else { return }
         let document = UserDocument(state)
         Task { try? await sync.push(document, userId: userId) }
     }

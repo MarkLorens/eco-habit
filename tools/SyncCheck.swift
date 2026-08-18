@@ -81,4 +81,69 @@ ok("UserDocument excludes logs", !json.contains("\"logs\""))
 ok("UserDocument excludes earnedBadges", !json.contains("earnedBadges"))
 ok("UserDocument excludes hostedFights", !json.contains("hostedFights"))
 
+// --- "no local file" must be distinguishable from "an account at zero" -----------
+//
+// THE REINSTALL BUG. Deleting the app removes the state file but NOT the Firebase
+// sign-in, which lives in the keychain and survives deletion. So the app relaunches
+// already signed in, with nothing on disk. When `load` answered a missing file with a
+// blank `PersistedState`, the app could not tell that apart from a real account at
+// zero — so it treated the blank as truth, echoed it to Firestore, and destroyed the
+// copy it was about to restore from. Streak, points and Earth all came back as 0.
+let ghost = "synccheck-\(UUID().uuidString)"
+PersistenceStore.wipe(userId: ghost)
+ok("load returns nil when there is no file", PersistenceStore.load(userId: ghost) == nil)
+
+var saved = PersistedState()
+saved.currentPoints = 1_640
+saved.streakDays = 12
+PersistenceStore.save(saved, userId: ghost)
+let reloaded = PersistenceStore.load(userId: ghost)
+ok("load returns the state when the file is there", reloaded != nil)
+eq("saved points survive a reload", reloaded?.currentPoints ?? -1, 1_640)
+eq("saved streak survives a reload", reloaded?.streakDays ?? -1, 12)
+
+PersistenceStore.wipe(userId: ghost)
+ok("load returns nil again after a wipe", PersistenceStore.load(userId: ghost) == nil)
+
+// --- every field must be somewhere, or deliberately nowhere ----------------------
+//
+// The reinstall bug is really one instance of "this field is not backed up anywhere".
+// Rather than re-audit by hand each time, this fails whenever a field is added to
+// `PersistedState` without a decision about where it lives remotely. If the new field
+// is not meant to sync, add it to `notSynced` WITH a reason — that is the point.
+let notSynced: [String: String] = [
+    "isLoggedIn":      "dead field, kept only so old files still decode; userId replaced it",
+    "fightSignups":    "Stage 5 — moves to the shared /fights collection",
+    "fightAttendance": "Stage 5 — moves to /attendance/{fightId}_{uid}",
+    "hostedFights":    "Stage 5 — an organiser's events become server-side documents",
+    "hostScans":       "host-scanner subsystem, deferred and unreferenced by any shipped view",
+]
+let inSubcollections: Set<String> = ["logs", "earnedBadges"]
+
+// Populate every optional, or synthesized `encode` skips the nil ones via
+// `encodeIfPresent` and the key never appears to be counted.
+state.lastEvaluatedDate = "2026-08-24"
+state.lastDecayAppliedDay = "2026-08-24"
+state.lastShieldGrantMonth = "2026-08"
+
+let stateKeys = Set((try JSONSerialization.jsonObject(with: enc.encode(state)) as? [String: Any] ?? [:]).keys)
+let docKeys = Set((try JSONSerialization.jsonObject(with: enc.encode(UserDocument(state))) as? [String: Any] ?? [:]).keys)
+
+let unaccounted = stateKeys.subtracting(docKeys).subtracting(inSubcollections).subtracting(notSynced.keys)
+ok("every PersistedState field is synced or listed as not-synced", unaccounted.isEmpty)
+if !unaccounted.isEmpty {
+    print("       unaccounted: \(unaccounted.sorted().joined(separator: ", "))")
+    print("       → add it to UserDocument, or to `notSynced` above with a reason")
+}
+
+// And the reverse: a field listed as not-synced that no longer exists is stale.
+let stale = Set(notSynced.keys).subtracting(stateKeys)
+ok("no stale entries in the not-synced list", stale.isEmpty)
+if !stale.isEmpty { print("       stale: \(stale.sorted().joined(separator: ", "))") }
+
+print("\n  \(docKeys.count) fields synced · \(inSubcollections.count) subcollections · \(notSynced.count) deliberately local")
+for (field, reason) in notSynced.sorted(by: { $0.key < $1.key }) {
+    print("    local-only  \(field) — \(reason)")
+}
+
 print(fails == 0 ? "\nALL PASS" : "\n\(fails) FAILED")
