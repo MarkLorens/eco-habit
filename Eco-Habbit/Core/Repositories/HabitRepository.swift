@@ -43,8 +43,29 @@ enum HabitRepository {
         let remaining = cooldownRemaining(habit, on: day, in: state)
         guard remaining == 0 else { return .onCooldown(daysRemaining: remaining) }
 
-        append(habit, on: day, source: source, in: &state)
-        return .logged(points: habit.basePoints)
+        // The cap is measured in BASE points and applied before the multipliers,
+        // so a long streak never makes somebody hit the ceiling sooner than a
+        // new user would. See PointsCalculationService for why that ordering.
+        let breakdown = points.breakdown(
+            habit: habit,
+            hasEvidence: source == .visualSearch,
+            currentStreak: state.streakDays,
+            isPrioritized: false,          // regional bonus is built but dormant
+            basePointsUsedToday: basePointsUsed(on: day, in: state)
+        )
+
+        append(habit, on: day, source: source, breakdown: breakdown, in: &state)
+        return .logged(points: breakdown.finalPoints)
+    }
+
+    /// The economy. A `let` rather than a parameter because every logging path
+    /// must price an action identically — a caller that could pass its own
+    /// configuration is a caller that can disagree with the rest of the app.
+    private static let points = PointsCalculationService()
+
+    /// Base points already spent against today's ceiling.
+    static func basePointsUsed(on day: String, in state: PersistedState) -> Int {
+        points.basePointsUsed(in: logs(on: day, in: state))
     }
 
     /// Un-logging is permitted within the same day only. Points reverse for free
@@ -61,8 +82,8 @@ enum HabitRepository {
 
     // MARK: - Reads
 
-    static func dailyTotal(on day: String, habits: [Habit], in state: PersistedState) -> Int {
-        PointsEngine.dailyTotal(logs: logs(on: day, in: state), habits: habits)
+    static func dailyTotal(on day: String, in state: PersistedState) -> Int {
+        PointsEngine.dailyTotal(logs: logs(on: day, in: state))
     }
 
     static func logs(on day: String, in state: PersistedState) -> [HabitLog] {
@@ -105,7 +126,14 @@ enum HabitRepository {
             && cooldownRemaining(habit, on: day, in: state) == 0
     }
 
-    private static func append(_ habit: Habit, on day: String, source: HabitLog.Source, in state: inout PersistedState) {
-        state.logs.append(HabitLog(habitId: habit.id, localDate: day, source: source))
+    private static func append(_ habit: Habit,
+                               on day: String,
+                               source: HabitLog.Source,
+                               breakdown: PointsBreakdown,
+                               in state: inout PersistedState) {
+        state.logs.append(HabitLog(habitId: habit.id,
+                                   localDate: day,
+                                   source: source,
+                                   breakdown: breakdown))
     }
 }

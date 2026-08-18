@@ -75,7 +75,7 @@ final class AppState: ObservableObject {
 
     var todaysLogs: [HabitLog] { HabitRepository.logs(on: today, in: data) }
 
-    var dailyPoints: Int { HabitRepository.dailyTotal(on: today, habits: MockData.habits, in: data) }
+    var dailyPoints: Int { HabitRepository.dailyTotal(on: today, in: data) }
 
     var dailyProgress: Double {
         min(1, Double(dailyPoints) / Double(PointsEngine.dailyTarget))

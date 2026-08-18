@@ -128,8 +128,9 @@ struct Habit: Identifiable, Codable, Hashable {
 /// One completion. Authoritative — every number in the app is derived from these,
 /// and a derived total is never stored.
 ///
-/// Unchanged in this step. It gains the points breakdown when Tio's
-/// `ActivityLog` lands.
+/// **Carries the points breakdown as it was awarded.** Recomputing a past log's
+/// value from today's config would let a retune of the friction table, or the
+/// user's streak moving, silently rewrite history. What was earned was earned.
 struct HabitLog: Codable, Hashable, Identifiable {
     var id = UUID()
     let habitId: String
@@ -138,18 +139,76 @@ struct HabitLog: Codable, Hashable, Identifiable {
     let loggedAt: Date
     let source: Source
 
-    init(id: UUID = UUID(), habitId: String, localDate: String, loggedAt: Date = Date(), source: Source) {
+    // MARK: - Points, frozen at log time
+
+    /// What the habit is worth before the daily cap.
+    let basePoints: Int
+    /// What actually counted against the cap — less than `basePoints` on the log
+    /// that crosses the ceiling. This, not `basePoints`, is what spends the day's
+    /// allowance, or a capped log would eat quota it never received credit for.
+    let countedBasePoints: Int
+    let evidenceBonus: Double
+    let streakMultiplier: Double
+    let priorityMultiplier: Double
+    /// The number the user was actually shown.
+    let finalPoints: Int
+
+    var wasCappedByDailyLimit: Bool { countedBasePoints < basePoints }
+
+    init(id: UUID = UUID(),
+         habitId: String,
+         localDate: String,
+         loggedAt: Date = Date(),
+         source: Source,
+         breakdown: PointsBreakdown? = nil) {
         self.id = id
         self.habitId = habitId
         self.localDate = localDate
         self.loggedAt = loggedAt
         self.source = source
+        self.basePoints = breakdown?.basePoints ?? 0
+        self.countedBasePoints = breakdown?.countedBasePoints ?? 0
+        self.evidenceBonus = breakdown?.evidenceBonus ?? 1
+        self.streakMultiplier = breakdown?.streakMultiplier ?? 1
+        self.priorityMultiplier = breakdown?.priorityMultiplier ?? 1
+        self.finalPoints = breakdown?.finalPoints ?? 0
     }
 
     enum Source: String, Codable {
         case checklist
         case visualSearch
         case fightCheckIn
+    }
+
+    // MARK: - Decoding
+
+    private enum CodingKeys: String, CodingKey {
+        case id, habitId, localDate, loggedAt, source
+        case basePoints, countedBasePoints, evidenceBonus
+        case streakMultiplier, priorityMultiplier, finalPoints
+    }
+
+    /// Hand-written because the points fields are new. Synthesized `Decodable`
+    /// ignores property defaults and throws `keyNotFound` on a missing key, so a
+    /// log saved before this existed would fail to decode and take the whole
+    /// `PersistedState` with it. `decodeIfPresent` reads those as zero instead.
+    ///
+    /// A pre-existing log therefore scores 0. That is already true regardless:
+    /// the catalogue ids changed with the friction catalogue, so an old log
+    /// points at a habit that is no longer there.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        habitId = try c.decode(String.self, forKey: .habitId)
+        localDate = try c.decode(String.self, forKey: .localDate)
+        loggedAt = try c.decode(Date.self, forKey: .loggedAt)
+        source = try c.decode(Source.self, forKey: .source)
+        basePoints = try c.decodeIfPresent(Int.self, forKey: .basePoints) ?? 0
+        countedBasePoints = try c.decodeIfPresent(Int.self, forKey: .countedBasePoints) ?? 0
+        evidenceBonus = try c.decodeIfPresent(Double.self, forKey: .evidenceBonus) ?? 1
+        streakMultiplier = try c.decodeIfPresent(Double.self, forKey: .streakMultiplier) ?? 1
+        priorityMultiplier = try c.decodeIfPresent(Double.self, forKey: .priorityMultiplier) ?? 1
+        finalPoints = try c.decodeIfPresent(Int.self, forKey: .finalPoints) ?? 0
     }
 }
 

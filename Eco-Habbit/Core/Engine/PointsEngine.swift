@@ -1,31 +1,35 @@
 import Foundation
 
-/// The daily target and the daily ceiling.
+/// What the day's rings read against.
 ///
-/// **Being replaced.** `PointsCalculationService` is the friction-based engine
-/// this is handing over to; what is left here is the day's raw base-point total,
-/// which the views still read. The tier table went with `Habit.Tier` — base
-/// points now come off the habit itself, where a retune of the friction table
-/// cannot rewrite what a past log was already worth.
+/// **Mostly handed over.** `PointsCalculationService` now owns pricing; the two
+/// numbers left here are the progress denominators the dashboard draws, and they
+/// come from `PointsConfiguration` so there is one place to retune the economy.
 enum PointsEngine {
-    static let dailyTarget = 30
-    static let dailyCap = 60
 
-    /// Base points earned on one day, before any multiplier, capped.
+    /// A good day. Not a limit — the ring simply fills at this point.
     ///
-    /// The cap is applied here rather than at write time on purpose: the user
-    /// really did the work past the ceiling and it belongs in their history, it
-    /// just stops moving the Earth.
-    static func dailyTotal(logs: [HabitLog], habits: [Habit]) -> Int {
-        let byId = Dictionary(habits.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    /// Left at main's value. The friction economy has no "target" concept of its
+    /// own, and moving this would change what the dashboard ring reads without
+    /// anybody deciding to.
+    static let dailyTarget = 30
+
+    /// The base-point ceiling for one day.
+    static var dailyCap: Int { PointsConfiguration.default.dailyBasePointsCap }
+
+    /// Points earned on one day, as they were awarded.
+    ///
+    /// Summed from the logs rather than recomputed from the catalogue: each log
+    /// froze its own multipliers at the moment it was made, and the cap was
+    /// already applied there. Re-deriving here would let today's streak restate
+    /// what yesterday was worth.
+    static func dailyTotal(logs: [HabitLog]) -> Int {
         var counted = Set<String>()
         var total = 0
-
         for log in logs where counted.insert(log.habitId).inserted {
-            guard let habit = byId[log.habitId] else { continue }
-            total += habit.basePoints
+            total += log.finalPoints
         }
-        return min(total, dailyCap)
+        return total
     }
 
     /// Vitality is already 0–100, which is what the globe renders.

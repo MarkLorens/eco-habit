@@ -59,7 +59,7 @@ enum EvaluationLoop {
     private static func score(day: String, state: inout PersistedState, habits: [Habit]) {
         let shielded = state.shieldedDates.contains(day)
         let fightAttended = state.fightAttendedDates.contains(day)
-        let points = HabitRepository.dailyTotal(on: day, habits: habits, in: state)
+        let points = HabitRepository.dailyTotal(on: day, in: state)
 
         if shielded {
             // Streak preserved, not extended (PRD §2.4).
