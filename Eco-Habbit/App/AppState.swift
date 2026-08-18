@@ -149,18 +149,34 @@ final class AppState: ObservableObject {
         data.logs.filter { MockData.habitsById[$0.habitId]?.category == category }.count
     }
 
+    /// The catalogue joined with this account's awards.
+    var badges: [Badge] { badgeService.display(catalogue: MockData.badges, earned: data.earnedBadges) }
+
+    /// **Reads the award record, not live criteria.** Earned is permanent: decay
+    /// can take the points back without taking the badge, which is what the spec
+    /// says and what anybody who earned it would expect.
     func isUnlocked(_ badge: Badge) -> Bool {
-        switch badge.requirement {
-        case .totalActions(let n): return totalActionsLogged >= n
-        case .streak(let n): return max(displayStreak, data.longestStreak) >= n
-        // The badge criterion is still expressed as a 0–100 reading, so it reads
-        // the derived `vitality` rather than raw points. "Reef Guardian at 86"
-        // therefore still means the same place on the journey it always did.
-        case .vitality(let n): return vitality >= n
-        case .categoryActions(let category, let n): return actionCount(in: category) >= n
-        case .seasonal: return false
+        data.earnedBadges.contains { $0.badgeId == badge.id }
+    }
+
+    /// How close an unearned badge is, 0–1.
+    func progress(towards badge: Badge) -> Double {
+        badgeService.progress(for: badge, state: data, today: today)
+    }
+
+    /// Awards anything newly reached. Called after every log and check-in.
+    private func awardNewBadges() {
+        mutate { state in
+            let already = Set(state.earnedBadges.map(\.badgeId))
+            let fresh = badgeService.newlyEarned(from: MockData.badges,
+                                                 state: state,
+                                                 alreadyEarned: already,
+                                                 today: Day.today())
+            state.earnedBadges.append(contentsOf: fresh)
         }
     }
+
+    private let badgeService = BadgeEvaluationService()
     
     var pendingBadge: Badge? {
         MockData.badges.first{ isUnlocked($0) && !data.announcedBadgeIds.contains($0.id) }
@@ -199,6 +215,9 @@ final class AppState: ObservableObject {
         switch result {
         case .logged(let points):
             lastAward = Award(habit: habit, points: points)
+            // Awarded here, after the log has landed, so the counters the
+            // criteria read are already up to date.
+            awardNewBadges()
         case .alreadyLogged, .onCooldown, .retroactive:
             break
         }
@@ -289,8 +308,9 @@ final class AppState: ObservableObject {
         mutate { result = FightRepository.checkIn(to: fight, in: &$0, now: Date()) }
 
         switch result {
-        case .checkedIn(let gain):
-            toast = Toast(kind: .success, message: "Checked in — +\(gain) Vitality for today.")
+        case .checkedIn(let points):
+            awardNewBadges()
+            toast = Toast(kind: .success, message: "Checked in — +\(points) pts.")
         case .notSignedUp:
             toast = Toast(kind: .warning, message: "Sign up before checking in.")
         case .alreadyCheckedIn:

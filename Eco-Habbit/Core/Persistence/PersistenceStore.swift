@@ -77,6 +77,11 @@ struct PersistedState: Codable {
     /// Scans taken on this device, keyed by fight id.
     var hostScans: [String: [HostScan]] = [:]
     
+    /// **Award records, not flags.** A badge is earned once and stays earned; the
+    /// catalogue is joined onto these for display. Recomputing `isUnlocked` from
+    /// live criteria meant decay could silently take a badge back.
+    var earnedBadges: [EarnedBadge] = []
+
     // Badge unlock "event" testing
     var announcedBadgeIds: Set<String> = []
 
@@ -131,6 +136,7 @@ struct PersistedState: Codable {
         orgName             = try v(.orgName, "")
         hostedFights        = try v(.hostedFights, [])
         hostScans           = try v(.hostScans, [:])
+        earnedBadges        = try v(.earnedBadges, [])
         announcedBadgeIds   = try v(.announcedBadgeIds, [])
     }
 }
