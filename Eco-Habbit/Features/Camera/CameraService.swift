@@ -159,8 +159,12 @@ private final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBuff
         // `.right` is the back camera's native landscape buffer seen in portrait.
         // Get this wrong and Vision feeds the encoder a sideways image, which
         // scores wrong-but-plausible for everything.
-        guard let results = try? classifier.search(buffer, orientation: .right) else { return }
-        onResults?(results)
+        // `search` now returns a whole ranked frame — habits, the strongest
+        // distractor, and the winner's share of the field. The camera screen
+        // still only consumes the habit list; the rest arrives with the view
+        // work, so this takes the one field it already knew about.
+        guard let frame = try? classifier.search(buffer, orientation: .right) else { return }
+        onResults?(frame.habits)
     }
 }
 
