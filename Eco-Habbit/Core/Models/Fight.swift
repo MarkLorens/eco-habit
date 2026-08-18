@@ -46,7 +46,10 @@ struct Fight: Identifiable, Codable, Hashable {
     /// (PRD §6.5.1) — editing is permitted, deletion is not.
     var title: String
     var summary: String
-    var type: FightType
+    /// Chosen by the partner in the admin app. Replaces the old `FightType`:
+    /// the form asks for a Category, and using the same six the rest of the app
+    /// uses means attendance can later count toward category badges.
+    var category: Category
     let hostName: String
     let hostId: String
     var locationName: String
@@ -58,6 +61,14 @@ struct Fight: Identifiable, Codable, Hashable {
     var startsAt: Date
     var endsAt: Date
     var preparationNotes: [String] = []
+
+    /// Asset name for the partner's photo, `nil` while none is supplied.
+    ///
+    /// Deliberately optional rather than a name that might not resolve:
+    /// `Image("missing")` draws nothing and reports no error, so a typo would
+    /// look like a layout bug instead of a missing picture.
+    var imageName: String?
+
     var status: Status = .published
     /// Exhibit seed data is labelled so it can never be mistaken for a real event (§8).
     var isDemo: Bool = false
@@ -100,7 +111,10 @@ struct Fight: Identifiable, Codable, Hashable {
     /// The local day the event falls on — what attendance credits Vitality against.
     var localDate: String { Day.today(startsAt) }
 
-    var isUpcoming: Bool { endsAt > Date() }
+    /// A Fight leaves the public list the moment it starts — the list is for
+    /// things you can still decide to join. Check-in during the event happens
+    /// from Saved or the scanner, not from browsing.
+    var isUpcoming: Bool { startsAt > Date() }
 
     /// PRD §4.5 — opens 1 hour before start, closes 3 hours after end.
     static let checkInOpensBefore: TimeInterval = 60 * 60
@@ -120,57 +134,6 @@ struct Fight: Identifiable, Codable, Hashable {
 /// PRD §4.2 — Fights have their own taxonomy, deliberately not mapped onto habit
 /// categories. A mangrove planting isn't "Water" or "Food", and forcing the mapping
 /// would distort both lists.
-enum FightType: String, Codable, CaseIterable, Identifiable, Hashable {
-    case beachCleanup
-    case riverCleanup
-    case mangrovePlanting
-    case treePlanting
-    case reefRestoration
-    case wasteDrive
-    case workshop
-    case wildlifeProtection
-
-    var id: String { rawValue }
-
-    var name: String {
-        switch self {
-        case .beachCleanup: return "Beach Cleanup"
-        case .riverCleanup: return "River Cleanup"
-        case .mangrovePlanting: return "Mangrove Planting"
-        case .treePlanting: return "Tree Planting"
-        case .reefRestoration: return "Reef Restoration"
-        case .wasteDrive: return "Waste Drive"
-        case .workshop: return "Workshop"
-        case .wildlifeProtection: return "Wildlife Protection"
-        }
-    }
-
-    var shortName: String {
-        switch self {
-        case .beachCleanup: return "Beach"
-        case .riverCleanup: return "River"
-        case .mangrovePlanting: return "Mangrove"
-        case .treePlanting: return "Trees"
-        case .reefRestoration: return "Reef"
-        case .wasteDrive: return "Waste"
-        case .workshop: return "Workshop"
-        case .wildlifeProtection: return "Wildlife"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .beachCleanup: return "beach.umbrella"
-        case .riverCleanup: return "water.waves"
-        case .mangrovePlanting: return "tree"
-        case .treePlanting: return "leaf"
-        case .reefRestoration: return "fish"
-        case .wasteDrive: return "arrow.3.trianglepath"
-        case .workshop: return "hammer"
-        case .wildlifeProtection: return "pawprint"
-        }
-    }
-}
 
 /// Proof of attendance, written on the attendee's **own** device when they enter
 /// the organiser's code.

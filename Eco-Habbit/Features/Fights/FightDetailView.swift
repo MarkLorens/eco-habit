@@ -51,14 +51,15 @@ struct FightDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: Theme.S.x2) {
             HStack(spacing: Theme.S.x2) {
-                Image(systemName: fight.type.symbol)
+                Image(fight.category.iconAssetName)
+                    .resizable().scaledToFit().frame(width: 18, height: 18)
                     .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(Theme.C.accent2_700)
                     .frame(width: 40, height: 40)
                     .background(Circle().fill(Theme.C.accent2_100))
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(fight.type.name)
+                    Text(fight.category.displayName)
                         .font(Theme.F.body(12, weight: .semibold))
                         .foregroundStyle(Theme.C.neutral600)
                     Text(fight.hostName)

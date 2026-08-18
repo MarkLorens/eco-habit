@@ -1,32 +1,36 @@
 import Foundation
 
-/// `fights.json` stores each event as an **offset from launch**, not an absolute date.
+/// One entry in `fights.json`.
 ///
-/// Absolute dates in seed data go stale: a week after they are written the whole list is
-/// in the past and the exhibit demo shows an empty screen. Offsets mean the seeded events
-/// are always upcoming, and `f1` — offset −1h, 10h long — always has an **open check-in
-/// window**, which is exactly what PRD §12.1 asks for.
+/// Dates are absolute ISO 8601, matching what the partner admin app writes.
+/// The previous format stored offsets from launch so seeded demo events never
+/// went stale — that trick is gone now that real partners supply real dates,
+/// so **the seed file has to be refreshed when its dates pass** or the list
+/// shows nothing.
 struct FightSeed: Codable {
     let id: String
     let title: String
     let summary: String
-    let type: FightType
+    /// One of the six the rest of the app uses, not a Fight-only taxonomy.
+    let category: Category
     let hostName: String
     let hostId: String
     let locationName: String
     let address: String
     let latitude: Double?
     let longitude: Double?
-    /// Hours from now. Negative means it has already started.
-    let startOffsetHours: Double
-    let durationHours: Double
+    let startsAt: Date
+    let endsAt: Date
+
+    /// Asset name for the partner's photo. Omit while there is none.
+    var imageName: String?
 
     /// Fixed in the seed file, not generated.
     ///
     /// `Fight.checkInCode` defaults to a fresh random code, which is right for a
-    /// Fight a real organiser creates — but seeded demo Fights are re-materialised
-    /// on every launch, so a generated code would change each time and any
-    /// printed card or poster at the booth would stop working.
+    /// Fight a real organiser creates — but a generated code would change on
+    /// every launch, and any printed card or poster at the booth would stop
+    /// working.
     let checkInCode: String
 
     /// Optional: `f7` has none, so "points only" has a demo case too.
@@ -35,22 +39,22 @@ struct FightSeed: Codable {
     var preparationNotes: [String] = []
     var isDemo: Bool = true
 
-    func materialise(now: Date = Date()) -> Fight {
-        let start = now.addingTimeInterval(startOffsetHours * 3600)
-        return Fight(
+    func materialise() -> Fight {
+        Fight(
             id: id,
             title: title,
             summary: summary,
-            type: type,
+            category: category,
             hostName: hostName,
             hostId: hostId,
             locationName: locationName,
             address: address,
             latitude: latitude,
             longitude: longitude,
-            startsAt: start,
-            endsAt: start.addingTimeInterval(durationHours * 3600),
+            startsAt: startsAt,
+            endsAt: endsAt,
             preparationNotes: preparationNotes,
+            imageName: imageName,
             status: .published,
             isDemo: isDemo,
             checkInCode: checkInCode,

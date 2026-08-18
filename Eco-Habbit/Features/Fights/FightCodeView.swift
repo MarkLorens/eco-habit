@@ -144,3 +144,7 @@ struct FightCodeView: View {
         return UIImage(cgImage: cgImage)
     }
 }
+
+//#Preview {
+//    FightCodeView(fight: MockFightData.seeded[0])
+//}

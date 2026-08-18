@@ -356,11 +356,11 @@ final class AppState: ObservableObject {
         return result
     }
 
-    func newDraft(type: FightType = .beachCleanup) -> Fight {
+    func newDraft(category: Category = .actions) -> Fight {
         let start = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
         return Fight(
             id: "host-\(UUID().uuidString.prefix(8))",
-            title: "", summary: "", type: type,
+            title: "", summary: "", category: category,
             hostName: orgName, hostId: userId,
             locationName: "", address: "",
             latitude: nil, longitude: nil,

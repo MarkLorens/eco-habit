@@ -124,7 +124,7 @@ enum FightRepository {
     /// The list is chronological. No map, no distance filter in v1.
     static func upcoming(_ fights: [Fight], now: Date = Date()) -> [Fight] {
         fights
-            .filter { $0.status == .published && $0.endsAt > now }
+            .filter { $0.status == .published && $0.startsAt > now }
             .sorted { $0.startsAt < $1.startsAt }
     }
 

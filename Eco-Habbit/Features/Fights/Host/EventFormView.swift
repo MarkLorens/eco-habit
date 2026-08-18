@@ -31,9 +31,9 @@ struct EventFormView: View {
             Form {
                 Section("What") {
                     TextField("Title", text: $draft.title)
-                    Picker("Type", selection: $draft.type) {
-                        ForEach(FightType.allCases) { type in
-                            Label(type.name, systemImage: type.symbol).tag(type)
+                    Picker("Category", selection: $draft.category) {
+                        ForEach(Category.allCases) { category in
+                            Text(category.displayName).tag(category)
                         }
                     }
                     TextField("Short description", text: $draft.summary, axis: .vertical)

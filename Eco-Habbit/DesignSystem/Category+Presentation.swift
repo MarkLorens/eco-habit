@@ -39,6 +39,19 @@ extension Category {
         }
     }
 
+    /// Ikon datar per kategori, dipakai sebagai isi placeholder thumbnail
+    /// selama partner belum mengunggah foto.
+    var iconAssetName: String {
+        switch self {
+        case .foodConsumption:  return "consumption-icon"
+        case .water:            return "water-icon"
+        case .wasteManagement:  return "waste-icon"
+        case .energy:           return "energy-icon"
+        case .mobility:         return "mobility-icon"
+        case .actions:          return "actions-icon"
+        }
+    }
+
     var mascotName: String {
         switch self {
         case .foodConsumption:  return Tokens.Icons.mascotConsumption

@@ -2,11 +2,12 @@ import Foundation
 
 /// Seeded Fights for the demo.
 ///
-/// Loaded from `Resources/fights.json` as **offsets from launch**, not absolute
-/// dates. Absolute dates in seed data go stale — a week after writing them the
-/// whole list is in the past and the exhibit demo shows an empty screen. `f1`
-/// is offset −1h over 10h, so there is always one Fight with an open check-in
-/// window, which is what §12.1's booth demo needs.
+/// Loaded from `Resources/fights.json` with absolute ISO 8601 dates, matching
+/// what the partner admin app writes.
+///
+/// The offsets-from-launch trick this used to rely on is gone, so **the seed
+/// dates need refreshing once they pass** — a Fight is dropped from the list
+/// the moment it starts.
 nonisolated enum MockFightData {
 
     static let seeded: [Fight] = {
@@ -14,7 +15,11 @@ nonisolated enum MockFightData {
             fatalError("fights.json is missing from the bundle")
         }
         do {
-            let seeds = try JSONDecoder().decode([FightSeed].self, from: Data(contentsOf: url))
+            let decoder = JSONDecoder()
+            // Wajib: tanpa ini strategi bawaan membaca tanggal sebagai detik
+            // sejak 2001, dan seluruh file gagal di-decode.
+            decoder.dateDecodingStrategy = .iso8601
+            let seeds = try decoder.decode([FightSeed].self, from: Data(contentsOf: url))
             return seeds.map { $0.materialise() }
         } catch {
             fatalError("fights.json failed to decode: \(error)")
