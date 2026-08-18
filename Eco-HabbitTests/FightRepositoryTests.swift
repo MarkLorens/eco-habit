@@ -1,20 +1,14 @@
 import XCTest
 @testable import Eco_Habbit
 
-/// Saving a Fight, and checking in with the organiser's code.
+/// PRD §4.4 signup rules and §4.5 check-in rules.
 final class FightRepositoryTests: XCTestCase {
 
     private let now = Date(timeIntervalSince1970: 1_800_000_000)   // fixed clock
-    private let code = "BERAWA"
 
-    /// A Fight running from `startsIn` hours from `now`, for `duration` hours.
-    private func fight(
-        _ id: String = "f1",
-        startsIn hours: Double,
-        duration: Double = 3,
-        status: Fight.Status = .published,
-        badge: String? = nil
-    ) -> Fight {
+    /// An event running from `startsIn` hours from `now`, for `duration` hours.
+    private func fight(_ id: String = "f1", startsIn hours: Double, duration: Double = 3,
+                       status: Fight.Status = .published) -> Fight {
         let start = now.addingTimeInterval(hours * 3600)
         return Fight(
             id: id, title: "Cleanup", summary: "", type: .beachCleanup,
@@ -22,270 +16,182 @@ final class FightRepositoryTests: XCTestCase {
             locationName: "Berawa", address: "Canggu",
             latitude: nil, longitude: nil,
             startsAt: start, endsAt: start.addingTimeInterval(duration * 3600),
-            status: status,
-            checkInCode: code,
-            rewardBadgeId: badge
+            status: status
         )
     }
 
-    private func state() -> UserState {
-        var state = UserState(userId: "test-user")
-        state.currentPoints = 500
+    private func state() -> PersistedState {
+        var state = PersistedState()
+        state.vitality = 50
         return state
     }
 
-    // MARK: - Saved (a bookmark, nothing more)
+    // MARK: - Signup
 
-    func testToggleSavedOnAndOff() {
+    func testSignUpThenCancel() {
         let f = fight(startsIn: 48)
         var s = state()
 
-        XCTAssertTrue(FightRepository.toggleSaved(f.id, in: &s))
-        XCTAssertTrue(FightRepository.isSaved(f.id, in: s))
+        XCTAssertEqual(FightRepository.signUp(for: f, in: &s, now: now), .signedUp)
+        XCTAssertTrue(FightRepository.isSignedUp(f.id, in: s))
 
-        XCTAssertFalse(FightRepository.toggleSaved(f.id, in: &s))
-        XCTAssertFalse(FightRepository.isSaved(f.id, in: s))
-        XCTAssertTrue(s.savedFightIds.isEmpty, "unsaving must not leave a tombstone")
+        XCTAssertTrue(FightRepository.cancelSignup(for: f.id, in: &s, now: now))
+        XCTAssertFalse(FightRepository.isSignedUp(f.id, in: s))
     }
 
-    func testSavedListDropsFinishedFights() {
-        let upcoming = fight("upcoming", startsIn: 48)
-        let finished = fight("finished", startsIn: -48)
+    func testSignUpIsIdempotent() {
+        let f = fight(startsIn: 48)
         var s = state()
-        FightRepository.toggleSaved(upcoming.id, in: &s)
-        FightRepository.toggleSaved(finished.id, in: &s)
 
-        let saved = FightRepository.saved([upcoming, finished], in: s, now: now)
-        XCTAssertEqual(saved.map(\.id), ["upcoming"],
-                       "a saved Fight that has already happened is not a shortlist item")
+        FightRepository.signUp(for: f, in: &s, now: now)
+        XCTAssertEqual(FightRepository.signUp(for: f, in: &s, now: now), .alreadySignedUp)
+        XCTAssertEqual(s.fightSignups.count, 1)
     }
 
-    func testSavedListIsSoonestFirst() {
-        let later = fight("later", startsIn: 96)
-        let sooner = fight("sooner", startsIn: 24)
+    func testCannotJoinAFinishedFight() {
         var s = state()
-        FightRepository.toggleSaved(later.id, in: &s)
-        FightRepository.toggleSaved(sooner.id, in: &s)
-
-        XCTAssertEqual(FightRepository.saved([later, sooner], in: s, now: now).map(\.id),
-                       ["sooner", "later"])
+        XCTAssertEqual(FightRepository.signUp(for: fight(startsIn: -48), in: &s, now: now), .eventFinished)
     }
 
-    /// The rule that separates a bookmark from an RSVP.
-    func testCheckInDoesNotRequireSaving() {
+    func testCannotJoinACancelledFight() {
+        var s = state()
+        let f = fight(startsIn: 48, status: .cancelled)
+        XCTAssertEqual(FightRepository.signUp(for: f, in: &s, now: now), .eventCancelled)
+    }
+
+    /// Re-joining issues a fresh token, so a screenshot of the old QR is worthless.
+    func testRejoiningIssuesANewToken() {
+        let f = fight(startsIn: 48)
+        var s = state()
+
+        FightRepository.signUp(for: f, in: &s, now: now)
+        let first = s.fightSignups[f.id]?.checkInToken
+        FightRepository.cancelSignup(for: f.id, in: &s, now: now)
+        FightRepository.signUp(for: f, in: &s, now: now)
+
+        XCTAssertNotEqual(first, s.fightSignups[f.id]?.checkInToken)
+        XCTAssertTrue(FightRepository.isSignedUp(f.id, in: s))
+    }
+
+    // MARK: - Check-in window (§4.5: −1h / +3h)
+
+    func testCheckInWindowBounds() {
+        let f = fight(startsIn: 0, duration: 3)
+        XCTAssertFalse(f.isCheckInOpen(at: now.addingTimeInterval(-61 * 60)), "61 min before start")
+        XCTAssertTrue(f.isCheckInOpen(at: now.addingTimeInterval(-59 * 60)), "59 min before start")
+        XCTAssertTrue(f.isCheckInOpen(at: now.addingTimeInterval(3 * 3600)), "at the end")
+        XCTAssertTrue(f.isCheckInOpen(at: now.addingTimeInterval(5.9 * 3600)), "within +3h of the end")
+        XCTAssertFalse(f.isCheckInOpen(at: now.addingTimeInterval(6.1 * 3600)), "past +3h")
+    }
+
+    func testCheckInTooEarlyIsRejected() {
+        let f = fight(startsIn: 48)
+        var s = state()
+        FightRepository.signUp(for: f, in: &s, now: now)
+
+        XCTAssertEqual(FightRepository.checkIn(to: f, in: &s, now: now), .windowClosed)
+        XCTAssertTrue(s.fightAttendedDates.isEmpty)
+    }
+
+    func testCheckInRequiresSignup() {
         let f = fight(startsIn: 0)
         var s = state()
-
-        XCTAssertFalse(FightRepository.isSaved(f.id, in: s), "precondition: not saved")
-        guard case .checkedIn = FightRepository.checkIn(to: f, code: code, in: &s, now: now) else {
-            return XCTFail("someone who walks past a Fight must still be able to join it")
-        }
+        XCTAssertEqual(FightRepository.checkIn(to: f, in: &s, now: now), .notSignedUp)
     }
 
-    // MARK: - Check-in by code
+    // MARK: - Attendance
 
-    func testCorrectCodeAwardsPoints() {
+    func testCheckInMarksTheDayForTheEvaluationLoop() {
         let f = fight(startsIn: 0)
         var s = state()
+        FightRepository.signUp(for: f, in: &s, now: now)
 
-        guard case .checkedIn(let points, let capped, let badge) =
-                FightRepository.checkIn(to: f, code: code, in: &s, now: now) else {
-            return XCTFail("expected a check-in")
-        }
-        XCTAssertEqual(points, f.attendancePoints)
-        XCTAssertFalse(capped)
-        XCTAssertNil(badge)
-        XCTAssertEqual(s.currentPoints, 500 + f.attendancePoints)
-        XCTAssertTrue(FightRepository.hasAttended(f.id, in: s))
+        XCTAssertEqual(FightRepository.checkIn(to: f, in: &s, now: now),
+                       .checkedIn(vitalityGain: 10))
+        XCTAssertTrue(s.fightAttendedDates.contains(Day.today(now)))
+        XCTAssertNotNil(s.fightAttendance[f.id])
     }
 
-    func testWrongCodeAwardsNothing() {
+    /// Vitality is *not* moved at check-in — the loop applies it when it scores the day.
+    /// Same split as §9.3: the attendance record is the truth, Vitality is derived.
+    func testCheckInDoesNotTouchVitalityDirectly() {
         let f = fight(startsIn: 0)
         var s = state()
+        FightRepository.signUp(for: f, in: &s, now: now)
+        FightRepository.checkIn(to: f, in: &s, now: now)
 
-        XCTAssertEqual(FightRepository.checkIn(to: f, code: "NOPE12", in: &s, now: now), .wrongCode)
-        XCTAssertEqual(s.currentPoints, 500, "a wrong code must not move the score")
-        XCTAssertFalse(FightRepository.hasAttended(f.id, in: s))
+        XCTAssertEqual(s.vitality, 50, "check-in records a date; the loop awards the points")
     }
 
-    /// The attendee is typing this on a beach. Rejecting their spacing teaches
-    /// them nothing and just makes the app feel broken.
-    func testCodeIgnoresCaseSpacingAndHyphens() {
-        for entered in ["berawa", " BeRaWa ", "BER-AWA", "b e r a w a"] {
-            var s = state()
-            guard case .checkedIn = FightRepository.checkIn(
-                to: fight(startsIn: 0), code: entered, in: &s, now: now
-            ) else {
-                return XCTFail("\"\(entered)\" should have been accepted")
-            }
-        }
-    }
-
-    func testEmptyCodeIsRejected() {
-        var s = state()
-        XCTAssertEqual(FightRepository.checkIn(to: fight(startsIn: 0), code: "   ", in: &s, now: now),
-                       .wrongCode)
-    }
-
-    func testSecondCheckInIsRefused() {
+    /// §4.5 — one check-in per attendee per event.
+    func testDoubleCheckInIsRejected() {
         let f = fight(startsIn: 0)
         var s = state()
+        FightRepository.signUp(for: f, in: &s, now: now)
+        FightRepository.checkIn(to: f, in: &s, now: now)
 
-        FightRepository.checkIn(to: f, code: code, in: &s, now: now)
-        let after = s.currentPoints
-
-        XCTAssertEqual(FightRepository.checkIn(to: f, code: code, in: &s, now: now), .alreadyCheckedIn)
-        XCTAssertEqual(s.currentPoints, after, "a repeat scan must not pay twice")
+        XCTAssertEqual(FightRepository.checkIn(to: f, in: &s, now: now), .alreadyCheckedIn)
+        XCTAssertEqual(s.fightAttendance.count, 1)
     }
 
-    // MARK: - The window
+    func testCannotCancelAfterAttending() {
+        let f = fight(startsIn: 0)
+        var s = state()
+        FightRepository.signUp(for: f, in: &s, now: now)
+        FightRepository.checkIn(to: f, in: &s, now: now)
 
-    func testCheckInOpensAnHourBeforeTheStart() {
-        var early = state()
-        XCTAssertEqual(
-            FightRepository.checkIn(to: fight(startsIn: 1.5), code: code, in: &early, now: now),
-            .windowClosed
+        XCTAssertFalse(FightRepository.cancelSignup(for: f.id, in: &s, now: now))
+    }
+
+    // MARK: - The full loop, end to end
+
+    /// The Phase 6 exit test, in code: join → check in → the day scores +10 instead of
+    /// its normal delta.
+    func testAttendedDayAwardsTenAndReplacesTheNormalDelta() {
+        let f = fight(startsIn: 0)
+        var s = state()
+        let day = Day.today(now)
+        s.lastEvaluatedDate = Day.adding(-1, to: day)
+
+        FightRepository.signUp(for: f, in: &s, now: now)
+        FightRepository.checkIn(to: f, in: &s, now: now)
+
+        // Score that day by advancing to the next one.
+        EvaluationLoop.evaluate(state: &s, habits: [], today: Day.adding(1, to: day)!)
+
+        XCTAssertEqual(s.vitality, 60, "+10, not the −3 an empty day would have given")
+    }
+
+    // MARK: - Lists
+
+    func testUpcomingIsChronologicalAndExcludesFinished() {
+        let fights = [fight("c", startsIn: 72), fight("a", startsIn: 4),
+                      fight("past", startsIn: -48), fight("b", startsIn: 24)]
+        XCTAssertEqual(FightRepository.upcoming(fights, now: now).map(\.id), ["a", "b", "c"])
+    }
+
+    func testUpcomingExcludesCancelled() {
+        let fights = [fight("live", startsIn: 24), fight("dead", startsIn: 24, status: .cancelled)]
+        XCTAssertEqual(FightRepository.upcoming(fights, now: now).map(\.id), ["live"])
+    }
+
+    // MARK: - Seed data
+
+    /// §12.1 — a visitor must be able to sign up and be checked in live at the booth, so
+    /// at least one seeded event needs an open window whenever the app is launched.
+    func testSeedAlwaysHasAnOpenCheckInWindow() throws {
+        let url = try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "fights", withExtension: "json")
+                ?? Bundle.main.url(forResource: "fights", withExtension: "json")
         )
+        let seeds = try JSONDecoder().decode([FightSeed].self, from: Data(contentsOf: url))
+        let fights = seeds.map { $0.materialise(now: now) }
 
-        var open = state()
-        guard case .checkedIn = FightRepository.checkIn(
-            to: fight(startsIn: 0.5), code: code, in: &open, now: now
-        ) else { return XCTFail("half an hour before the start is inside the window") }
-    }
-
-    func testCheckInClosesThreeHoursAfterTheEnd() {
-        // Ran 3h, ended 3.5h ago — past the 3h grace.
-        var s = state()
-        XCTAssertEqual(
-            FightRepository.checkIn(to: fight(startsIn: -6.5), code: code, in: &s, now: now),
-            .windowClosed
-        )
-    }
-
-    func testCancelledFightRefusesCheckIn() {
-        var s = state()
-        XCTAssertEqual(
-            FightRepository.checkIn(to: fight(startsIn: 0, status: .cancelled), code: code, in: &s, now: now),
-            .eventCancelled
-        )
-    }
-
-    /// A wrong code should say so even when the window is shut — but a *right*
-    /// code outside the window deserves the more useful message.
-    func testWrongCodeOutsideTheWindowStillReadsAsWrongCode() {
-        var s = state()
-        XCTAssertEqual(
-            FightRepository.checkIn(to: fight(startsIn: 48), code: "NOPE12", in: &s, now: now),
-            .wrongCode
-        )
-    }
-
-    // MARK: - Monthly cap
-
-    func testAttendanceDrawsOnTheMonthlyEventQuota() {
-        var s = state()
-        s.monthlyEventPointsEarned = 100
-        s.monthlyEventPointsPeriod = DateKeys.monthKey(for: now)
-
-        // 75-point standard tier, but only 50 of the 150 cap is left.
-        guard case .checkedIn(let points, let capped, _) =
-                FightRepository.checkIn(to: fight(startsIn: 0), code: code, in: &s, now: now) else {
-            return XCTFail("expected a check-in")
-        }
-        XCTAssertEqual(points, 50)
-        XCTAssertTrue(capped)
-        XCTAssertEqual(s.monthlyEventPointsEarned, 150)
-    }
-
-    func testAStaleMonthResetsTheQuota() {
-        var s = state()
-        s.monthlyEventPointsEarned = 150
-        s.monthlyEventPointsPeriod = "1999-01"
-
-        guard case .checkedIn(let points, let capped, _) =
-                FightRepository.checkIn(to: fight(startsIn: 0), code: code, in: &s, now: now) else {
-            return XCTFail("expected a check-in")
-        }
-        XCTAssertEqual(points, 75, "last year's quota must not limit this month")
-        XCTAssertFalse(capped)
-    }
-
-    // MARK: - Badge reward
-
-    func testOrganiserBadgeIsAwardedOnCheckIn() {
-        let f = fight(startsIn: 0, badge: "fight_badge_shoreline")
-        var s = state()
-
-        guard case .checkedIn(_, _, let badge) =
-                FightRepository.checkIn(to: f, code: code, in: &s, now: now) else {
-            return XCTFail("expected a check-in")
-        }
-        XCTAssertEqual(badge?.id, "fight_badge_shoreline")
-        // The award record is written by the caller; what belongs to check-in is
-        // reporting the badge and stamping it on the attendance record.
-        XCTAssertEqual(s.fightAttendance[f.id]?.awardedBadgeId, "fight_badge_shoreline")
-    }
-
-    /// Showing up happened. The quota limits the score, not the record.
-    func testBadgeIsStillAwardedWhenThePointsAreCapped() {
-        var s = state()
-        s.monthlyEventPointsEarned = 150
-        s.monthlyEventPointsPeriod = DateKeys.monthKey(for: now)
-
-        guard case .checkedIn(let points, _, let badge) = FightRepository.checkIn(
-            to: fight(startsIn: 0, badge: "fight_badge_shoreline"), code: code, in: &s, now: now
-        ) else { return XCTFail("expected a check-in") }
-
-        XCTAssertEqual(points, 0)
-        XCTAssertEqual(badge?.id, "fight_badge_shoreline")
-    }
-
-    func testAnUnknownBadgeIdAwardsNothingRatherThanCrashing() {
-        var s = state()
-        guard case .checkedIn(_, _, let badge) = FightRepository.checkIn(
-            to: fight(startsIn: 0, badge: "does_not_exist"), code: code, in: &s, now: now
-        ) else { return XCTFail("expected a check-in") }
-
-        XCTAssertNil(badge)
-        XCTAssertNil(s.fightAttendance["f1"]?.awardedBadgeId)
-    }
-
-    /// A Fight reward must NEVER come out of threshold evaluation.
-    ///
-    /// It used to, via a threshold of 1 satisfied by a flag on `UserState` — which
-    /// made the evaluator responsible for a fact it had no way to know, and split
-    /// the record across two places. It is now awarded directly at check-in.
-    func testFightRewardsAreNeverProducedByThresholdEvaluation() {
-        var s = state()
-        FightRepository.checkIn(
-            to: fight(startsIn: 0, badge: "fight_badge_shoreline"), code: code, in: &s, now: now
-        )
-
-        let earned = BadgeEvaluationService()
-            .newlyEarned(from: MockBadgeData.all, state: s, alreadyEarned: [], at: now)
-
-        XCTAssertFalse(earned.contains { $0.badgeId.hasPrefix("fight_badge_") },
-                       "Fight rewards are given, not reached — the evaluator must skip them")
-    }
-
-    // MARK: - Reads
-
-    func testUpcomingHidesDraftsAndFinishedFights() {
-        let live = fight("live", startsIn: 24)
-        let draft = fight("draft", startsIn: 24, status: .draft)
-        let done = fight("done", startsIn: -48)
-
-        XCTAssertEqual(FightRepository.upcoming([live, draft, done], now: now).map(\.id), ["live"])
-    }
-
-    func testAttendedIsNewestFirst() {
-        let a = fight("a", startsIn: 0)
-        let b = fight("b", startsIn: 0)
-        var s = state()
-
-        FightRepository.checkIn(to: a, code: code, in: &s, now: now)
-        FightRepository.checkIn(to: b, code: code, in: &s, now: now.addingTimeInterval(60))
-
-        XCTAssertEqual(FightRepository.attended([a, b], in: s).map(\.id), ["b", "a"])
+        XCTAssertFalse(fights.isEmpty)
+        XCTAssertTrue(fights.contains { $0.isCheckInOpen(at: now) },
+                      "no seeded Fight is checkable-in right now — the exhibit demo would dead-end")
+        XCTAssertEqual(fights.filter { $0.endsAt > now }.count, fights.count,
+                       "every seeded Fight must still be upcoming")
+        XCTAssertTrue(fights.allSatisfy(\.isDemo), "seed data must be labelled as demo")
     }
 }

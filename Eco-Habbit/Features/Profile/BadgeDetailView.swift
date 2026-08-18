@@ -33,11 +33,8 @@ struct BadgeDetailView: View {
                 
                 ScrollView{
                     LazyVGrid(columns: badgeColumns, spacing: Tokens.Spacing.lg){
-                        // `app.badges` is the bundled catalogue joined with this
-                        // user's award records, so `isUnlocked` is already correct
-                        // and a badge earned before it was retired still appears.
-                        ForEach(app.badges) { badge in
-                            let unlocked = badge.isUnlocked
+                        ForEach(MockData.badges) { badge in
+                            let unlocked = app.isUnlocked(badge)
                             Button{
                                 badgeDetail = badge
                             } label: {
@@ -74,11 +71,12 @@ private struct Locked: View {
 }
 
 
-// `#Preview` compiles in Release too, and `AppState.preview` is DEBUG-only —
-// the same trap that once broke the Release build via TimeTravelMenu.
-#if DEBUG
-#Preview("Badges") {
+#Preview("Badges · mostly unlocked") {
     BadgeDetailView()
-        .environmentObject(AppState.preview)
+        .environmentObject(AppState(data: .preview(vitality: 92, streak: 34, actions: 120)))
 }
-#endif
+
+#Preview("Badges · fresh account") {
+    BadgeDetailView()
+        .environmentObject(AppState(data: .preview(streak: 0, actions: 0)))
+}

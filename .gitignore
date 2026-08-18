@@ -33,11 +33,3 @@ playground.xcworkspace
 
 # Secrets
 .env
-
-# Local ML tooling — coremltools + CLIP tokenizer, ~400 MB
-ml/venv/
-ml/__pycache__/
-
-# MobileCLIP text tower — 121 MB, only needed to regenerate habit_vectors.json.
-# Get it from Apple ml-mobileclip, or ../../CameraAI/models/, into ml/.
-ml/*.mlpackage/

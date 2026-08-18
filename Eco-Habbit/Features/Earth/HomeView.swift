@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// Mark's home screen, ported.
-///
-/// Layout, spacing and type are his throughout. What changed is only where the
-/// numbers come from: `VitalityStage` became `EarthStage`, `PointsEngine`
-/// constants became `PointsConfiguration`, and `Habit` became `Activity`. The
-/// names those are read under were added to `AppState` so this file could stay
-/// as written.
 struct HomeView: View {
     @EnvironmentObject private var app: AppState
     @State private var showingStageInfo = false
@@ -81,7 +74,7 @@ struct HomeView: View {
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.C.accent500)
 
-                Text(app.streakDaysValue() == 0 ? "No streak yet" : "\(app.streakDaysValue())-day streak")
+                Text(app.streakDays == 0 ? "No streak yet" : "\(app.streakDays)-day streak")
                     .font(Theme.F.body(13.5, weight: .semibold))
                     .foregroundStyle(Theme.C.neutral700)
             }
@@ -97,7 +90,7 @@ struct HomeView: View {
                 showingStageInfo = true
             } label: {
                 HStack(spacing: 6) {
-                    Text("\(app.stage.displayName) · \(Int(app.globeHealth))% — drag to explore")
+                    Text("\(app.stage.name) · \(Int(app.globeHealth))% — drag to explore")
                         .font(Theme.F.body(12.5))
                         .foregroundStyle(Theme.C.neutral600)
                     Image(systemName: "info.circle")
@@ -119,7 +112,7 @@ struct HomeView: View {
                         .font(Theme.F.body(14, weight: .bold))
                         .foregroundStyle(Theme.C.text)
                     Spacer()
-                    Text("\(app.dailyPoints) / \(app.dailyTarget) pts")
+                    Text("\(app.dailyPoints) / \(PointsEngine.dailyTarget) pts")
                         .font(Theme.F.body(13))
                         .foregroundStyle(Theme.C.neutral600)
                 }
@@ -133,7 +126,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeading(text: "Suggested today")
 
-            if app.suggestedActivities.isEmpty {
+            if app.suggestedHabits.isEmpty {
                 EHCard(padding: 16) {
                     Text("Everything on today's list is done. See you tomorrow.")
                         .font(Theme.F.body(13.5))
@@ -142,8 +135,8 @@ struct HomeView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
-                        ForEach(app.suggestedActivities) { activity in
-                            MissionCard(activity: activity)
+                        ForEach(app.suggestedHabits) { habit in
+                            MissionCard(habit: habit)
                         }
                     }
                     .padding(.bottom, 4)
@@ -178,16 +171,16 @@ struct HomeView: View {
 
 private struct MissionCard: View {
     @EnvironmentObject private var app: AppState
-    let activity: Activity
+    let habit: Habit
 
     var body: some View {
         Button {
-            Task { await app.logActivity(activity) }
+            app.logAndToast(habit, source: .checklist)
         } label: {
             VStack(alignment: .leading, spacing: 10) {
 //                CategoryIconView(glyph: habit.category.icon, size: 22, color: Theme.C.accent600)
 
-                Text(activity.name)
+                Text(habit.name)
                     .font(Theme.F.body(13.5, weight: .bold))
                     .foregroundStyle(Theme.C.text)
                     .multilineTextAlignment(.leading)
@@ -196,7 +189,7 @@ private struct MissionCard: View {
                 Spacer(minLength: 0)
 
                 HStack {
-                    EHTag(text: "+\(app.projectedPoints(for: activity).finalPoints) pts", style: .accent)
+                    EHTag(text: "+\(PointsEngine.tierPoints(habit.tier)) pts", style: .accent)
                     Spacer()
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 18))
@@ -229,15 +222,15 @@ private struct EarthStageSheet: View {
                     .padding(.top, 8)
 
                 VStack(spacing: 10) {
-                    ForEach(EarthStage.allCases) { stage in
-                        let reached = app.vitality >= app.vitalityFloor(for: stage)
+                    ForEach(VitalityStage.allCases) { stage in
+                        let reached = app.vitality >= stage.range.lowerBound
                         HStack(spacing: 12) {
                             Circle()
                                 .fill(reached ? Theme.C.accent2_500 : Theme.C.neutral300)
                                 .frame(width: 10, height: 10)
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Stage \(stage.rawValue + 1) · \(stage.displayName)")
+                                Text("Stage \(stage.rawValue + 1) · \(stage.name)")
                                     .font(Theme.F.body(14.5, weight: .bold))
                                     .foregroundStyle(reached ? Theme.C.text : Theme.C.neutral600)
                                 Text(stage.blurb)
@@ -247,13 +240,13 @@ private struct EarthStageSheet: View {
 
                             Spacer()
 
-                            Text("\(app.vitalityFloor(for: stage))")
+                            Text("\(stage.range.lowerBound)")
                                 .font(Theme.F.body(13, weight: .semibold))
                                 .foregroundStyle(Theme.C.neutral600)
                         }
                         .padding(.vertical, 8)
 
-                        if stage != .restored {
+                        if stage != .flourishing {
                             Rectangle().fill(Theme.C.neutral200).frame(height: 1)
                         }
                     }

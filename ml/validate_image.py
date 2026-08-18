@@ -1,170 +1,108 @@
 """
-Score a real photograph exactly the way the app does.
+Score one image against habit_vectors.json using the PyTorch image tower.
+Ground truth to compare against what the Swift app prints for the SAME file.
 
-    <venv>/bin/python validate_image.py photo.jpg
-    <venv>/bin/python validate_image.py photos/*.jpg
+    ./venv/bin/python validate_image.py test.jpg
 
-This is the ONLY honest way to set the thresholds in HabitClassifier.swift.
-test_vectors.py works in text space, where cosines run far higher — a number
-that looks decisive there is routine on a photograph, which carries background,
-clutter and lighting the prompts never mention.
-
-The verdict logic below MUST stay in step with HabitClassifier.verdict(). If you
-change one, change the other; a tuning tool that disagrees with the app is worse
-than no tuning tool.
+Swift and PyTorch should agree to roughly +/- 0.01 on each cosine, and agree
+exactly on the ranking. If the ranking differs, the usual suspects are:
+  - .mlpackage is a different MobileCLIP variant than MODEL_NAME below
+  - imageCropAndScaleOption in Swift != the resize/crop printed by [0] here
+  - image orientation not passed to VNImageRequestHandler
 """
 
-import glob
 import json
-import pathlib
 import sys
 
-import numpy as np
-import coremltools as ct
+import open_clip
+import torch
 from PIL import Image
 
-# CoreML leaves FP status flags set; numpy reports them on the next operation.
-# Finiteness is asserted explicitly in score_one().
-np.seterr(all="ignore")
-
-from generate_vectors import MODEL_NAME, OUT
-
-HERE = pathlib.Path(__file__).parent
-IMAGE_TOWER = HERE.parent / "Eco-Habbit" / "Resources" / "mobileclip_s2_image.mlpackage"
-INPUT_SIZE = 256
-
-# --- keep in step with HabitClassifier.swift --------------------------------
-MIN_SIMILARITY = 0.15
-AUTO_LOG_SIMILARITY = 0.30
-AUTO_LOG_CONFIDENCE = 0.55
-DECISIVE_MARGIN = 0.05
-DISTRACTOR_MARGIN = 0.02
-# ---------------------------------------------------------------------------
-
-CATALOGUE = pathlib.Path(__file__).parent.parent / "Eco-Habbit" / "Resources" / "activities.json"
+# MUST be identical to generate_vectors.py and match the bundled .mlpackage
+# (models/mobileclip_s2_image.mlpackage).
+MODEL_NAME = "MobileCLIP-S2"
+CKPT = "datacompdr"
+VECTORS = "habit_vectors.json"
 
 
 def main() -> None:
-    paths: list[str] = []
-    for arg in sys.argv[1:]:
-        paths.extend(sorted(glob.glob(arg)) or [arg])
-    if not paths:
-        sys.exit("usage: validate_image.py <image> [image ...]")
+    # validate_image.py <image>                  -> rank all habits (discover flow)
+    # validate_image.py <image> --habit <id>     -> positive vs negatives (verify flow)
+    args = sys.argv[1:]
+    habit_id = None
+    if "--habit" in args:
+        i = args.index("--habit")
+        if i + 1 >= len(args):
+            sys.exit("--habit needs a habit id")
+        habit_id = args[i + 1]
+        args = args[:i] + args[i + 2:]
+    if len(args) != 1:
+        sys.exit("usage: validate_image.py <image> [--habit <id>]")
+    path = args[0]
 
-    with open(OUT) as f:
-        payload = json.load(f)
-    if "distractors" not in payload:
-        sys.exit("habit_vectors.json has no distractors — rerun generate_vectors.py")
+    with open(VECTORS) as f:
+        habits = json.load(f)
+    mat = torch.tensor([h["vec"] for h in habits])
 
-    ids = [h["id"] for h in payload["habits"]]
-    mat = np.array([h["vec"] for h in payload["habits"]])
-    dids = [d["id"] for d in payload["distractors"]]
-    dlabels = [d["label"] for d in payload["distractors"]]
-    dmat = np.array([d["vec"] for d in payload["distractors"]])
-    scale = payload.get("logitScale", 100.0)
+    print(f"[0] Loading {MODEL_NAME} from {CKPT}")
+    model, _, preprocess = open_clip.create_model_and_transforms(MODEL_NAME, pretrained=CKPT)
+    model.eval()
+    print(f"    preprocess pipeline (compare to how the .mlpackage was converted):\n{preprocess}")
 
-    with open(CATALOGUE) as f:
-        evidence = {r["id"]: r["evidenceStrength"] for r in json.load(f)}
+    img = Image.open(path).convert("RGB")  # PIL applies no EXIF rotation; Vision does
+    with torch.no_grad():
+        emb = model.encode_image(preprocess(img).unsqueeze(0)).float()
+    emb = emb / emb.norm()  # L2-normalise, same as HabitClassifier.swift does
 
-    print(f"[0] {MODEL_NAME} — {len(ids)} habits, {len(dids)} distractors, "
-          f"logitScale {scale:.1f}")
-    print(f"    image tower: {IMAGE_TOWER.name} (the very one the app bundles)")
-    model = ct.models.MLModel(str(IMAGE_TOWER))
+    if habit_id is not None:
+        # Verify flow. MUST match HabitClassifier.verify(): max over negatives,
+        # never a mean, and the same two conditions for a pass.
+        match = next((h for h in habits if h["id"] == habit_id), None)
+        if match is None:
+            sys.exit(f"no habit {habit_id!r}; have: {', '.join(h['id'] for h in habits)}")
+        if not match.get("neg"):
+            sys.exit(f"{habit_id} has no negatives - re-run generate_vectors.py")
 
-    for path in paths:
-        score_one(path, model, ids, mat, dids, dlabels, dmat, scale, evidence)
+        vec = emb.squeeze(0)
+        pos_vec = torch.tensor(match["vec"])
+        neg_mat = torch.tensor(match["neg"])
+        positive = float(pos_vec @ vec)
+        neg_scores = (neg_mat @ vec).tolist()
 
+        # Per-contrast scaling, worst case - identical to HabitClassifier.verify().
+        gaps = (pos_vec - neg_mat).norm(dim=-1).clamp(min=1e-4).tolist()
+        scaled = [(positive - n) / g for n, g in zip(neg_scores, gaps)]
+        decides = min(range(len(scaled)), key=lambda k: scaled[k])
+        negative = neg_scores[decides]
 
-def preprocess(img: Image.Image) -> Image.Image:
-    """Resize short side to 256, then centre crop 256x256.
+        MIN_SIMILARITY = 0.20  # HabitClassifier.minSimilarity
+        VERIFY_MARGIN = 0.01   # HabitClassifier.verifyMargin (on the SCALED margin)
+        passed = positive >= MIN_SIMILARITY and scaled[decides] >= VERIFY_MARGIN
 
-    This mirrors `request.imageCropAndScaleOption = .centerCrop` in
-    HabitClassifier.swift. Get it wrong — squash the frame to a square instead of
-    cropping it — and every embedding shifts, which shows up as scores that are
-    plausible but wrong rather than as an error.
-
-    Scale and colour normalisation are baked into the .mlpackage itself, so
-    nothing else is applied here.
-    """
-    w, h = img.size
-    scale = INPUT_SIZE / min(w, h)
-    img = img.resize((round(w * scale), round(h * scale)), Image.BICUBIC)
-    w, h = img.size
-    left, top = (w - INPUT_SIZE) // 2, (h - INPUT_SIZE) // 2
-    return img.crop((left, top, left + INPUT_SIZE, top + INPUT_SIZE))
-
-
-def score_one(path, model, ids, mat, dids, dlabels, dmat, scale, evidence) -> None:
-    try:
-        img = Image.open(path).convert("RGB")  # PIL applies no EXIF rotation; Vision does
-    except Exception as exc:                   # noqa: BLE001 - report and keep going
-        print(f"\n{path}: cannot open ({exc})")
+        print(f"\n[1] {path}  verify against {habit_id}")
+        print(f"    positive          {positive:>8.4f}  (need >= {MIN_SIMILARITY})")
+        print(f"    {'negative':<9} {'cos':>8} {'gap':>7} {'scaled':>8}")
+        for k, (n, g, s) in enumerate(zip(neg_scores, gaps, scaled)):
+            print(f"    [{k}]       {n:>8.4f} {g:>7.3f} {s:>8.4f}"
+                  f"{'  <- decides' if k == decides else ''}")
+        print(f"    raw margin        {positive - negative:>8.4f}")
+        print(f"    scaled margin     {scaled[decides]:>8.4f}  (need >= {VERIFY_MARGIN})")
+        print(f"\n[2] {'PASS' if passed else 'FAIL'}")
         return
 
-    emb = model.predict({"image": preprocess(img)})["final_emb_1"]
-    vec = np.asarray(emb, dtype=np.float64).ravel()
-    assert np.isfinite(vec).all(), "image tower returned a non-finite embedding"
-    vec = vec / np.linalg.norm(vec)   # L2-normalise, same as HabitClassifier.swift
+    cos = (mat @ emb.squeeze(0)).tolist()
+    # Softmax temperature 100 - MUST match HabitClassifier.temperature in Swift.
+    probs = torch.softmax(torch.tensor(cos) * 100.0, dim=0).tolist()
 
-    hcos = (mat @ vec).tolist()
-    dcos = (dmat @ vec).tolist()
+    print(f"\n[1] {path}  (embedding dim {emb.shape[1]})")
+    print(f"    {'habit':<22} {'cosine':>7} {'conf':>7}")
+    for i in sorted(range(len(habits)), key=lambda k: -cos[k]):
+        print(f"    {habits[i]['id']:<22} {cos[i]:>7.4f} {probs[i]:>6.1%}")
 
-    # Softmax over the WHOLE field, exactly as the app does. Over habits alone
-    # the winner's share is meaningless — the shares are forced to sum to 1
-    # among options that might all be wrong.
-    logits = np.array(hcos + dcos) * scale
-    exp = np.exp(logits - logits.max())    # shift before exp or float overflows
-    probs = (exp / exp.sum()).tolist()
-
-    order = sorted(range(len(ids)), key=lambda k: -hcos[k])
-    top = order[0]
-    runner = order[1] if len(order) > 1 else None
-    dtop = max(range(len(dids)), key=lambda k: dcos[k])
-
-    print(f"\n=== {path}")
-    print(f"    {'habit':<32} {'cosine':>7} {'conf':>7}  evidence")
-    for i in order[:5]:
-        print(f"    {ids[i]:<32} {hcos[i]:>7.4f} {probs[i]:>6.1%}  {evidence.get(ids[i], '?')}")
-    print(f"    {'-' * 32}")
-    for k in sorted(range(len(dids)), key=lambda k: -dcos[k])[:3]:
-        mark = "  <-- beats every habit" if dcos[k] >= hcos[top] else ""
-        print(f"    {dlabels[k]:<32} {dcos[k]:>7.4f} "
-              f"{probs[len(ids) + k]:>6.1%}{mark}")
-
-    # --- the same gates, in the same order, as HabitClassifier.verdict() -----
-
-    if dcos[dtop] >= hcos[top]:
-        print(f"\n    VERDICT  rejected — looks like {dlabels[dtop]}")
-        return
-
-    if hcos[top] < MIN_SIMILARITY:
-        print(f"\n    VERDICT  nothing (top {hcos[top]:.4f} < min {MIN_SIMILARITY})")
-        return
-
-    clear_runner = runner is None or (hcos[top] - hcos[runner]) >= DECISIVE_MARGIN
-    clear_distractor = (hcos[top] - dcos[dtop]) >= DISTRACTOR_MARGIN
-    direct = evidence.get(ids[top]) == "direct"
-    confident = probs[top] >= AUTO_LOG_CONFIDENCE
-    scored = hcos[top] >= AUTO_LOG_SIMILARITY
-
-    if direct and scored and confident and clear_runner and clear_distractor:
-        print(f"\n    VERDICT  AUTO-LOG {ids[top]}")
-        return
-
-    print(f"\n    VERDICT  asks the user  ({ids[top]})")
-    why = []
-    if not direct:
-        why.append(f"evidence is {evidence.get(ids[top], '?')}, only 'direct' auto-logs")
-    if not scored:
-        why.append(f"cosine {hcos[top]:.4f} < {AUTO_LOG_SIMILARITY}")
-    if not confident:
-        why.append(f"confidence {probs[top]:.1%} < {AUTO_LOG_CONFIDENCE:.0%}")
-    if not clear_runner:
-        why.append(f"only {hcos[top] - hcos[runner]:+.4f} over {ids[runner]}")
-    if not clear_distractor:
-        why.append(f"only {hcos[top] - dcos[dtop]:+.4f} over '{dlabels[dtop]}'")
-    for reason in why:
-        print(f"             - {reason}")
+    best = max(cos)
+    print(f"\n[2] best cosine {best:.4f} - minSimilarity in Swift starts at 0.20")
+    if best < 0.20:
+        print("    below threshold: the app would show 'nothing recognised'")
 
 
 if __name__ == "__main__":

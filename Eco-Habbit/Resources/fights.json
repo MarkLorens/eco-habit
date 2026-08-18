@@ -12,8 +12,6 @@
     "longitude": 115.1372,
     "startOffsetHours": -1,
     "durationHours": 10,
-    "checkInCode": "BERAWA",
-    "rewardBadgeId": "fight_badge_shoreline",
     "preparationNotes": [
       "Closed shoes — there is glass in the tideline",
       "Reusable water bottle, refill station on site",
@@ -34,8 +32,6 @@
     "longitude": 115.2098,
     "startOffsetHours": 30,
     "durationHours": 4,
-    "checkInCode": "BENOA6",
-    "rewardBadgeId": "fight_badge_planter",
     "preparationNotes": [
       "Clothes you are happy to ruin",
       "Sandals with a heel strap, not flip-flops",
@@ -56,8 +52,6 @@
     "longitude": 115.2119,
     "startOffsetHours": 54,
     "durationHours": 3,
-    "checkInCode": "BADUNG",
-    "rewardBadgeId": "fight_badge_shoreline",
     "preparationNotes": [
       "Gloves provided, but bring your own if you have them",
       "Long sleeves recommended"
@@ -77,8 +71,6 @@
     "longitude": 115.2317,
     "startOffsetHours": 102,
     "durationHours": 5,
-    "checkInCode": "NUSA24",
-    "rewardBadgeId": "fight_badge_reef",
     "preparationNotes": [
       "Open Water certification card required at check-in",
       "Tanks and weights provided; bring your own mask if you prefer",
@@ -99,8 +91,6 @@
     "longitude": 115.2625,
     "startOffsetHours": 150,
     "durationHours": 2,
-    "checkInCode": "KOMPOS",
-    "rewardBadgeId": "fight_badge_learner",
     "preparationNotes": [
       "Materials included in the session",
       "You will leave carrying a 15-litre bucket — plan your transport"
@@ -120,8 +110,6 @@
     "longitude": 115.1686,
     "startOffsetHours": 198,
     "durationHours": 2,
-    "checkInCode": "TURTLE",
-    "rewardBadgeId": "fight_badge_wildlife",
     "preparationNotes": [
       "No flash photography — it disorients the hatchlings",
       "Arrive 15 minutes early for the briefing"
@@ -141,7 +129,6 @@
     "longitude": 115.1855,
     "startOffsetHours": 246,
     "durationHours": 4,
-    "checkInCode": "PILAH7",
     "preparationNotes": [
       "Gloves and masks provided",
       "Bring your own household recyclables if you have them"

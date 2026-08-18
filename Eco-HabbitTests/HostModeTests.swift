@@ -28,10 +28,10 @@ final class HostModeTests: XCTestCase {
         fight(id, startsIn: 0, status: .published)
     }
 
-    private func hostState() -> UserState {
-        var state = UserState(userId: "test-user")
+    private func hostState() -> PersistedState {
+        var state = PersistedState()
         state.isOrganization = true
-        state.displayName = "Ombak Bersih"
+        state.userName = "Ombak Bersih"
         return state
     }
 
@@ -107,49 +107,139 @@ final class HostModeTests: XCTestCase {
                        "losing verification loses hosting")
     }
 
-    // MARK: - The check-in code
+    // MARK: - Token round trip
 
-    /// A generated code has to survive being read off a screen and typed by
-    /// somebody standing on a beach, so the alphabet drops the characters that
-    /// get misread.
-    func testGeneratedCodesAvoidAmbiguousCharacters() {
-        let forbidden = Set("O0I1")
-        for _ in 0..<200 {
-            let code = Fight.makeCheckInCode()
-            XCTAssertEqual(code.count, 6)
-            XCTAssertTrue(code.allSatisfy { !forbidden.contains($0) },
-                          "\(code) contains a character that gets misread")
+    func testTokenParsesBackToItsFightAndAttendee() {
+        var attendee = PersistedState()
+        attendee.userName = "Made Wirawan"
+        let event = fight(startsIn: 24)
+
+        FightRepository.signUp(for: event, in: &attendee, now: now)
+        let token = try! XCTUnwrap(attendee.fightSignups[event.id]?.checkInToken)
+
+        let parsed = FightRepository.parseToken(token)
+        XCTAssertEqual(parsed?.fightId, event.id)
+        XCTAssertEqual(parsed?.attendeeLabel, "Made Wirawan")
+    }
+
+    func testGarbageCodesAreRejected() {
+        for junk in ["", "hello", "EHF|only|three", "OTHER|f1|Someone|abcd1234"] {
+            XCTAssertNil(FightRepository.parseToken(junk), "accepted \(junk)")
         }
     }
 
-    func testGeneratedCodesAreNotAllTheSame() {
-        let codes = Set((0..<50).map { _ in Fight.makeCheckInCode() })
-        XCTAssertGreaterThan(codes.count, 40, "codes are barely varying — check the generator")
+    // MARK: - Scanning
+
+    private func token(for fightId: String, attendee: String) -> String {
+        "\(FightRepository.tokenPrefix)|\(fightId)|\(attendee)|abcd1234"
     }
 
-    /// Each hosted Fight gets its own code. Two drafts sharing one would let an
-    /// attendee check into an event they never went to.
-    func testEachDraftGetsItsOwnCode() {
+    func testScanningAddsToTheRoster() {
         var s = hostState()
-        FightRepository.createDraft(fight("a"), in: &s)
-        FightRepository.createDraft(fight("b"), in: &s)
+        let event = liveFight()
+        FightRepository.createDraft(event, in: &s)
 
-        let codes = Set(s.hostedFights.map(\.checkInCode))
-        XCTAssertEqual(codes.count, 2)
-        XCTAssertFalse(codes.contains(""), "a Fight without a code cannot be checked into")
+        let result = FightRepository.recordScan(
+            token(for: event.id, attendee: "Made"), for: event, in: &s, now: now
+        )
+
+        XCTAssertEqual(result, .accepted(attendee: "Made"))
+        XCTAssertEqual(FightRepository.scans(for: event.id, in: s).count, 1)
     }
 
-    /// Locally a host only ever sees their own check-in — there is no server to
-    /// tell them about anyone else's. The screen says so; this pins the number.
-    func testKnownCheckInCountIsThisDeviceOnly() {
+    /// §4.5 — one check-in per attendee per event. In Phase 10 the composite
+    /// document ID enforces this; locally the repository has to.
+    func testRescanningTheSameCodeIsADuplicate() {
         var s = hostState()
-        let live = liveFight()
-        FightRepository.createDraft(live, in: &s)
-        FightRepository.publish(live.id, in: &s)
+        let event = liveFight()
+        let code = token(for: event.id, attendee: "Made")
 
-        XCTAssertEqual(FightRepository.knownCheckInCount(for: live.id, in: s), 0)
+        FightRepository.recordScan(code, for: event, in: &s, now: now)
+        let second = FightRepository.recordScan(code, for: event, in: &s, now: now)
 
-        FightRepository.checkIn(to: live, code: live.checkInCode, in: &s, now: now)
-        XCTAssertEqual(FightRepository.knownCheckInCount(for: live.id, in: s), 1)
+        XCTAssertEqual(second, .duplicate(attendee: "Made"))
+        XCTAssertEqual(FightRepository.scans(for: event.id, in: s).count, 1)
+    }
+
+    func testTwoAttendeesBothCount() {
+        var s = hostState()
+        let event = liveFight()
+
+        FightRepository.recordScan(token(for: event.id, attendee: "Made"), for: event, in: &s, now: now)
+        FightRepository.recordScan(token(for: event.id, attendee: "Ayu"), for: event, in: &s, now: now)
+
+        XCTAssertEqual(FightRepository.scans(for: event.id, in: s).count, 2)
+    }
+
+    func testAnotherEventsCodeIsRejected() {
+        var s = hostState()
+        let event = liveFight()
+
+        let result = FightRepository.recordScan(
+            token(for: "some-other-fight", attendee: "Made"), for: event, in: &s, now: now
+        )
+
+        XCTAssertEqual(result, .wrongEvent)
+        XCTAssertTrue(FightRepository.scans(for: event.id, in: s).isEmpty)
+    }
+
+    func testScanningOutsideTheWindowIsRejected() {
+        var s = hostState()
+        let event = fight(startsIn: 48, status: .published)   // check-in opens 1h before
+
+        let result = FightRepository.recordScan(
+            token(for: event.id, attendee: "Made"), for: event, in: &s, now: now
+        )
+
+        XCTAssertEqual(result, .windowClosed)
+    }
+
+    /// Surfaced by these tests failing first time round: an unpublished event
+    /// is not scannable, because `isCheckInOpen` requires `.published`. Nobody
+    /// can have signed up to a draft, so nobody can have a code for one.
+    func testADraftCannotBeScannedInto() {
+        var s = hostState()
+        let draft = fight(startsIn: 0, status: .draft)
+
+        XCTAssertEqual(
+            FightRepository.recordScan(token(for: draft.id, attendee: "Made"),
+                                       for: draft, in: &s, now: now),
+            .windowClosed
+        )
+    }
+
+    func testACancelledEventCannotBeScannedInto() {
+        var s = hostState()
+        let cancelled = fight(startsIn: 0, status: .cancelled)
+
+        XCTAssertEqual(
+            FightRepository.recordScan(token(for: cancelled.id, attendee: "Made"),
+                                       for: cancelled, in: &s, now: now),
+            .eventCancelled
+        )
+    }
+
+    func testUnreadableCodeIsRejected() {
+        var s = hostState()
+        let event = liveFight()
+        XCTAssertEqual(
+            FightRepository.recordScan("just some text", for: event, in: &s, now: now),
+            .unreadable
+        )
+    }
+
+    /// The host roster and the attendee's own Vitality are separate records
+    /// until Phase 10 — awarding another user Vitality is a cross-user write
+    /// with no server to authorise it (§9.3).
+    func testScanningDoesNotAwardTheAttendeeVitality() {
+        var s = hostState()
+        s.vitality = 50
+        let event = liveFight()
+
+        FightRepository.recordScan(token(for: event.id, attendee: "Someone Else"),
+                                   for: event, in: &s, now: now)
+
+        XCTAssertEqual(s.vitality, 50)
+        XCTAssertTrue(s.fightAttendedDates.isEmpty)
     }
 }

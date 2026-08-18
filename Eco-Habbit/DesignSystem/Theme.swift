@@ -103,11 +103,6 @@ enum Theme {
 }
 
 // MARK: - Helpers
-
-// `Color(hex:)` now lives in Tokens.swift, at Mark's request — Theme is being
-// deprecated in favour of Tokens, so the surviving copy belongs there. Two
-// declarations in one module is an ambiguous-init compile error, not a warning.
-
 extension View {
     func elevation(_ shadow: Theme.Shadow) -> some View {
         self.shadow(color: shadow.color, radius: shadow.radius, x: 0, y: shadow.y)

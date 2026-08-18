@@ -72,48 +72,6 @@ struct EventFormView: View {
                     Text("Shown as a list on the Fight detail screen.")
                 }
 
-                Section {
-                    Picker("Scale", selection: $draft.tier) {
-                        ForEach(EventTier.allCases, id: \.self) { tier in
-                            Text("\(tier.displayName) · \(tier.points) pts").tag(tier)
-                        }
-                    }
-                } header: {
-                    Text("Reward")
-                } footer: {
-                    Text("Micro is under an hour, Major is a full day. Points count against each attendee's monthly quota.")
-                }
-
-                Section {
-                    // A fixed list, not free text: an organiser typing their own
-                    // badge name gives every user a junk drawer of one-off
-                    // trophies nobody can vouch for.
-                    Picker("Badge", selection: $draft.rewardBadgeId) {
-                        Text("None").tag(String?.none)
-                        ForEach(MockBadgeData.fightRewards) { badge in
-                            Text(badge.name).tag(String?.some(badge.id))
-                        }
-                    }
-                    if let id = draft.rewardBadgeId,
-                       let badge = MockBadgeData.fightReward(withID: id) {
-                        Text(badge.description)
-                            .font(Theme.F.body(12.5))
-                            .foregroundStyle(Theme.C.neutral600)
-                    }
-                } footer: {
-                    Text("Awarded once, to everyone who checks in. Optional — points alone are a fine reward.")
-                }
-
-                Section {
-                    LabeledContent("Check-in code") {
-                        Text(draft.checkInCode)
-                            .font(.system(size: 16, weight: .bold, design: .monospaced))
-                            .tracking(2)
-                    }
-                } footer: {
-                    Text("Show this at the venue. Everyone attending scans or types the same code.")
-                }
-
                 if isNew {
                     Section {
                         Text("Saves as a draft. You publish it from Manage when it's ready.")
@@ -142,7 +100,7 @@ struct EventFormView: View {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
 
-        Task { await app.saveDraft(draft) }
+        app.saveDraft(draft)
         dismiss()
     }
 }

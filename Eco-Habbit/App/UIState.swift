@@ -6,9 +6,16 @@ import SwiftUI
 /// Set when points land, so a view can play the reward animation once.
 struct Award: Identifiable, Equatable {
     let id = UUID()
-    let activity: Activity
-    /// Final points after the evidence, streak and priority multipliers.
+    let habit: Habit
     let points: Int
+    /// Foundations pay Vitality directly rather than points (PRD §3.2).
+    let vitalityGain: Int
+
+    init(habit: Habit, points: Int = 0, vitalityGain: Int = 0) {
+        self.habit = habit
+        self.points = points
+        self.vitalityGain = vitalityGain
+    }
 }
 
 struct Toast: Identifiable, Equatable {

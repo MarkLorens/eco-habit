@@ -1,138 +1,120 @@
 import Foundation
 
-/// **The only code that writes a saved bookmark or an attendance record.**
+/// **The only code that writes a signup or an attendance record** (PRD §9.7, §9.13.2).
 ///
-/// A namespace of pure functions over `inout UserState` rather than a protocol —
-/// everything a Fight needs already lives inside the user document, so there is
-/// nothing for a repository protocol to abstract yet. `AppState.mutateUser`
-/// bridges it to storage. That changes when Fights become Firestore documents.
-///
-/// Attendance is capped by the same monthly quota as everything else, so hosting
-/// or attending is never a way around it.
+/// Attendance never touches Vitality directly. It records a *date*, and `EvaluationLoop`
+/// applies the +10 when it scores that day — the same shape §9.3 uses for the Firestore
+/// design, where the attendance document is the source of truth and Vitality is derived
+/// from it on-device. Keeping that split now means Phase 10 changes where the record is
+/// stored, not what the number means.
 enum FightRepository {
 
-    enum CheckInResult: Equatable {
-        case checkedIn(pointsAwarded: Int, wasCapped: Bool, badge: Badge?)
-        /// The code was wrong. Deliberately not "not signed up" — there is no signup.
-        case wrongCode
-        case alreadyCheckedIn
-        case windowClosed
-        /// Still a draft. Distinct from `windowClosed` because the fix is
-        /// completely different — publish it, rather than wait.
-        case notPublished
+    enum SignupResult: Equatable {
+        case signedUp
+        case alreadySignedUp
+        case eventFinished
         case eventCancelled
     }
 
-    // MARK: - Saved (a private bookmark)
+    enum CheckInResult: Equatable {
+        case checkedIn(vitalityGain: Int)
+        case notSignedUp
+        case alreadyCheckedIn
+        case windowClosed
+        case eventCancelled
+    }
 
-    /// Saving is a shortlist and nothing more: no commitment, the organiser is
-    /// never told, and check-in does not require it. Anything stronger would be
-    /// an RSVP, and an RSVP that nobody can see is just a bookmark with anxiety
-    /// attached.
+    // MARK: - Signup (PRD §4.4)
+
     @discardableResult
-    static func toggleSaved(_ fightId: String, in state: inout UserState) -> Bool {
-        if let index = state.savedFightIds.firstIndex(of: fightId) {
-            state.savedFightIds.remove(at: index)
-            return false
+    static func signUp(for fight: Fight, in state: inout PersistedState, now: Date = Date()) -> SignupResult {
+        guard fight.status != .cancelled else { return .eventCancelled }
+        guard fight.endsAt > now else { return .eventFinished }
+
+        if let existing = state.fightSignups[fight.id], existing.isActive {
+            return .alreadySignedUp
         }
-        state.savedFightIds.append(fightId)
+
+        // Re-signing up after a cancellation issues a fresh token, so a screenshot of the
+        // old QR can't be handed to someone else.
+        state.fightSignups[fight.id] = FightSignup(
+            fightId: fight.id,
+            signedUpAt: now,
+            checkInToken: token(for: fight.id, in: state)
+        )
+        return .signedUp
+    }
+
+    /// PRD §4.4 — cancel any time before the event starts. No penalty, no reliability
+    /// score; punishing non-attendance in a v1 with no capacity pressure creates anxiety
+    /// for no benefit.
+    @discardableResult
+    static func cancelSignup(for fightId: String, in state: inout PersistedState, now: Date = Date()) -> Bool {
+        guard var signup = state.fightSignups[fightId], signup.isActive else { return false }
+        guard state.fightAttendance[fightId] == nil else { return false }  // already attended
+
+        signup.cancelledAt = now
+        state.fightSignups[fightId] = signup
         return true
     }
 
-    static func isSaved(_ fightId: String, in state: UserState) -> Bool {
-        state.savedFightIds.contains(fightId)
+    static func signup(for fightId: String, in state: PersistedState) -> FightSignup? {
+        state.fightSignups[fightId].flatMap { $0.isActive ? $0 : nil }
     }
 
-    /// Saved Fights that haven't finished, soonest first. A saved Fight that has
-    /// been and gone drops off by itself — the shortlist is about what's next.
-    static func saved(_ fights: [Fight], in state: UserState, now: Date = Date()) -> [Fight] {
-        fights
-            .filter { isSaved($0.id, in: state) && $0.endsAt > now && $0.status != .draft }
-            .sorted { $0.startsAt < $1.startsAt }
+    static func isSignedUp(_ fightId: String, in state: PersistedState) -> Bool {
+        signup(for: fightId, in: state) != nil
     }
 
-    // MARK: - Check-in
+    // MARK: - Check-in (PRD §4.5)
 
-    /// Credits attendance after the attendee enters the organiser's code.
+    /// Records attendance and marks the day so the evaluation loop credits +10.
     ///
-    /// The organiser publishes one code for the whole Fight; the attendee scans
-    /// or types it. That direction is what lets this be a purely local write —
-    /// the attendee's own device credits the attendee. The old design had the
-    /// host scanning each attendee, which is a cross-user write and needs a
-    /// server to authorise.
-    ///
-    /// Uniqueness comes from refusing a second write, the same guarantee the
-    /// composite document ID `{fightId}_{uid}` will give in Firestore.
+    /// Locally this stands in for the host scanning the attendee's QR. The uniqueness
+    /// guarantee is the same one the composite document ID gives in Firestore (§9.3):
+    /// one check-in per attendee per event, no race.
     @discardableResult
-    static func checkIn(
-        to fight: Fight,
-        code: String,
-        in state: inout UserState,
-        now: Date = Date()
-    ) -> CheckInResult {
+    static func checkIn(to fight: Fight, in state: inout PersistedState, now: Date = Date()) -> CheckInResult {
         guard fight.status != .cancelled else { return .eventCancelled }
+        guard isSignedUp(fight.id, in: state) else { return .notSignedUp }
         guard state.fightAttendance[fight.id] == nil else { return .alreadyCheckedIn }
-        // Order matters: a wrong code should say so even outside the window,
-        // but a *right* code outside the window is the more useful message.
-        guard fight.matchesCheckInCode(code) else { return .wrongCode }
-        // Order matters: an unpublished Fight reported as "the window is shut"
-        // sends the organiser away to wait for a time that will never arrive.
-        guard fight.status == .published else { return .notPublished }
         guard fight.isCheckInOpen(at: now) else { return .windowClosed }
 
-        let config = PointsConfiguration.default
-        let usedThisMonth = state.effectiveMonthlyEventPoints(asOf: now)
-        let remaining = max(0, config.monthlyEventPointsCap - usedThisMonth)
-        let awarded = min(fight.attendancePoints, remaining)
-
-        // The badge is awarded even when the points are capped. Attendance
-        // happened; the quota limits the score, not the record of showing up.
-        // Only reported, never recorded here. The award is written by the
-        // caller as an `EarnedBadge`, so "what did I earn and when" lives in one
-        // place instead of being split between a flag here and a badge store.
-        let badge = fight.rewardBadgeId.flatMap(MockBadgeData.fightReward(withID:))
-
+        let day = Day.today(now)
         state.fightAttendance[fight.id] = FightAttendance(
             fightId: fight.id,
             checkedInAt: now,
-            localDate: Day.today(now),
-            awardedBadgeId: badge?.id
+            localDate: day
         )
+        state.fightAttendedDates.insert(day)
 
-        state.currentPoints += awarded
-        state.monthlyEventPointsEarned = usedThisMonth + awarded
-        state.monthlyEventPointsPeriod = DateKeys.monthKey(for: now)
-        if !state.attendedEventIDs.contains(fight.id) {
-            state.attendedEventIDs.append(fight.id)
-        }
-
-        return .checkedIn(
-            pointsAwarded: awarded,
-            wasCapped: awarded < fight.attendancePoints,
-            badge: badge
-        )
+        return .checkedIn(vitalityGain: VitalityEngine.fightBoost)
     }
 
-    static func attendance(for fightId: String, in state: UserState) -> FightAttendance? {
+    static func attendance(for fightId: String, in state: PersistedState) -> FightAttendance? {
         state.fightAttendance[fightId]
     }
 
-    static func hasAttended(_ fightId: String, in state: UserState) -> Bool {
+    static func hasAttended(_ fightId: String, in state: PersistedState) -> Bool {
         state.fightAttendance[fightId] != nil
     }
 
     // MARK: - Reads
 
-    /// The list is chronological. No map, no distance filter in v1.
+    /// PRD §4.7 — the list is chronological. No map, no distance filter in v1.
     static func upcoming(_ fights: [Fight], now: Date = Date()) -> [Fight] {
         fights
             .filter { $0.status == .published && $0.endsAt > now }
             .sorted { $0.startsAt < $1.startsAt }
     }
 
-    /// Attended Fights are archived permanently, newest first. This is the
+    static func signedUp(_ fights: [Fight], in state: PersistedState, now: Date = Date()) -> [Fight] {
+        upcoming(fights, now: now).filter { isSignedUp($0.id, in: state) }
+    }
+
+    /// PRD §4.6 — attended Fights are archived permanently, newest first. This is the
     /// record the Fight badges are built on.
-    static func attended(_ fights: [Fight], in state: UserState) -> [Fight] {
+    static func attended(_ fights: [Fight], in state: PersistedState) -> [Fight] {
         fights
             .filter { hasAttended($0.id, in: state) }
             .sorted {
@@ -142,26 +124,58 @@ enum FightRepository {
             }
     }
 
-    // MARK: - Hosting
+    /// A check-in token for this `(user, event)` pair.
+    ///
+    /// **Not signed.** Phase 10 replaces this with something Security Rules can
+    /// verify; until then it only needs to be unique and stable per signup, and
+    /// the trust model is unchanged either way — §9.6 already accepts that a
+    /// user can forge their own Vitality.
+    private static func token(for fightId: String, in state: PersistedState) -> String {
+        let user = state.userName.isEmpty ? "Local user" : state.userName
+        return "\(tokenPrefix)|\(fightId)|\(user)|\(UUID().uuidString.prefix(8))"
+    }
 
-    static func hostedFights(in state: UserState) -> [Fight] {
+    static let tokenPrefix = "EHF"
+
+    /// `EHF|<fightId>|<display name>|<nonce>`
+    static func parseToken(_ raw: String) -> (fightId: String, attendeeLabel: String)? {
+        let parts = raw.split(separator: "|", omittingEmptySubsequences: false)
+        guard parts.count == 4, parts[0] == tokenPrefix, !parts[1].isEmpty else { return nil }
+        return (String(parts[1]), String(parts[2]))
+    }
+
+    // MARK: - Hosting (PRD §6.5.1)
+
+    enum ScanResult: Equatable {
+        case accepted(attendee: String)
+        case duplicate(attendee: String)
+        /// A valid token, but for somebody else's event.
+        case wrongEvent
+        case unreadable
+        case windowClosed
+        /// Separate from `windowClosed` so a host standing at a cancelled event
+        /// is told that, rather than "check-in isn't open yet".
+        case eventCancelled
+    }
+
+    static func hostedFights(in state: PersistedState) -> [Fight] {
         state.hostedFights.sorted { $0.startsAt < $1.startsAt }
     }
 
-    static func isHost(of fight: Fight, in state: UserState) -> Bool {
+    static func isHost(of fight: Fight, in state: PersistedState) -> Bool {
         state.isOrganization && state.hostedFights.contains { $0.id == fight.id }
     }
 
     /// A new event starts as a **draft** (PRD §6.5.1) so a half-written one never
     /// appears in the public list.
-    static func createDraft(_ fight: Fight, in state: inout UserState) {
+    static func createDraft(_ fight: Fight, in state: inout PersistedState) {
         var draft = fight
         draft.status = .draft
         state.hostedFights.append(draft)
     }
 
     @discardableResult
-    static func update(_ fight: Fight, in state: inout UserState) -> Bool {
+    static func update(_ fight: Fight, in state: inout PersistedState) -> Bool {
         guard let index = state.hostedFights.firstIndex(where: { $0.id == fight.id }) else { return false }
         // Status transitions go through publish/cancel, never through an edit.
         var updated = fight
@@ -171,30 +185,62 @@ enum FightRepository {
     }
 
     @discardableResult
-    static func publish(_ fightId: String, in state: inout UserState) -> Bool {
+    static func publish(_ fightId: String, in state: inout PersistedState) -> Bool {
         guard let index = state.hostedFights.firstIndex(where: { $0.id == fightId }),
               state.hostedFights[index].status == .draft else { return false }
         state.hostedFights[index].status = .published
         return true
     }
 
-    /// **Cancelling is not deletion.** The Fight stays visible to anyone who
-    /// saved it, which is the whole point: they need to find out.
+    /// PRD §6.5.1 — **cancelling is not deletion.** The event stays visible to
+    /// anyone signed up, which is the whole point: they need to find out.
     @discardableResult
-    static func cancel(_ fightId: String, in state: inout UserState) -> Bool {
+    static func cancel(_ fightId: String, in state: inout PersistedState) -> Bool {
         guard let index = state.hostedFights.firstIndex(where: { $0.id == fightId }),
               state.hostedFights[index].status != .cancelled else { return false }
         state.hostedFights[index].status = .cancelled
         return true
     }
 
-    /// How many people this device knows have checked in.
+    // MARK: - Scanning
+
+    static func scans(for fightId: String, in state: PersistedState) -> [HostScan] {
+        (state.hostScans[fightId] ?? []).sorted { $0.scannedAt > $1.scannedAt }
+    }
+
+    /// Records one scan on the host's device.
     ///
-    /// Locally that is only ever the account itself — one device cannot see
-    /// another's attendance without a server. It becomes a real headcount when
-    /// `/attendance/{fightId}_{uid}` is a Firestore query; until then the host
-    /// screen labels it honestly rather than implying a roster it doesn't have.
-    static func knownCheckInCount(for fightId: String, in state: UserState) -> Int {
-        state.fightAttendance[fightId] == nil ? 0 : 1
+    /// This does **not** award the attendee any Vitality — that is a cross-user
+    /// write with no server to authorise it (§9.3). The host's roster and the
+    /// attendee's own credit stay separate until Phase 10. The one case where
+    /// both happen is a single-device demo, handled by the caller.
+    @discardableResult
+    static func recordScan(
+        _ raw: String,
+        for fight: Fight,
+        in state: inout PersistedState,
+        now: Date = Date()
+    ) -> ScanResult {
+        guard let parsed = parseToken(raw) else { return .unreadable }
+        guard parsed.fightId == fight.id else { return .wrongEvent }
+        guard fight.status != .cancelled else { return .eventCancelled }
+        // Covers drafts too: `isCheckInOpen` requires `.published`, and nobody
+        // can have signed up to something that was never public.
+        guard fight.isCheckInOpen(at: now) else { return .windowClosed }
+
+        var existing = state.hostScans[fight.id] ?? []
+        // The token is the identity, so a code scanned twice is one attendee.
+        guard !existing.contains(where: { $0.token == raw }) else {
+            return .duplicate(attendee: parsed.attendeeLabel)
+        }
+
+        existing.append(HostScan(
+            fightId: fight.id,
+            token: raw,
+            attendeeLabel: parsed.attendeeLabel,
+            scannedAt: now
+        ))
+        state.hostScans[fight.id] = existing
+        return .accepted(attendee: parsed.attendeeLabel)
     }
 }
