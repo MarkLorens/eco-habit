@@ -105,3 +105,8 @@ enum VitalityEngine {
         ))
     }
 }
+
+enum GlobeStaging {
+    /// 2 action per new stage
+    static let actionsPerStage = 2
+}

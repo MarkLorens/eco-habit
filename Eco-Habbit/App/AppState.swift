@@ -20,6 +20,15 @@ final class AppState: ObservableObject {
     init(data: PersistedState = PersistenceStore.load()) {
         self.data = data
         evaluateIfNeeded()
+        backfillGlobeStageAnnouncement()
+    }
+
+    /// An account from before stage-up animations existed has already "seen" the globe it
+    /// has, so start it level instead of replaying every transition it earned offline.
+    private func backfillGlobeStageAnnouncement() {
+        guard data.announcedGlobeStage == nil else { return }
+        let current = globeStage
+        mutate { $0.announcedGlobeStage = current }
     }
 
     /// Run at launch and on foreground. Idempotent, so calling it freely is safe.
@@ -42,6 +51,25 @@ final class AppState: ObservableObject {
     var vitality: Int { data.vitality }
     var stage: VitalityStage { VitalityStage.stage(for: data.vitality) }
     var globeHealth: Double { PointsEngine.globeHealth(vitality: data.vitality) }
+
+    /// PROTOTYPE — stands in for `globeHealth` until the health system lands.
+    /// One stage per two logged actions, so the globe visibly moves within a demo,
+    /// capped at the last stage with artwork.
+    var globeStage: Int {
+        min(totalActionsLogged / GlobeStaging.actionsPerStage, GlobeView.lastStage)
+    }
+    /// The next unlock animation owed to the user, one stage at a time: logging four
+    /// actions in a row plays 0→1 first, then 1→2 once that one is dismissed.
+    var pendingGlobeStageUp: GlobeStageUp? {
+        let announced = min(max(data.announcedGlobeStage ?? 0, 0), GlobeView.lastStage)
+        guard globeStage > announced else { return nil }
+        return GlobeStageUp(from: announced, to: announced + 1)
+    }
+
+    func acknowledgeGlobeStageUp(_ stageUp: GlobeStageUp) {
+        mutate { $0.announcedGlobeStage = max($0.announcedGlobeStage ?? 0, stageUp.to) }
+    }
+
     var level: Int { stage.rawValue + 1 }
 
     var levelTitle: String {
