@@ -55,13 +55,38 @@ enum HabitRepository {
         )
 
         append(habit, on: day, source: source, breakdown: breakdown, in: &state)
+        advanceStreak(to: day, in: &state)
         return .logged(points: breakdown.finalPoints)
+    }
+
+    /// The streak moves when something is logged, not on a nightly score.
+    ///
+    /// This is the rule that changed: a day used to count only if it cleared the
+    /// 30-point target, so a user who logged one small action still lost their
+    /// streak. Now the day counts, and the points express how big it was.
+    private static func advanceStreak(to day: String, in state: inout PersistedState) {
+        let outcome = streaks.outcome(lastActiveDay: state.lastActiveDay,
+                                      currentStreak: state.streakDays,
+                                      shieldedDates: state.shieldedDates,
+                                      loggingOn: day)
+        state.streakDays = outcome.newStreak
+        state.longestStreak = max(state.longestStreak, outcome.newStreak)
+        state.lastActiveDay = day
     }
 
     /// The economy. A `let` rather than a parameter because every logging path
     /// must price an action identically — a caller that could pass its own
     /// configuration is a caller that can disagree with the rest of the app.
     private static let points = PointsCalculationService()
+    private static let streaks = StreakService()
+
+    /// The streak worth showing right now, without mutating anything.
+    static func displayStreak(on day: String, in state: PersistedState) -> Int {
+        streaks.displayStreak(lastActiveDay: state.lastActiveDay,
+                              currentStreak: state.streakDays,
+                              shieldedDates: state.shieldedDates,
+                              asOf: day)
+    }
 
     /// Base points already spent against today's ceiling.
     static func basePointsUsed(on day: String, in state: PersistedState) -> Int {

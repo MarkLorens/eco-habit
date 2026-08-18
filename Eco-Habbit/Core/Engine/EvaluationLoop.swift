@@ -54,23 +54,19 @@ enum EvaluationLoop {
         )
     }
 
-    /// One elapsed day. Streak and Vitality are decided together because both depend on
-    /// whether the day met the 30-point target.
+    /// One elapsed day of Vitality.
+    ///
+    /// **No longer touches the streak.** The streak now moves when something is
+    /// logged — `HabitRepository.advanceStreak` — rather than being derived here
+    /// from whether the day cleared a target. Leaving both in place double-counted:
+    /// logging advanced it, and then this pass advanced it again for the same day.
+    ///
+    /// `lastActiveDay` is likewise written at log time now, so this does not set
+    /// it either; doing so would move the streak's anchor behind its back.
     private static func score(day: String, state: inout PersistedState, habits: [Habit]) {
         let shielded = state.shieldedDates.contains(day)
         let fightAttended = state.fightAttendedDates.contains(day)
         let points = HabitRepository.dailyTotal(on: day, in: state)
-
-        if shielded {
-            // Streak preserved, not extended (PRD §2.4).
-        } else if points >= PointsEngine.dailyTarget {
-            state.streakDays += 1
-            state.longestStreak = max(state.longestStreak, state.streakDays)
-        } else {
-            state.streakDays = 0
-        }
-
-        if points > 0 { state.lastActiveDay = day }
 
         state.vitality = VitalityEngine.apply(
             points: points,

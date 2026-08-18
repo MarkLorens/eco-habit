@@ -65,8 +65,11 @@ final class AppState: ObservableObject {
     /// PRD §9.5 — `streakDays` is a *settled* value that stops at yesterday, so today's
     /// target has to be added back in for display. Without this a user who just hit their
     /// target sees the number stall until midnight and concludes it's broken.
+    /// The stored streak is only true as of the last day something was logged.
+    /// After two missed days with no Shield it is stale, and showing it would be
+    /// a lie — so the number on screen is recomputed against today.
     var displayStreak: Int {
-        data.streakDays + (dailyPoints >= PointsEngine.dailyTarget ? 1 : 0)
+        HabitRepository.displayStreak(on: today, in: data)
     }
 
     var streakDays: Int { displayStreak }
