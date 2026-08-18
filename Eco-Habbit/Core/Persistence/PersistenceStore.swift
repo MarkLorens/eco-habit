@@ -33,6 +33,17 @@ struct PersistedState: Codable {
     /// The last day the evaluation loop has **scored**. See `EvaluationLoop`.
     var lastEvaluatedDate: String?
 
+    /// Points at the START of the current absence. The "drop at most one stage"
+    /// limit is measured from here, not from the current total — measured from
+    /// the current total, someone who opens the app every few days during a long
+    /// absence loses a stage on every single open.
+    ///
+    /// Cleared when anything is logged, because the absence is over.
+    var decayBaselinePoints: Int?
+    /// Last day decay was charged for, so re-opening the app twice in a day
+    /// cannot charge twice. Cleared on log, like the baseline.
+    var lastDecayAppliedDay: String?
+
     var shieldsAvailable = 0
     /// Days a Shield covers. The consecutive-run limit is derived from this, not stored.
     var shieldedDates: Set<String> = []
@@ -103,6 +114,9 @@ struct PersistedState: Codable {
         longestStreak       = try v(.longestStreak, 0)
         lastActiveDay       = try c.decodeIfPresent(String.self, forKey: .lastActiveDay)
         lastEvaluatedDate   = try c.decodeIfPresent(String.self, forKey: .lastEvaluatedDate)
+
+        decayBaselinePoints = try c.decodeIfPresent(Int.self, forKey: .decayBaselinePoints)
+        lastDecayAppliedDay = try c.decodeIfPresent(String.self, forKey: .lastDecayAppliedDay)
 
         shieldsAvailable    = try v(.shieldsAvailable, 0)
         shieldedDates       = try v(.shieldedDates, [])

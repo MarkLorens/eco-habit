@@ -60,6 +60,11 @@ enum HabitRepository {
         // for history; this is the running Earth figure the stages are drawn
         // against, and it is only ever reduced by decay.
         state.currentPoints += breakdown.finalPoints
+        // The absence is over, so the decay bookkeeping resets. Leaving the
+        // baseline behind would measure the NEXT absence's one-stage limit from
+        // a total the user has long since climbed back past.
+        state.decayBaselinePoints = nil
+        state.lastDecayAppliedDay = nil
         return .logged(points: breakdown.finalPoints)
     }
 

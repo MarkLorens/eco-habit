@@ -34,6 +34,11 @@ enum EvaluationLoop {
     static func evaluate(state: inout PersistedState, habits: [Habit], today: String) -> Result {
         UserRepository.grantMonthlyShields(in: &state, on: today)
 
+        // Decay is charged on open, not by a background job, and is idempotent
+        // within a day. It does not belong in the day loop below: it is computed
+        // from the whole absence at once, not day by day.
+        DecayService().apply(to: &state, today: today)
+
         guard let lastProcessed = state.lastEvaluatedDate else {
             // New account: no history to process, and today is still in progress.
             state.lastEvaluatedDate = Day.adding(-1, to: today) ?? today
