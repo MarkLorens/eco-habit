@@ -43,9 +43,13 @@ enum MockData {
         Badge(id: "b6", name: "Reef Guardian", tier: "Rare",
               detail: "Reach the Flourishing stage — 86 Vitality.",
               requirement: .vitality(86), icon: "b6"),
+        // Was "Complete 3 Foundations". Foundations went with the old catalogue —
+        // the friction catalogue has no zero-point band — so this keeps its name,
+        // tier and artwork and becomes the early-days badge instead. Three actions
+        // is deliberately reachable in one sitting.
         Badge(id: "b7", name: "Groundwork", tier: "Foundation",
-              detail: "Complete 3 Foundations — the one-off changes that keep paying.",
-              requirement: .foundations(3), icon: "b5"),
+              detail: "Log your first 3 actions.",
+              requirement: .totalActions(3), icon: "b5"),
 
         // One per category, all on the same 10-action threshold so the set reads as a
         // matched row rather than six separate difficulties. `icon` borrows the

@@ -1,24 +1,30 @@
 import Foundation
 
-/// **The only code that writes a `HabitLog`** (PRD §9.7, §9.13.2). Every logging path —
-/// checklist, dashboard card, camera chip — routes through `log`, which is what makes the
-/// once-per-day rule, the weekly caps and the no-retroactive rule hold everywhere at once
-/// instead of being re-implemented per screen.
+/// **The only code that writes a `HabitLog`.** Every logging path — checklist,
+/// dashboard card, camera chip — routes through `log`, which is what makes the
+/// once-per-day rule, the cooldowns and the no-retroactive rule hold everywhere
+/// at once instead of being re-implemented per screen.
+///
+/// The repeat rules changed with the catalogue. There used to be three
+/// frequencies — daily, weekly-with-a-limit, and foundation-once-ever. The
+/// friction catalogue has one rule plus an optional gap: **every habit is
+/// once per calendar day**, and some additionally sit out a cooldown of
+/// `cooldownDays` afterwards. Weekly limits and foundations went with the old
+/// catalogue; neither concept exists in the 38 actions.
 enum HabitRepository {
 
     enum LogResult: Equatable {
         case logged(points: Int)
-        /// Foundations pay Vitality directly and bypass points entirely (PRD §3.2).
-        case foundation(vitalityGain: Int)
         case alreadyLogged
-        case weeklyLimitReached(limit: Int)
-        /// PRD §3.4 — if you didn't log it yesterday, it didn't happen.
+        /// Logged recently enough that its cooldown has not elapsed.
+        case onCooldown(daysRemaining: Int)
+        /// If you didn't log it yesterday, it didn't happen.
         case retroactive
 
         var succeeded: Bool {
             switch self {
-            case .logged, .foundation: return true
-            case .alreadyLogged, .weeklyLimitReached, .retroactive: return false
+            case .logged: return true
+            case .alreadyLogged, .onCooldown, .retroactive: return false
             }
         }
     }
@@ -32,33 +38,17 @@ enum HabitRepository {
         in state: inout PersistedState
     ) -> LogResult {
         guard day == today else { return .retroactive }
+        guard !isCompleted(habit.id, on: day, in: state) else { return .alreadyLogged }
 
-        switch habit.frequency {
-        case .foundation:
-            // Once ever, per account — not once per day.
-            guard !state.logs.contains(where: { $0.habitId == habit.id }) else { return .alreadyLogged }
-            append(habit, on: day, source: source, in: &state)
-            state.vitality = VitalityEngine.clamp(state.vitality + VitalityEngine.foundationBoost)
-            return .foundation(vitalityGain: VitalityEngine.foundationBoost)
+        let remaining = cooldownRemaining(habit, on: day, in: state)
+        guard remaining == 0 else { return .onCooldown(daysRemaining: remaining) }
 
-        case .daily:
-            guard !isCompleted(habit.id, on: day, in: state) else { return .alreadyLogged }
-            append(habit, on: day, source: source, in: &state)
-            return .logged(points: habit.tier.points)
-
-        case .weekly(let limit):
-            guard !isCompleted(habit.id, on: day, in: state) else { return .alreadyLogged }
-            guard weeklyCount(habit.id, containing: day, in: state) < limit else {
-                return .weeklyLimitReached(limit: limit)
-            }
-            append(habit, on: day, source: source, in: &state)
-            return .logged(points: habit.tier.points)
-        }
+        append(habit, on: day, source: source, in: &state)
+        return .logged(points: habit.basePoints)
     }
 
-    /// PRD §3.4 — un-logging is permitted within the same day only. Points reverse for
-    /// free because they are derived from `logs`; a Foundation's Vitality has to be
-    /// handed back explicitly.
+    /// Un-logging is permitted within the same day only. Points reverse for free
+    /// because they are derived from `logs`.
     @discardableResult
     static func unlog(_ habitId: String, on day: String, today: String, habits: [Habit], in state: inout PersistedState) -> Bool {
         guard day == today,
@@ -66,10 +56,6 @@ enum HabitRepository {
         else { return false }
 
         state.logs.removeAll { $0.id == log.id }
-
-        if let habit = habits.first(where: { $0.id == habitId }), habit.isFoundation {
-            state.vitality = VitalityEngine.clamp(state.vitality - VitalityEngine.foundationBoost)
-        }
         return true
     }
 
@@ -87,24 +73,36 @@ enum HabitRepository {
         state.logs.contains { $0.habitId == habitId && $0.localDate == day }
     }
 
-    /// How many times this habit has been logged in the ISO week containing `day`.
-    static func weeklyCount(_ habitId: String, containing day: String, in state: PersistedState) -> Int {
-        guard let week = Day.isoWeek(of: day) else { return 0 }
-        return state.logs.filter { $0.habitId == habitId && Day.isoWeek(of: $0.localDate) == week }.count
+    /// Cooldown days still to run before `habit` may be logged again on `day`.
+    /// `0` means it is available.
+    ///
+    /// Derived from the logs rather than from `Habit.lastCompletedDate`: the
+    /// catalogue is bundled and shared, so it carries nobody's progress. The
+    /// logs are the record.
+    ///
+    /// Measured in whole calendar days so it does not depend on what time of day
+    /// the previous log happened.
+    static func cooldownRemaining(_ habit: Habit, on day: String, in state: PersistedState) -> Int {
+        guard let cooldownDays = habit.cooldownDays else { return 0 }
+
+        let previousDays = state.logs
+            .filter { $0.habitId == habit.id && $0.localDate < day }
+            .map(\.localDate)
+        guard let mostRecent = previousDays.max(),          // YYYY-MM-DD sorts correctly
+              let from = Day.date(from: mostRecent),
+              let to = Day.date(from: day)
+        else { return 0 }
+
+        let elapsed = Calendar(identifier: .iso8601)
+            .dateComponents([.day], from: from, to: to).day ?? 0
+        return max(0, cooldownDays - elapsed)
     }
 
-    /// Whether the habit can still be logged on `day`, for greying out a row or a camera
-    /// chip rather than hiding it (PRD §5.4 — hiding it makes the camera look broken).
+    /// Whether the habit can still be logged on `day`, for greying out a row or a
+    /// camera chip rather than hiding it — hiding it makes the camera look broken.
     static func isAvailable(_ habit: Habit, on day: String, in state: PersistedState) -> Bool {
-        switch habit.frequency {
-        case .foundation:
-            return !state.logs.contains { $0.habitId == habit.id }
-        case .daily:
-            return !isCompleted(habit.id, on: day, in: state)
-        case .weekly(let limit):
-            return !isCompleted(habit.id, on: day, in: state)
-                && weeklyCount(habit.id, containing: day, in: state) < limit
-        }
+        !isCompleted(habit.id, on: day, in: state)
+            && cooldownRemaining(habit, on: day, in: state) == 0
     }
 
     private static func append(_ habit: Habit, on day: String, source: HabitLog.Source, in state: inout PersistedState) {

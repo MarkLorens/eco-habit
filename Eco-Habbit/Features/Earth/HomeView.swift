@@ -189,7 +189,7 @@ private struct MissionCard: View {
                 Spacer(minLength: 0)
 
                 HStack {
-                    EHTag(text: "+\(PointsEngine.tierPoints(habit.tier)) pts", style: .accent)
+                    EHTag(text: "+\(habit.basePoints) pts", style: .accent)
                     Spacer()
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 18))

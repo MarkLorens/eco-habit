@@ -61,7 +61,9 @@ extension PersistedState {
         state.favouriteCategories = favourites
         state.notificationsEnabled = notifications
 
-        let catalogue = MockData.habits.sorted { $0.isFoundation && !$1.isFoundation }
+        // Was foundations-first; that ordering went with the old catalogue.
+        // Cheapest-first keeps the seeded history looking like a real ramp-up.
+        let catalogue = MockData.habits.sorted { $0.basePoints < $1.basePoints }
         state.logs = (0..<max(0, actions)).map { i in
             let habit = catalogue[i % catalogue.count]
             return HabitLog(

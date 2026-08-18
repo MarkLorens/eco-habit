@@ -38,7 +38,7 @@ struct CategoryDetailView: View {
                 } else {
                     ForEach(filteredActivity) { row in
                         ActivityListCard(title: row.habit.name,
-                                         points: PointsEngine.tierPoints(row.habit.tier),
+                                         points: row.habit.basePoints,
                                          icon: category.icon,
                                          tint: category.tint,
                                          background: category.background,

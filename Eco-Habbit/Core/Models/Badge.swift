@@ -15,7 +15,9 @@ struct Badge: Identifiable, Codable, Hashable {
         case streak(Int)
         case vitality(Int)
         case categoryActions(HabitCategory, Int)
-        case foundations(Int)
+        // `foundations(Int)` was removed with the old catalogue: the friction
+        // catalogue has no zero-point band, so nothing could ever satisfy it.
+        // Badge b7 now uses `.totalActions`.
         case seasonal
     }
 }

@@ -106,7 +106,7 @@ final class AppState: ObservableObject {
 
     /// Up to three things worth doing today: still available, favourites first.
     var suggestedHabits: [Habit] {
-        let pending = MockData.habits.filter { !$0.isFoundation && isAvailable($0) }
+        let pending = MockData.habits.filter { isAvailable($0) }
         let favourites = pending.filter { data.favouriteCategories.contains($0.category) }
         let rest = pending.filter { !data.favouriteCategories.contains($0.category) }
         return Array((favourites + rest).prefix(3))
@@ -124,10 +124,6 @@ final class AppState: ObservableObject {
 
     var totalActionsLogged: Int { data.logs.count }
 
-    var foundationsCompleted: Int {
-        data.logs.filter { MockData.habitsById[$0.habitId]?.isFoundation == true }.count
-    }
-
     func actionCount(in category: HabitCategory) -> Int {
         data.logs.filter { MockData.habitsById[$0.habitId]?.category == category }.count
     }
@@ -138,7 +134,6 @@ final class AppState: ObservableObject {
         case .streak(let n): return max(displayStreak, data.longestStreak) >= n
         case .vitality(let n): return data.vitality >= n
         case .categoryActions(let category, let n): return actionCount(in: category) >= n
-        case .foundations(let n): return foundationsCompleted >= n
         case .seasonal: return false
         }
     }
@@ -180,9 +175,7 @@ final class AppState: ObservableObject {
         switch result {
         case .logged(let points):
             lastAward = Award(habit: habit, points: points)
-        case .foundation(let gain):
-            lastAward = Award(habit: habit, vitalityGain: gain)
-        case .alreadyLogged, .weeklyLimitReached, .retroactive:
+        case .alreadyLogged, .onCooldown, .retroactive:
             break
         }
         return result
@@ -196,14 +189,12 @@ final class AppState: ObservableObject {
         switch result {
         case .logged(let points):
             toast = Toast(kind: .success, message: "\(habit.name) · +\(points) pts")
-        case .foundation(let gain):
-            toast = Toast(kind: .success, message: "\(habit.name) · +\(gain) Vitality")
         case .alreadyLogged:
-            toast = Toast(kind: .info, message: habit.isFoundation
-                ? "Already done — Foundations count once."
-                : "Already logged today — back tomorrow.")
-        case .weeklyLimitReached(let limit):
-            toast = Toast(kind: .info, message: "That's all \(limit) for this week.")
+            toast = Toast(kind: .info, message: "Already logged today — back tomorrow.")
+        case .onCooldown(let days):
+            toast = Toast(kind: .info, message: days == 1
+                ? "Back again tomorrow."
+                : "Back again in \(days) days.")
         case .retroactive:
             toast = Toast(kind: .warning, message: "Only today can be logged.")
         }

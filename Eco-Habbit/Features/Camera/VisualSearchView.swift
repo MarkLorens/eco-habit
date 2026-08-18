@@ -149,12 +149,10 @@ struct VisualSearchView: View {
     }
 
     private func label(for habit: Habit, available: Bool) -> String {
-        guard available else {
-            return habit.isFoundation ? "Already done" : "Done today"
-        }
-        return habit.isFoundation
-            ? "+\(VitalityEngine.foundationBoost) Vitality"
-            : "+\(habit.tier.points) pts"
+        // Foundations are gone with the old catalogue — every action in the
+        // friction catalogue scores, so there is one label on each side now.
+        guard available else { return "Done today" }
+        return "+\(habit.basePoints) pts"
     }
 
     // MARK: - Simulator
