@@ -17,10 +17,50 @@ final class AppState: ObservableObject {
     @Published var toast: Toast?
     @Published var lastAward: Award?
 
-    init(data: PersistedState = PersistenceStore.load()) {
-        self.data = data
+    /// The signed-in account, or `nil`. **This is what "logged in" means now** — there
+    /// is no separate flag to disagree with it.
+    ///
+    /// Storage is keyed on it, and every Firestore path will be built from it, so it is
+    /// deliberately the one thing that decides which data the app is looking at.
+    @Published private(set) var userId: String?
+
+    /// The id storage is currently keyed on. Signed out still persists — to a reserved
+    /// id — so there is only one read/write path rather than two.
+    private var storageId: String { userId ?? PersistenceStore.signedOutUserId }
+
+    init(userId: String? = nil, data: PersistedState? = nil) {
+        self.userId = userId
+        self.data = data ?? PersistenceStore.load(userId: userId ?? PersistenceStore.signedOutUserId)
         evaluateIfNeeded()
         backfillGlobeStageAnnouncement()
+    }
+
+    /// Switch to a signed-in account and load its state.
+    ///
+    /// Called by the auth listener, which is the only writer — setting this from the
+    /// sign-in button *as well* gives two sources of truth that drift apart.
+    func signedIn(uid: String, displayName: String? = nil) {
+        guard userId != uid else { return }
+        userId = uid
+        data = PersistenceStore.load(userId: uid)
+
+        // Apple hands over the name on the FIRST EVER sign-in for an Apple ID and never
+        // again, not even after a reinstall. If it is not captured here it is gone.
+        if let displayName, !displayName.isEmpty, data.userName.isEmpty {
+            mutate { $0.userName = displayName }
+        }
+
+        evaluateIfNeeded()
+        backfillGlobeStageAnnouncement()
+        selectedTab = .home
+    }
+
+    /// Drop back to the signed-out local account.
+    func signedOut() {
+        guard userId != nil else { return }
+        userId = nil
+        data = PersistenceStore.load(userId: PersistenceStore.signedOutUserId)
+        selectedTab = .home
     }
 
     /// An account from before stage-up animations existed has already "seen" the globe it
@@ -40,7 +80,12 @@ final class AppState: ObservableObject {
 
     // MARK: - Account
 
-    var isLoggedIn: Bool { data.isLoggedIn }
+    /// Derived from `userId`, not from a stored flag.
+    ///
+    /// `PersistedState.isLoggedIn` still exists so old save files decode, but nothing
+    /// reads it any more: a persisted boolean and a live Firebase session are two
+    /// sources of truth, and they drift the moment a token expires.
+    var isLoggedIn: Bool { userId != nil }
     var userName: String { data.userName.isEmpty ? "there" : data.userName }
     var firstName: String { userName.split(separator: " ").first.map(String.init) ?? userName }
     var notificationsEnabled: Bool { data.notificationsEnabled }
@@ -472,15 +517,18 @@ final class AppState: ObservableObject {
 
     func setNotifications(_ on: Bool) { mutate { $0.notificationsEnabled = on } }
 
-    func logIn() { mutate { $0.isLoggedIn = true } }
-
+    /// Sign out of Firebase. The auth listener notices and calls `signedOut()`, which is
+    /// what actually clears the session — one writer, not two.
     func logOut() {
-        mutate { $0.isLoggedIn = false }
+        AppleSignInService.signOut()
+        // Belt and braces for the DEBUG launch-argument path, which never had a
+        // Firebase session for the listener to react to.
+        if userId != nil { signedOut() }
         selectedTab = .home
     }
 
     func resetEverything() {
-        PersistenceStore.wipe()
+        PersistenceStore.wipe(userId: storageId)
         data = PersistedState()
         selectedTab = .home
         evaluateIfNeeded()
@@ -510,6 +558,6 @@ final class AppState: ObservableObject {
         var next = data
         change(&next)
         data = next
-        PersistenceStore.save(next)
+        PersistenceStore.save(next, userId: storageId)
     }
 }

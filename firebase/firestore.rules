@@ -1,0 +1,195 @@
+rules_version = '2';
+
+// =============================================================================
+// Eco-Habit — Firestore Security Rules
+//
+// There is no application server and no Cloud Functions. Everything an attacker
+// cannot do, they cannot do because of this file. It deserves more care than
+// configuration usually gets.
+//
+// REWRITTEN against the shipped data model. The previous version described an
+// earlier design — `/events`, `/signups`, `vitalityHistory` — and, critically,
+// required the HOST to check an attendee in:
+//
+//     && eventHost(...) == request.auth.uid      // only the host may write
+//     && request.resource.data.userId != request.auth.uid   // "no self-check-in"
+//
+// That is the exact inverse of what shipped. The organiser now publishes ONE
+// code for the whole Fight and each attendee's own device credits its own
+// account. Deployed as written, every check-in would have been rejected — and
+// silently, because Firestore's offline cache accepts the write locally and the
+// server's refusal arrives after the reward animation has already played.
+//
+// Earth points, streak and badges are deliberately client-authoritative: a user
+// forging their own Earth is an accepted, documented risk in a v1 with no
+// leaderboard and no prizes. What is NOT accepted is touching anyone else's
+// data, or granting yourself hosting rights.
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ----------------------------------------------------------
+    // Repeated get() of the same path within one evaluation is served from
+    // cache, so the fight() helper below costs one read however often it is
+    // called in a single rule.
+
+    function signedIn()   { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // Admin comes from a custom auth claim, never a client-writable field.
+    // Set it with the Admin SDK, not from the app.
+    function isAdmin()    { return signedIn() && request.auth.token.admin == true; }
+
+    function fight(fightId) {
+      return get(/databases/$(database)/documents/fights/$(fightId)).data;
+    }
+
+    function fightExists(fightId) {
+      return exists(/databases/$(database)/documents/fights/$(fightId));
+    }
+
+    // Only verified organisations may create events. The flag lives on the
+    // user's own document but is guarded below so they cannot set it themselves.
+    function isVerifiedOrganisation() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isOrganization == true;
+    }
+
+    // ---- /users/{uid} -----------------------------------------------------
+    // Deliberately NOT world-readable. A host never needs to read an attendee's
+    // record — the attendance document carries everything a roster shows.
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+
+      // A new account cannot arrive already verified.
+      allow create: if isOwner(uid)
+        && request.resource.data.isOrganization == false;
+
+      // Guarding the FIELD rather than the document is what lets somebody write
+      // the rest of their own record — points, streak, settings — while never
+      // promoting themselves to an organisation.
+      allow update: if isAdmin()
+        || (isOwner(uid)
+            && request.resource.data.isOrganization == resource.data.isOrganization);
+
+      // Account deletion is required by App Review for any app with sign-in.
+      // Subcollections are NOT removed by deleting the parent — the client
+      // deletes logs and badges first. See AppState.deleteAccount.
+      allow delete: if isOwner(uid) || isAdmin();
+
+      // ---- habit logs ----
+      // Document id is {habitId}_{localDate}, which is what makes once-per-day
+      // structural rather than something the client is trusted on: a second log
+      // that day is a write to an existing document, and `create` refuses it.
+      // No unique constraint, no race.
+      match /logs/{logId} {
+        allow read: if isOwner(uid) || isAdmin();
+
+        allow create: if isOwner(uid)
+          && logId == request.resource.data.habitId + '_' + request.resource.data.localDate
+          && request.resource.data.habitId is string
+          && request.resource.data.localDate is string
+          && request.resource.data.finalPoints is int
+          && request.resource.data.finalPoints >= 0;
+
+        // A log is what every number in the app is derived from. Rewriting one
+        // would rewrite history, so it is immutable once written.
+        allow update: if false;
+
+        // Same-day undo. Measured from the log's own timestamp; 36h covers the
+        // widest timezone plus a late-night change of mind.
+        //
+        // HONEST LIMIT: rules cannot verify `localDate` against the user's
+        // timezone — request.time is UTC and the device offset is unknown. So
+        // "no retroactive logging" stays a CLIENT rule in HabitRepository. What
+        // rules enforce is ownership and immutability, which is what protects
+        // other people.
+        allow delete: if isOwner(uid)
+          && request.time < resource.data.loggedAt + duration.value(36, 'h');
+      }
+
+      // ---- earned badges ----
+      // Document id is the badgeId, so awarding twice is a no-op rather than a
+      // second record, and `earnedAt` can never be moved. Earned is permanent.
+      match /badges/{badgeId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow create: if isOwner(uid)
+          && request.resource.data.badgeId == badgeId;
+        allow update: if false;
+        allow delete: if isOwner(uid) || isAdmin();
+      }
+    }
+
+    // ---- /fights ----------------------------------------------------------
+
+    match /fights/{fightId} {
+      // Drafts are private to their host until published — a half-written Fight
+      // must never appear in the public list.
+      allow read: if signedIn()
+        && (resource.data.status != 'draft'
+            || resource.data.hostId == request.auth.uid
+            || isAdmin());
+
+      allow create: if isVerifiedOrganisation()
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.status == 'draft'
+        && request.resource.data.checkInCode is string;
+
+      // A host may edit their own event, but may never hand it to somebody else.
+      allow update: if isAdmin()
+        || (signedIn()
+            && resource.data.hostId == request.auth.uid
+            && request.resource.data.hostId == resource.data.hostId);
+
+      // Cancelling is not deletion: status moves to 'cancelled' and the event
+      // stays visible to everyone who was going.
+      allow delete: if isAdmin();
+    }
+
+    // ---- /attendance/{fightId}_{uid} ---------------------------------------
+    //
+    // THE INVERSION. The attendee's own device writes its own attendance after
+    // scanning the organiser's QR. That is a write to their own record, which
+    // needs no server to authorise — which is the entire reason check-in works
+    // offline-first and without Cloud Functions.
+    //
+    // `create` rather than `write` is doing real work: create fails when the
+    // document already exists, so a second scan of the same code cannot pay
+    // twice. The composite id gives one-check-in-per-attendee for free.
+    //
+    // The client must send `userId` even though it duplicates the id, so the
+    // host's roster can list attendees without parsing document ids.
+
+    match /attendance/{attendanceId} {
+      allow read: if signedIn()
+        && (resource.data.userId == request.auth.uid
+            || fight(resource.data.fightId).hostId == request.auth.uid
+            || isAdmin());
+
+      allow create: if signedIn()
+        // the id must be exactly {fightId}_{uid} of the payload
+        && attendanceId == request.resource.data.fightId + '_' + request.auth.uid
+        // you may only check YOURSELF in
+        && request.resource.data.userId == request.auth.uid
+        && fightExists(request.resource.data.fightId)
+        // a draft or cancelled event cannot be attended
+        && fight(request.resource.data.fightId).status == 'published'
+        // and you must present the organiser's code
+        && request.resource.data.code == fight(request.resource.data.fightId).checkInCode;
+
+      // Proof of attendance is a fact, not a preference.
+      allow update, delete: if false;
+    }
+
+    // ---- default deny -----------------------------------------------------
+    // Anything not matched above is denied. A new collection must be granted
+    // access deliberately rather than inheriting it.
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

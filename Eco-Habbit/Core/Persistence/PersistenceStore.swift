@@ -153,29 +153,63 @@ struct PersistedState: Codable {
     }
 }
 
+/// The local store, **one file per account**.
+///
+/// It used to be a single `ecohabit-state.json` for the whole device, which was fine
+/// while there was exactly one implicit user. With real sign-in two accounts on one
+/// phone would silently overwrite each other, so the uid is now part of the filename.
 enum PersistenceStore {
-    private static let fileName = "ecohabit-state.json"
 
-    private static var url: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return docs.appendingPathComponent(fileName)
+    /// The pre-accounts filename. Still read once, by `migrateLegacyFile`, and never
+    /// written again.
+    private static let legacyFileName = "ecohabit-state.json"
+
+    private static var documents: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
-    static func load() -> PersistedState {
-        guard let data = try? Data(contentsOf: url) else { return PersistedState() }
+    /// Signed-out state lives under a reserved id rather than a separate code path, so
+    /// there is only ever one way to read and write.
+    static let signedOutUserId = "local"
+
+    private static func url(for userId: String) -> URL {
+        documents.appendingPathComponent("ecohabit-state-\(userId).json")
+    }
+
+    static func load(userId: String) -> PersistedState {
+        migrateLegacyFile(to: userId)
+        guard let data = try? Data(contentsOf: url(for: userId)) else { return PersistedState() }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return (try? decoder.decode(PersistedState.self, from: data)) ?? PersistedState()
     }
 
-    static func save(_ state: PersistedState) {
+    static func save(_ state: PersistedState, userId: String) {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(state) else { return }
-        try? data.write(to: url, options: .atomic)
+        try? data.write(to: url(for: userId), options: .atomic)
     }
 
-    static func wipe() {
-        try? FileManager.default.removeItem(at: url)
+    static func wipe(userId: String) {
+        try? FileManager.default.removeItem(at: url(for: userId))
+    }
+
+    /// Adopt the pre-accounts file the first time an account reads.
+    ///
+    /// Without this, everything on the device before sign-in — points, streak, badges,
+    /// every log — disappears the moment somebody signs in, because the app starts
+    /// looking at a filename that has never existed.
+    ///
+    /// Moved rather than copied, and only when the destination is absent, so it happens
+    /// exactly once and cannot resurrect itself over a real account later.
+    private static func migrateLegacyFile(to userId: String) {
+        let legacy = documents.appendingPathComponent(legacyFileName)
+        let destination = url(for: userId)
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: legacy.path),
+              !fm.fileExists(atPath: destination.path)
+        else { return }
+        try? fm.moveItem(at: legacy, to: destination)
     }
 }

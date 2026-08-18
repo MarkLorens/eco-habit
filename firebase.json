@@ -1,0 +1,7 @@
+{
+  "//": "Points the Firebase CLI at the rules and indexes. Deploy with:  firebase deploy --only firestore:rules,firestore:indexes",
+  "firestore": {
+    "rules": "firebase/firestore.rules",
+    "indexes": "firebase/firestore.indexes.json"
+  }
+}

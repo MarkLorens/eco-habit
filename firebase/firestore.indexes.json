@@ -1,0 +1,42 @@
+{
+  "//": "Composite indexes. Firestore FAILS a query that needs one rather than running it slowly, so these are declared ahead of the queries instead of after the first crash. Previous version targeted a collection named 'events' with an 'eventType' field; neither exists — the collection is 'fights' and the field is 'type'.",
+  "indexes": [
+    {
+      "//": "The Fights browse list: published events, soonest first.",
+      "collectionGroup": "fights",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "startsAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "Same list filtered by kind of event.",
+      "collectionGroup": "fights",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "startsAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "A host's own events, including drafts, which are invisible to everyone else.",
+      "collectionGroup": "fights",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "hostId", "order": "ASCENDING" },
+        { "fieldPath": "startsAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "HabitRepository.fetchMostRecentLog — equality on habitId, newest first. This is the cooldown check, so it runs on every attempt to log; without the index it does not run at all.",
+      "collectionGroup": "logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "habitId", "order": "ASCENDING" },
+        { "fieldPath": "loggedAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
