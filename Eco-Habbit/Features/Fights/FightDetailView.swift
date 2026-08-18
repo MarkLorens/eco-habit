@@ -6,6 +6,7 @@ struct FightDetailView: View {
     let fight: Fight
 
     @State private var showingQR = false
+    @State private var showingHostCode = false
 
     private var isSignedUp: Bool { app.isSignedUp(fight) }
     private var hasAttended: Bool { app.hasAttended(fight) }
@@ -29,6 +30,9 @@ struct FightDetailView: View {
             if let signup = app.signup(for: fight) {
                 CheckInQRView(fight: fight, signup: signup)
             }
+        }
+        .sheet(isPresented: $showingHostCode) {
+            FightCodeView(fight: fight)
         }
     }
 
@@ -174,10 +178,16 @@ struct FightDetailView: View {
                         .background(Capsule().fill(Theme.C.accent))
                 }
                 .buttonStyle(PlainPressStyle())
+
+                // The organiser's one code for the whole Fight. Attendees scan
+                // this with their own camera and credit their own accounts —
+                // which is why no host-side scanner is needed.
+                Button("Show check-in code") { showingHostCode = true }
+                    .buttonStyle(SecondaryButtonStyle())
             }
 
             if hasAttended {
-                Label("Attended — +\(PointsConfiguration.default.fightAttendancePoints) pts credited",
+                Label("Attended — +\(fight.attendancePoints) pts credited",
                       systemImage: "checkmark.seal.fill")
                     .font(Theme.F.body(14.5, weight: .bold))
                     .foregroundStyle(Theme.C.accent2_700)

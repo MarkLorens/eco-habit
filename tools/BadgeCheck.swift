@@ -1,9 +1,5 @@
+// Runnable check — run via ./tools/run-checks.sh
 // Runnable check for badge evaluation. main has no test target.
-//   swiftc -O -o /tmp/badgecheck \
-//     Eco-Habbit/Core/Services/{BadgeEvaluationService,StreakService,DecayService,PointsCalculationService}.swift \
-//     Eco-Habbit/Core/Persistence/PersistenceStore.swift Eco-Habbit/Core/Configuration/PointsConfiguration.swift \
-//     Eco-Habbit/Core/Models/{EarthStage,Day,Habit,Badge,EarnedBadge,ActivityCategory,FrictionLevel,EvidenceStrength,Fight,FightSeed,MockData}.swift \
-//     Eco-Habbit/DesignSystem/Tokens.swift tools/BadgeCheck.swift && /tmp/badgecheck
 let s = BadgeEvaluationService(); let today = "2026-08-20"
 var fails = 0
 func yes(_ l: String, _ g: Bool) { if g { print("  ok   \(l)") } else { print("  FAIL \(l)"); fails+=1 } }

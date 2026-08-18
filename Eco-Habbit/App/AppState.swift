@@ -107,6 +107,21 @@ final class AppState: ObservableObject {
         min(1, Double(dailyPoints) / Double(PointsEngine.dailyCap))
     }
 
+    /// What logging this habit would pay **right now** — the streak multiplier
+    /// and whatever is left of today's cap already applied.
+    ///
+    /// Priced through the same service that does the real awarding, so the
+    /// number on a chip cannot drift from the number the user then receives.
+    func projectedPoints(for habit: Habit, hasEvidence: Bool = false) -> PointsBreakdown {
+        PointsCalculationService().breakdown(
+            habit: habit,
+            hasEvidence: hasEvidence,
+            currentStreak: displayStreak,
+            isPrioritized: false,
+            basePointsUsedToday: HabitRepository.basePointsUsed(on: today, in: data)
+        )
+    }
+
     func log(for habitId: String) -> HabitLog? {
         todaysLogs.first { $0.habitId == habitId }
     }
@@ -303,9 +318,26 @@ final class AppState: ObservableObject {
     /// Stands in for the host scanning the attendee's QR. Real cross-device check-in
     /// arrives with Firebase in Phase 10 (§9.3).
     @discardableResult
-    func checkIn(to fight: Fight) -> FightRepository.CheckInResult {
+    /// The Fight owning a scanned code, if any.
+    func fight(matchingCode code: String) -> Fight? {
+        FightRepository.fight(matchingCode: code, in: allFights)
+    }
+
+    /// Check in from a scanned QR. The code identifies the Fight, so the scanner
+    /// never has to know which event it is pointed at.
+    ///
+    /// Returns `nil` when no Fight owns the code — a well-formed
+    /// `ecohabit://fight/` payload for an event this device has never heard of.
+    /// Silent on purpose at the call site; the camera decides what to say.
+    @discardableResult
+    func checkIn(withCode code: String) -> FightRepository.CheckInResult? {
+        guard let fight = fight(matchingCode: code) else { return nil }
+        return checkIn(to: fight, code: code)
+    }
+
+    func checkIn(to fight: Fight, code: String? = nil) -> FightRepository.CheckInResult {
         var result = FightRepository.CheckInResult.notSignedUp
-        mutate { result = FightRepository.checkIn(to: fight, in: &$0, now: Date()) }
+        mutate { result = FightRepository.checkIn(to: fight, code: code, in: &$0, now: Date()) }
 
         switch result {
         case .checkedIn(let points):

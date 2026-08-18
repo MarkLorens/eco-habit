@@ -1,8 +1,5 @@
+// Runnable check — run via ./tools/run-checks.sh
 // Runnable check for the Earth stage model. main has no test target.
-//   swiftc -O -o /tmp/earthcheck \
-//     Eco-Habbit/Core/Configuration/PointsConfiguration.swift \
-//     Eco-Habbit/Core/Models/EarthStage.swift \
-//     tools/EarthCheck.swift && /tmp/earthcheck
 let c = PointsConfiguration.default
 var fails = 0
 func eq(_ l: String, _ g: Int, _ w: Int) { if g==w { print("  ok   \(l): \(g)") } else { print("  FAIL \(l): got \(g) want \(w)"); fails+=1 } }

@@ -1,13 +1,6 @@
+// Runnable check — run via ./tools/run-checks.sh
 // Runnable check for the streak rule. main has no test target, so this is
 // the substitute — it compiles the REAL sources, not a copy.
-//
-//   swiftc -O -o /tmp/streakcheck \
-//     Eco-Habbit/Core/Services/StreakService.swift \
-//     Eco-Habbit/Core/Models/Day.swift \
-//     Eco-Habbit/Core/Configuration/PointsConfiguration.swift \
-//     Eco-Habbit/Core/Models/EarthStage.swift \
-//     tools/StreakCheck.swift && /tmp/streakcheck
-//
 let s = StreakService()
 var fails = 0
 func check(_ label: String, _ got: Int, _ want: Int) {

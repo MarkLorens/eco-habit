@@ -1,11 +1,6 @@
+// Runnable check — run via ./tools/run-checks.sh
+import Foundation
 // Runnable check for the QR payload and code-based check-in. main has no test target.
-//   swiftc -O -o /tmp/qrcheck \
-//     Eco-Habbit/Core/Repositories/{FightRepository,UserRepository,HabitRepository}.swift \
-//     Eco-Habbit/Core/Services/{PointsCalculationService,StreakService,DecayService,BadgeEvaluationService}.swift \
-//     Eco-Habbit/Core/Persistence/PersistenceStore.swift Eco-Habbit/Core/Configuration/PointsConfiguration.swift \
-//     Eco-Habbit/Core/Engine/{PointsEngine,EvaluationLoop}.swift \
-//     Eco-Habbit/Core/Models/{Fight,FightSeed,Habit,Badge,EarnedBadge,Day,EarthStage,ActivityCategory,FrictionLevel,EvidenceStrength,MockData}.swift \
-//     Eco-Habbit/DesignSystem/Tokens.swift tools/QRCheck.swift && /tmp/qrcheck
 var fails = 0
 func yes(_ l: String, _ g: Bool) { if g { print("  ok   \(l)") } else { print("  FAIL \(l)"); fails+=1 } }
 func eq<T: Equatable>(_ l: String, _ g: T, _ w: T) { if g==w { print("  ok   \(l): \(g)") } else { print("  FAIL \(l): got \(g) want \(w)"); fails+=1 } }

@@ -1,10 +1,5 @@
+// Runnable check — run via ./tools/run-checks.sh
 // Runnable check for decay. main has no test target — this compiles the REAL sources.
-//   swiftc -O -o /tmp/decaycheck \
-//     Eco-Habbit/Core/Services/{DecayService,StreakService,PointsCalculationService}.swift \
-//     Eco-Habbit/Core/Persistence/PersistenceStore.swift \
-//     Eco-Habbit/Core/Configuration/PointsConfiguration.swift \
-//     Eco-Habbit/Core/Models/{EarthStage,Day,Habit,ActivityCategory,FrictionLevel,EvidenceStrength,Fight,FightSeed}.swift \
-//     Eco-Habbit/DesignSystem/Tokens.swift tools/DecayCheck.swift && /tmp/decaycheck
 let d = DecayService(); let c = PointsConfiguration.default
 var fails = 0
 func mk(points: Int, lastActive: String?, baseline: Int? = nil, applied: String? = nil) -> PersistedState {

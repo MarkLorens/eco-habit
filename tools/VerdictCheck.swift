@@ -1,12 +1,7 @@
+// Runnable check — run via ./tools/run-checks.sh
 // Runnable check for the classifier verdict gates. main has no test target.
 // verdict() is static and takes its thresholds + evidence lookup as parameters,
 // so the whole decision layer tests without loading the 68 MB model.
-//   swiftc -O -o /tmp/verdictcheck \
-//     Eco-Habbit/Core/ML/HabitClassifier.swift Eco-Habbit/Core/Models/EvidenceStrength.swift \
-//     Eco-Habbit/Core/Services/PointsCalculationService.swift \
-//     Eco-Habbit/Core/Models/{Habit,ActivityCategory,FrictionLevel,Badge,EarnedBadge,Day,Fight,FightSeed,MockData,EarthStage}.swift \
-//     Eco-Habbit/Core/Configuration/PointsConfiguration.swift Eco-Habbit/DesignSystem/Tokens.swift \
-//     tools/VerdictCheck.swift && /tmp/verdictcheck
 var fails = 0
 func check(_ l: String, _ got: CaptureVerdict, _ want: String) {
     let g: String
