@@ -60,6 +60,57 @@ struct PersistedState: Codable {
     
     // Badge unlock "event" testing
     var announcedBadgeIds: Set<String> = []
+
+    init() {}
+
+    // MARK: - Decoding
+
+    /// Hand-written, and it has to stay that way.
+    ///
+    /// Synthesized `Decodable` **ignores property default values** — a key missing
+    /// from the file throws `keyNotFound` rather than falling back. `load()` then
+    /// swallows that into a fresh `PersistedState()`, so adding one field to this
+    /// struct silently wiped every existing account: name, streak, logs, badges,
+    /// all of it, with no error anywhere.
+    ///
+    /// That was not hypothetical. `announcedBadgeIds` was added on 18 Aug and any
+    /// state saved before it decoded to a blank account on the next launch.
+    ///
+    /// Reading every field with `decodeIfPresent` makes adding a field a
+    /// non-event, which is the only way this is safe to keep evolving.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func v<T: Decodable>(_ k: CodingKeys, _ fallback: T) throws -> T {
+            try c.decodeIfPresent(T.self, forKey: k) ?? fallback
+        }
+
+        isLoggedIn          = try v(.isLoggedIn, false)
+        userName            = try v(.userName, "")
+        email               = try v(.email, "")
+        favouriteCategories = try v(.favouriteCategories, [])
+        notificationsEnabled = try v(.notificationsEnabled, true)
+
+        vitality            = try v(.vitality, VitalityEngine.startingVitality)
+        streakDays          = try v(.streakDays, 0)
+        longestStreak       = try v(.longestStreak, 0)
+        lastActiveDay       = try c.decodeIfPresent(String.self, forKey: .lastActiveDay)
+        lastEvaluatedDate   = try c.decodeIfPresent(String.self, forKey: .lastEvaluatedDate)
+
+        shieldsAvailable    = try v(.shieldsAvailable, 0)
+        shieldedDates       = try v(.shieldedDates, [])
+        lastShieldGrantMonth = try c.decodeIfPresent(String.self, forKey: .lastShieldGrantMonth)
+
+        fightAttendedDates  = try v(.fightAttendedDates, [])
+        logs                = try v(.logs, [])
+        fightSignups        = try v(.fightSignups, [:])
+        fightAttendance     = try v(.fightAttendance, [:])
+
+        isOrganization      = try v(.isOrganization, false)
+        orgName             = try v(.orgName, "")
+        hostedFights        = try v(.hostedFights, [])
+        hostScans           = try v(.hostScans, [:])
+        announcedBadgeIds   = try v(.announcedBadgeIds, [])
+    }
 }
 
 enum PersistenceStore {
