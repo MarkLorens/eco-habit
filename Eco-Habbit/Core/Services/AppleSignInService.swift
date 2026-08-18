@@ -116,6 +116,16 @@ enum AppleSignInService {
         try? Auth.auth().signOut()
     }
 
+    /// Destroy the signed-in account.
+    ///
+    /// Throws `requiresRecentLogin` when the session is older than Firebase is willing
+    /// to trust for something this destructive. The caller has to say so rather than
+    /// fail silently — the user is expecting their account to be gone.
+    static func deleteCurrentUser() async throws {
+        pendingDisplayName = nil
+        try await Auth.auth().currentUser?.delete()
+    }
+
     /// Fires immediately with the restored user, so a returning visitor is known before
     /// the first frame and never sees the sign-in screen flash.
     ///

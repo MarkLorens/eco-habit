@@ -28,8 +28,17 @@ final class AppState: ObservableObject {
     /// id — so there is only one read/write path rather than two.
     private var storageId: String { userId ?? PersistenceStore.signedOutUserId }
 
-    init(userId: String? = nil, data: PersistedState? = nil) {
+    /// Remote copy of `/users/{uid}`, or `nil` on a device that is local-only.
+    ///
+    /// Optional rather than a boolean flag so the offline build has nothing to inject —
+    /// which is what lets the economy checks and every `#Preview` run without Firebase.
+    private let sync: UserStateSyncing?
+
+    init(userId: String? = nil,
+         data: PersistedState? = nil,
+         sync: UserStateSyncing? = nil) {
         self.userId = userId
+        self.sync = sync
         self.data = data ?? PersistenceStore.load(userId: userId ?? PersistenceStore.signedOutUserId)
         evaluateIfNeeded()
         backfillGlobeStageAnnouncement()
@@ -53,6 +62,74 @@ final class AppState: ObservableObject {
         evaluateIfNeeded()
         backfillGlobeStageAnnouncement()
         selectedTab = .home
+
+        Task { await pullRemoteState(uid: uid) }
+    }
+
+    /// Adopt the account's server-side state, if it has any.
+    ///
+    /// **Remote wins on sign-in.** This is the case that matters: a reinstall, or a
+    /// second device, where the local file is empty and the server has the real history.
+    /// The reverse — remote empty, local populated — creates the document from what is
+    /// here, which is what makes an existing local account survive its first sign-in.
+    ///
+    /// Silent on failure by design. No network means no sync, not a broken app; the
+    /// local file is the working copy either way.
+    private func pullRemoteState(uid: String) async {
+        guard let sync else { return }
+        do {
+            var next = data
+            if let remote = try await sync.fetch(userId: uid) {
+                remote.apply(to: &next)
+            } else {
+                // Brand-new account: the local state becomes the server's first copy.
+                try await sync.push(UserDocument(next), userId: uid)
+            }
+
+            // History is **merged, not replaced**. A log or badge that exists only on
+            // this device — earned offline, or before the account had a server copy —
+            // must survive coming back. Keyed by remote id and badgeId, so the same
+            // entry arriving from both sides collapses to one.
+            let remoteLogs = try await sync.fetchLogs(userId: uid)
+            let remoteLogIds = Set(remoteLogs.map(\.remoteId))
+            var logsById = Dictionary(next.logs.map { ($0.remoteId, $0) },
+                                      uniquingKeysWith: { first, _ in first })
+            let localOnlyLogs = logsById.values.filter { !remoteLogIds.contains($0.remoteId) }
+            for log in remoteLogs where logsById[log.remoteId] == nil {
+                logsById[log.remoteId] = log
+            }
+            next.logs = logsById.values.sorted { $0.loggedAt > $1.loggedAt }
+
+            let remoteBadges = try await sync.fetchBadges(userId: uid)
+            let remoteBadgeIds = Set(remoteBadges.map(\.badgeId))
+            var badgesById = Dictionary(next.earnedBadges.map { ($0.badgeId, $0) },
+                                        uniquingKeysWith: { first, _ in first })
+            let localOnlyBadges = badgesById.values.filter { !remoteBadgeIds.contains($0.badgeId) }
+            for badge in remoteBadges where badgesById[badge.badgeId] == nil {
+                badgesById[badge.badgeId] = badge
+            }
+            next.earnedBadges = badgesById.values.sorted { $0.earnedAt < $1.earnedAt }
+
+            data = next
+            PersistenceStore.save(next, userId: uid)
+            evaluateIfNeeded()
+            backfillGlobeStageAnnouncement()
+
+            // Push **only what the server does not already have**, so the two sides
+            // agree after the first sign-in rather than diverging quietly.
+            //
+            // Filtering matters more than it looks. Both subcollections are
+            // `allow update: if false` — a log is immutable once written — so
+            // re-sending a document that already exists is rejected, and a Firestore
+            // batch is all-or-nothing: one rejected write takes every genuinely new
+            // one in the same batch down with it. Sending the merged list would mean
+            // that on any account with server history, nothing local ever uploads.
+            try await sync.pushLogs(localOnlyLogs, userId: uid)
+            try await sync.pushBadges(localOnlyBadges, userId: uid)
+        } catch {
+            // Deliberately swallowed. Surfacing "sync failed" on every launch without
+            // wifi would train people to ignore it.
+        }
     }
 
     /// Drop back to the signed-out local account.
@@ -532,7 +609,48 @@ final class AppState: ObservableObject {
         data = PersistedState()
         selectedTab = .home
         evaluateIfNeeded()
+        // The remote copy is rewritten from the now-empty state rather than left
+        // behind, or the next launch would pull the old numbers straight back.
+        //
+        // The subcollections need the same treatment, and for a sharper reason: a
+        // reset that leaves the logs on the server is not a reset at all, because
+        // `pullRemoteState` MERGES history rather than replacing it — every log and
+        // badge would come back on the next sign-in.
+        //
+        // Purged wholesale rather than diffed. `syncSubcollections` only ever
+        // deletes logs, since nothing in normal use un-earns a badge, and a reset
+        // that clears the history but leaves the trophies is not what the button
+        // says it does.
+        pushRemoteState(data)
+        if let sync, let userId {
+            Task { try? await sync.purgeSubcollections(userId: userId) }
+        }
         toast = Toast(kind: .info, message: "Local data cleared.")
+    }
+
+    /// Delete the account: server data, then the sign-in itself.
+    ///
+    /// **App Review requires this** for any app with sign-in — "reset my data" is not a
+    /// substitute for "delete my account". Distinct from `resetEverything`, which starts
+    /// the Earth over but keeps you signed in.
+    ///
+    /// Firestore documents go first. Deleting the auth user revokes the token, and
+    /// without it the security rules would refuse every subsequent delete — leaving the
+    /// data behind forever with nobody able to reach it.
+    func deleteAccount() async {
+        guard let userId else { return }
+        do {
+            try await sync?.deleteAccount(userId: userId)
+            try await AppleSignInService.deleteCurrentUser()
+            PersistenceStore.wipe(userId: userId)
+            signedOut()
+            toast = Toast(kind: .info, message: "Account deleted.")
+        } catch {
+            // `requiresRecentLogin` is the common one: Apple wants a fresh sign-in
+            // before it will let an account be destroyed.
+            toast = Toast(kind: .warning,
+                          message: "Couldn't delete the account. Sign out, sign in again, then retry.")
+        }
     }
 
     // MARK: - Debug
@@ -555,9 +673,52 @@ final class AppState: ObservableObject {
     #endif
 
     private func mutate(_ change: (inout PersistedState) -> Void) {
+        let before = data
         var next = data
         change(&next)
         data = next
+        // Disk first, synchronously, exactly as before. The app must not get slower or
+        // stop working offline because a remote copy exists.
         PersistenceStore.save(next, userId: storageId)
+        pushRemoteState(next)
+        syncSubcollections(before: before, after: next)
+    }
+
+    /// Mirror added and removed logs and badges to their subcollections.
+    ///
+    /// Diffed here rather than pushed from the call sites because logging happens in
+    /// `HabitRepository`, which is a namespace of pure functions over `PersistedState`
+    /// and has no business knowing a network exists. Every path that mutates state
+    /// funnels through `mutate`, so diffing here catches all of them — including the
+    /// same-day undo and the reset — with nothing to remember to wire up later.
+    private func syncSubcollections(before: PersistedState, after: PersistedState) {
+        guard let sync, let userId else { return }
+
+        let hadLogs = Set(before.logs.map(\.remoteId))
+        let hasLogs = Set(after.logs.map(\.remoteId))
+        let addedLogs = after.logs.filter { !hadLogs.contains($0.remoteId) }
+        let removedLogIds = Array(hadLogs.subtracting(hasLogs))
+
+        let hadBadges = Set(before.earnedBadges.map(\.badgeId))
+        let addedBadges = after.earnedBadges.filter { !hadBadges.contains($0.badgeId) }
+
+        guard !addedLogs.isEmpty || !removedLogIds.isEmpty || !addedBadges.isEmpty else { return }
+
+        Task {
+            try? await sync.pushLogs(addedLogs, userId: userId)
+            try? await sync.deleteLogs(ids: removedLogIds, userId: userId)
+            try? await sync.pushBadges(addedBadges, userId: userId)
+        }
+    }
+
+    /// Echo the new state to `/users/{uid}`. Fire and forget.
+    ///
+    /// Not awaited anywhere: logging an action must feel instant and must work on a
+    /// plane. Firestore's own cache queues the write and replays it when the network
+    /// returns, so a missed push is deferred rather than lost.
+    private func pushRemoteState(_ state: PersistedState) {
+        guard let sync, let userId else { return }
+        let document = UserDocument(state)
+        Task { try? await sync.push(document, userId: userId) }
     }
 }

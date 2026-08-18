@@ -20,10 +20,14 @@ struct Eco_HabbitApp: App {
     
     init() {
         FontLoader.registerBundledFonts()
+        // The one place the real sync is chosen. Previews, tests and the offline demo
+        // build an AppState without it and stay entirely local.
+        let sync = FirebaseUserStateSync()
         #if DEBUG
-        _appState = StateObject(wrappedValue: AppState.fromLaunchArguments() ?? AppState())
+        _appState = StateObject(wrappedValue: AppState.fromLaunchArguments()
+                                ?? AppState(sync: sync))
         #else
-        _appState = StateObject(wrappedValue: AppState())
+        _appState = StateObject(wrappedValue: AppState(sync: sync))
         #endif
     }
 
