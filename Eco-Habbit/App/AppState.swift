@@ -39,28 +39,46 @@ final class AppState: ObservableObject {
 
     // MARK: - Earth
 
-    var vitality: Int { data.vitality }
-    var stage: VitalityStage { VitalityStage.stage(for: data.vitality) }
-    var globeHealth: Double { PointsEngine.globeHealth(vitality: data.vitality) }
+    /// Cumulative Earth points — the real total, unbounded.
+    var currentPoints: Int { data.currentPoints }
+
+    var stage: EarthStage { config.stage(forPoints: data.currentPoints) }
+
+    /// Kept as a 0–100 reading because that is what the globe and the profile
+    /// tile draw. It is now **derived** from points rather than stored: it
+    /// reaches 100 exactly when the Earth is Restored, so the two can never
+    /// disagree the way a separately-stored level could.
+    var vitality: Int {
+        let restored = config.threshold(for: .restored)
+        guard restored > 0 else { return 0 }
+        return min(100, data.currentPoints * 100 / restored)
+    }
+
+    var globeHealth: Double { Double(vitality) }
     var level: Int { stage.rawValue + 1 }
 
     var levelTitle: String {
         switch stage {
-        case .barren: return "Seedling"
-        case .stirring: return "Sprout"
-        case .recovering: return "Grower"
-        case .thriving: return "Eco Guardian"
-        case .flourishing: return "Planet Keeper"
+        case .critical: return "Seedling"
+        case .fragile: return "Sprout"
+        case .stabilizing: return "Grower"
+        case .recovering: return "Caretaker"
+        case .flourishing: return "Eco Guardian"
+        case .restored: return "Planet Keeper"
         }
     }
 
+    /// How far through the current stage, for the ring. Measured in points now,
+    /// against the next stage's threshold.
     var stageProgress: Double {
         guard let next = stage.next else { return 1 }
-        let floor = stage.range.lowerBound
-        let span = next.range.lowerBound - floor
+        let floor = config.threshold(for: stage)
+        let span = config.threshold(for: next) - floor
         guard span > 0 else { return 1 }
-        return min(1, max(0, Double(data.vitality - floor) / Double(span)))
+        return min(1, max(0, Double(data.currentPoints - floor) / Double(span)))
     }
+
+    private var config: PointsConfiguration { .default }
 
     /// PRD §9.5 — `streakDays` is a *settled* value that stops at yesterday, so today's
     /// target has to be added back in for display. Without this a user who just hit their
@@ -135,7 +153,10 @@ final class AppState: ObservableObject {
         switch badge.requirement {
         case .totalActions(let n): return totalActionsLogged >= n
         case .streak(let n): return max(displayStreak, data.longestStreak) >= n
-        case .vitality(let n): return data.vitality >= n
+        // The badge criterion is still expressed as a 0–100 reading, so it reads
+        // the derived `vitality` rather than raw points. "Reef Guardian at 86"
+        // therefore still means the same place on the journey it always did.
+        case .vitality(let n): return vitality >= n
         case .categoryActions(let category, let n): return actionCount(in: category) >= n
         case .seasonal: return false
         }

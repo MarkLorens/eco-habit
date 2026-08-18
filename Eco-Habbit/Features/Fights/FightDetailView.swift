@@ -139,7 +139,7 @@ struct FightDetailView: View {
     private var reward: some View {
         EHCard(background: AnyShapeStyle(Theme.C.accent2_100)) {
             HStack(spacing: Theme.S.x3) {
-                Text("+\(VitalityEngine.fightBoost)")
+                Text("+\(PointsConfiguration.default.fightAttendancePoints)")
                     .font(Theme.F.heading(30))
                     .foregroundStyle(Theme.C.accent2_700)
                 VStack(alignment: .leading, spacing: 2) {
@@ -177,7 +177,7 @@ struct FightDetailView: View {
             }
 
             if hasAttended {
-                Label("Attended — +\(VitalityEngine.fightBoost) Vitality credited",
+                Label("Attended — +\(PointsConfiguration.default.fightAttendancePoints) pts credited",
                       systemImage: "checkmark.seal.fill")
                     .font(Theme.F.body(14.5, weight: .bold))
                     .foregroundStyle(Theme.C.accent2_700)

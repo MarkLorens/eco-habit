@@ -55,7 +55,10 @@ extension PersistedState {
     ) -> PersistedState {
         var state = PersistedState.preview
         state.userName = name
-        state.vitality = vitality
+        // The parameter is still a 0–100 reading, because that is how every
+        // preview call site reads. Converted to the points that produce it, so
+        // the derived `vitality` comes back out at the number asked for.
+        state.currentPoints = PersistedState.points(forVitality: vitality)
         state.streakDays = streak
         state.longestStreak = longestStreak
         state.favouriteCategories = favourites
@@ -82,10 +85,15 @@ extension PersistedState {
         state.userName = MockData.demoName
         state.email = MockData.demoEmail
         state.favouriteCategories = [.waste, .energy, .water]
-        state.vitality = 65
+        state.currentPoints = PersistedState.points(forVitality: 65)
         state.streakDays = 12
         state.longestStreak = 18
         return state
+    }
+
+    /// Inverse of `AppState.vitality`, for fixtures written in the old 0–100 terms.
+    static func points(forVitality vitality: Int) -> Int {
+        PointsConfiguration.default.threshold(for: .restored) * vitality / 100
     }
 }
 #endif

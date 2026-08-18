@@ -17,7 +17,10 @@ enum FightRepository {
     }
 
     enum CheckInResult: Equatable {
-        case checkedIn(vitalityGain: Int)
+        /// Earth points credited. Was `vitalityGain` — attendance used to be paid
+        /// by the nightly Vitality pass, which no longer exists; the points are
+        /// credited here, at check-in, like every other award.
+        case checkedIn(points: Int)
         case notSignedUp
         case alreadyCheckedIn
         case windowClosed
@@ -88,7 +91,11 @@ enum FightRepository {
         )
         state.fightAttendedDates.insert(day)
 
-        return .checkedIn(vitalityGain: VitalityEngine.fightBoost)
+        // Credited here rather than by a nightly pass. Leaving it to the loop is
+        // what made this silently pay nothing once the loop stopped scoring.
+        let award = PointsConfiguration.default.fightAttendancePoints
+        state.currentPoints += award
+        return .checkedIn(points: award)
     }
 
     static func attendance(for fightId: String, in state: PersistedState) -> FightAttendance? {

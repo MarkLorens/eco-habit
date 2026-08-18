@@ -216,14 +216,14 @@ private struct EarthStageSheet: View {
                     .font(Theme.F.heading(26))
                     .foregroundStyle(Theme.C.text)
 
-                Text("Log daily habits to earn points and heal the globe. Reach 30 points in a day for a Vitality boost.")
+                Text("Log daily habits to earn points and heal the globe. Points build up — each stage is a threshold you pass and keep.")
                     .font(Theme.F.body(14))
                     .foregroundStyle(Theme.C.neutral700)
                     .padding(.top, 8)
 
                 VStack(spacing: 10) {
-                    ForEach(VitalityStage.allCases) { stage in
-                        let reached = app.vitality >= stage.range.lowerBound
+                    ForEach(EarthStage.allCases) { stage in
+                        let reached = app.currentPoints >= stage.threshold
                         HStack(spacing: 12) {
                             Circle()
                                 .fill(reached ? Theme.C.accent2_500 : Theme.C.neutral300)
@@ -240,7 +240,7 @@ private struct EarthStageSheet: View {
 
                             Spacer()
 
-                            Text("\(stage.range.lowerBound)")
+                            Text("\(stage.threshold)")
                                 .font(Theme.F.body(13, weight: .semibold))
                                 .foregroundStyle(Theme.C.neutral600)
                         }

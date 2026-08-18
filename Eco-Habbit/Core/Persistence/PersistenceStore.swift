@@ -18,7 +18,15 @@ struct PersistedState: Codable {
 
     var notificationsEnabled = true
 
-    var vitality = VitalityEngine.startingVitality
+    /// **Cumulative Earth points.** Unbounded and only ever spent by decay — this
+    /// is the number the stages are drawn against.
+    ///
+    /// Replaces the old 0–100 `vitality`, which was a *level*, not a total. The
+    /// two cannot be migrated into one another: 30 vitality is not 30 points and
+    /// never was. An account carried over from that model starts the new Earth at
+    /// zero, which is honest — its history was scored under different rules.
+    var currentPoints = 0
+
     var streakDays = 0
     var longestStreak = 0
     var lastActiveDay: String?
@@ -90,7 +98,7 @@ struct PersistedState: Codable {
         favouriteCategories = try v(.favouriteCategories, [])
         notificationsEnabled = try v(.notificationsEnabled, true)
 
-        vitality            = try v(.vitality, VitalityEngine.startingVitality)
+        currentPoints       = try v(.currentPoints, 0)
         streakDays          = try v(.streakDays, 0)
         longestStreak       = try v(.longestStreak, 0)
         lastActiveDay       = try c.decodeIfPresent(String.self, forKey: .lastActiveDay)

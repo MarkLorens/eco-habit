@@ -56,6 +56,10 @@ enum HabitRepository {
 
         append(habit, on: day, source: source, breakdown: breakdown, in: &state)
         advanceStreak(to: day, in: &state)
+        // Points accumulate. The logs stay authoritative for the day's total and
+        // for history; this is the running Earth figure the stages are drawn
+        // against, and it is only ever reduced by decay.
+        state.currentPoints += breakdown.finalPoints
         return .logged(points: breakdown.finalPoints)
     }
 

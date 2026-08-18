@@ -57,6 +57,12 @@ nonisolated struct PointsConfiguration: Codable, Equatable {
     /// berlaku di atas base yang lolos cap, jadi poin final harian bisa > 100.
     var dailyBasePointsCap: Int
 
+    /// Points one Fight attendance pays. Flat for now — Tio's tiers (Micro 40 /
+    /// Standard 75 / Major 120) need a tier on `Fight`, which lands with the
+    /// Fights step. This is the Standard value so the number is not a placeholder
+    /// nobody chose.
+    var fightAttendancePoints: Int
+
     var monthlyEventPointsCap: Int
 
     // MARK: - Decay
@@ -90,6 +96,7 @@ nonisolated struct PointsConfiguration: Codable, Equatable {
         priorityMultiplierActive: 1.3,
         priorityMultiplierInactive: 1.0,
         dailyBasePointsCap: 100,
+        fightAttendancePoints: 75,
         monthlyEventPointsCap: 150,
         decayGracePeriodDays: 7,
         decayWarningDayThreshold: 5,

@@ -233,7 +233,7 @@ struct FightCard: View {
                     .lineLimit(1)
 
                 HStack {
-                    EHTag(text: "+\(VitalityEngine.fightBoost) Vitality", style: .accent)
+                    EHTag(text: "+\(PointsConfiguration.default.fightAttendancePoints) pts", style: .accent)
                     Spacer()
                     if fight.isCheckInOpen() {
                         Text("Check-in open")
