@@ -353,7 +353,7 @@ private struct StatTile: View {
 }
 #endif
 
-private struct BadgeDetailSheet: View {
+struct BadgeDetailSheet: View {
     let badge: Badge
     let unlocked: Bool
     let onClose: () -> Void

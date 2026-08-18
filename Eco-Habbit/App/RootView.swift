@@ -21,6 +21,12 @@ struct RootView: View {
         .overlay(alignment: .top) {
             ToastLayer()
         }
+        .modalCard(item: Binding(
+            get: { app.pendingBadge },
+            set: { if $0 == nil, let badge = app.pendingBadge { app.acknowledgeBadge(badge) } }
+        )) { badge in
+            BadgeDetailSheet(badge: badge, unlocked: true) { app.acknowledgeBadge(badge) }
+        }
     }
 }
 

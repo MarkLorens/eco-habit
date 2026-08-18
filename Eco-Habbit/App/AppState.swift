@@ -142,6 +142,14 @@ final class AppState: ObservableObject {
         case .seasonal: return false
         }
     }
+    
+    var pendingBadge: Badge? {
+        MockData.badges.first{ isUnlocked($0) && !data.announcedBadgeIds.contains($0.id) }
+    }
+    
+    func acknowledgeBadge(_ badge: Badge){
+        mutate { $0.announcedBadgeIds.insert(badge.id) }
+    }
 
     var unlockedBadgeCount: Int { MockData.badges.filter(isUnlocked).count }
 
