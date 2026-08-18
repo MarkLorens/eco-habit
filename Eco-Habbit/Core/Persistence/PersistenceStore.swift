@@ -57,6 +57,9 @@ struct PersistedState: Codable {
     var hostedFights: [Fight] = []
     /// Scans taken on this device, keyed by fight id.
     var hostScans: [String: [HostScan]] = [:]
+    
+    // Badge unlock "event" testing
+    var announcedBadgeIds: Set<String> = []
 }
 
 enum PersistenceStore {

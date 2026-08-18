@@ -3,7 +3,15 @@ import Foundation
 #if DEBUG
 extension AppState {
     @MainActor
-    static var preview: AppState { AppState(data: .preview) }
+    static var preview: AppState {
+        let state = AppState(data: .preview)
+        
+        // Seeding badge to prevent re-showing badges on announcedBadgesIDs empty
+        // Guard to "catch up" in case we add new badges to the catalogue
+        // Lemme know if any better alternative though
+        MockData.badges.filter(state.isUnlocked).forEach(state.acknowledgeBadge)
+        return state
+}
 
     /// Baseline plus the first `count` habits of `category` already logged today,
     /// for checking the dimmed / disabled row treatment.
