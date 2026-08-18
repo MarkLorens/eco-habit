@@ -15,6 +15,9 @@ struct ExpandableFightWrapper: View {
     @State var location: String
     @State var picture: String
     @State var status: Bool
+    var organiser: String = "Eco Tourism Bali"
+    var actionTitle: String = "See QR Code"
+    var onAction: () -> Void = {}
     
     var body: some View {
         if status {
@@ -25,6 +28,9 @@ struct ExpandableFightWrapper: View {
                 date: date,
                 location: location,
                 picture: picture,
+                organiser: organiser,
+                actionTitle: actionTitle,
+                onAction: onAction,
                 onCollapse: {
                     withAnimation(.snappy(duration: 0.2)) {
                         status = false

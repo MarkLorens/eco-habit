@@ -1,43 +1,37 @@
 import SwiftUI
 
-/// PRD §6.5 — Browse and My Fights. Chronological; no map, no distance filter in v1.
+/// One page of Fights. Chronological; no map, no distance filter in v1.
+///
+/// Deliberately flat — this replaced a Browse/Mine/Hosting segmented control.
+/// Two of those three segments were nearly always empty, so the first thing a
+/// new user saw was a tab bar guarding two blank screens. Saved moved to a
+/// toolbar button and hosting to a row that only organisers see.
 struct FightListView: View {
     @EnvironmentObject private var app: AppState
-    @State private var scope: Scope = .browse
     @State private var typeFilter: FightType?
     @State private var showingCreate = false
-
-    enum Scope: Hashable { case browse, mine, hosting }
-
-    /// PRD §6.5.1 — host mode is *additive*. A verified organisation sees the
-    /// same Browse and My Fights as everyone else, because an organisation is
-    /// still a user who attends other people's events, plus one extra segment.
-    private var scopes: [(value: Scope, label: String)] {
-        var options: [(Scope, String)] = [(.browse, "Browse"), (.mine, "Mine")]
-        if app.isOrganization { options.append((.hosting, "Hosting")) }
-        return options
-    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: Theme.S.x4) {
-                    EHSegmented(options: scopes, selection: $scope)
-                        .padding(.horizontal, Theme.S.x4)
-
-                    switch scope {
-                    case .browse: browse
-                    case .mine: mine
-                    case .hosting: hosting
-                    }
+                VStack(spacing: Theme.S.x3) {
+                    if app.isOrganization { hostingStrip }
+                    typeFilterStrip
+                    list
                 }
                 .padding(.top, Theme.S.x3)
                 .tabContentInsets()
             }
             .background(Theme.C.bg.ignoresSafeArea())
-            .navigationTitle("Fights")
+            .navigationTitle("Our Fights")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink(value: SavedRoute()) {
+                        Image(systemName: app.savedFights.isEmpty ? "bookmark" : "bookmark.fill")
+                    }
+                    .accessibilityLabel("Saved Fights")
+                }
                 if app.isOrganization {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showingCreate = true } label: {
@@ -49,6 +43,7 @@ struct FightListView: View {
             }
             .sheet(isPresented: $showingCreate) { EventFormView(app: app) }
             .navigationDestination(for: Fight.self) { FightDetailView(fight: $0) }
+            .navigationDestination(for: SavedRoute.self) { _ in SavedFightsView() }
             .navigationDestination(for: HostRoute.self) { route in
                 ManageEventView(fight: route.fight)
             }
@@ -57,39 +52,53 @@ struct FightListView: View {
 
     /// Distinct from pushing a `Fight`, which goes to the attendee-facing detail.
     struct HostRoute: Hashable { let fight: Fight }
+    struct SavedRoute: Hashable {}
 
     // MARK: - Hosting
 
-    private var hosting: some View {
-        VStack(alignment: .leading, spacing: Theme.S.x3) {
-            if app.hostedFights.isEmpty {
-                emptyState("You haven't created a Fight yet.",
-                           "Use + to draft one. It stays private until you publish.")
-            } else {
-                ForEach(app.hostedFights) { fight in
-                    NavigationLink(value: HostRoute(fight: fight)) {
-                        FightCard(fight: fight, hostStatus: fight.status)
-                    }
-                    .buttonStyle(PlainPressStyle())
+    /// A single row rather than a segment: hosting is a minority activity, and
+    /// giving it a third of the top of the screen made it look like the point.
+    private var hostingStrip: some View {
+        EHCard {
+            HStack(spacing: Theme.S.x3) {
+                Image(systemName: "megaphone.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Theme.C.accent700)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(Theme.C.accent100))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("You host Fights")
+                        .font(Theme.F.body(14, weight: .bold))
+                        .foregroundStyle(Theme.C.text)
+                    Text(app.hostedFights.isEmpty
+                         ? "Use + to draft your first one."
+                         : "\(app.hostedFights.count) created — open one to manage it.")
+                        .font(Theme.F.body(12.5))
+                        .foregroundStyle(Theme.C.neutral600)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, Theme.S.x4)
+                Spacer()
             }
         }
+        .padding(.horizontal, Theme.S.x4)
     }
 
-    // MARK: - Browse
+    // MARK: - List
 
-    private var browse: some View {
+    private var list: some View {
         VStack(spacing: Theme.S.x3) {
-            typeFilterStrip
-
             let fights = filtered
             if fights.isEmpty {
                 emptyState("No Fights of that type yet.", "Try another filter.")
             } else {
                 ForEach(fights) { fight in
                     NavigationLink(value: fight) {
-                        FightCard(fight: fight, isSignedUp: app.isSignedUp(fight))
+                        FightCard(
+                            fight: fight,
+                            isSaved: app.isSaved(fight),
+                            hasAttended: app.hasAttended(fight),
+                            hostStatus: app.isHost(of: fight) ? fight.status : nil
+                        )
                     }
                     .buttonStyle(PlainPressStyle())
                 }
@@ -98,9 +107,14 @@ struct FightListView: View {
         }
     }
 
+    /// Hosted drafts appear alongside the public list for their own organiser,
+    /// so a half-written Fight is somewhere they can find it again.
     private var filtered: [Fight] {
-        guard let typeFilter else { return app.upcomingFights }
-        return app.upcomingFights.filter { $0.type == typeFilter }
+        var fights = app.upcomingFights
+        let drafts = app.hostedFights.filter { $0.status == .draft }
+        fights.insert(contentsOf: drafts, at: 0)
+        guard let typeFilter else { return fights }
+        return fights.filter { $0.type == typeFilter }
     }
 
     private var typeFilterStrip: some View {
@@ -133,36 +147,6 @@ struct FightListView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - My Fights
-
-    private var mine: some View {
-        VStack(alignment: .leading, spacing: Theme.S.x4) {
-            section("Upcoming", fights: app.myUpcomingFights,
-                    empty: "Nothing booked yet.", hint: "Join a Fight from Browse.")
-            section("Past", fights: app.pastFights,
-                    empty: "No Fights attended yet.", hint: "Attended Fights are kept here permanently.")
-        }
-        .padding(.horizontal, Theme.S.x4)
-    }
-
-    @ViewBuilder
-    private func section(_ title: String, fights: [Fight], empty: String, hint: String) -> some View {
-        VStack(alignment: .leading, spacing: Theme.S.x2) {
-            SectionHeading(text: title)
-            if fights.isEmpty {
-                emptyState(empty, hint).padding(.horizontal, -Theme.S.x4)
-            } else {
-                ForEach(fights) { fight in
-                    NavigationLink(value: fight) {
-                        FightCard(fight: fight, isSignedUp: app.isSignedUp(fight),
-                                  hasAttended: app.hasAttended(fight))
-                    }
-                    .buttonStyle(PlainPressStyle())
-                }
-            }
-        }
-    }
-
     private func emptyState(_ title: String, _ hint: String) -> some View {
         VStack(spacing: 6) {
             Text(title).font(Theme.F.body(15, weight: .semibold)).foregroundStyle(Theme.C.text)
@@ -178,9 +162,9 @@ struct FightListView: View {
 
 struct FightCard: View {
     let fight: Fight
-    var isSignedUp = false
+    var isSaved = false
     var hasAttended = false
-    /// Set on the Hosting list so a draft is obviously not public yet.
+    /// Set only for the organiser of this Fight, so a draft is obviously not public yet.
     var hostStatus: Fight.Status?
 
     var body: some View {
@@ -211,8 +195,10 @@ struct FightCard: View {
                     case nil:
                         if hasAttended {
                             EHTag(text: "Attended", style: .accent2)
-                        } else if isSignedUp {
-                            EHTag(text: "Joined", style: .outline)
+                        } else if isSaved {
+                            Image(systemName: "bookmark.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.C.accent600)
                         }
                     }
                 }
@@ -233,7 +219,7 @@ struct FightCard: View {
                     .lineLimit(1)
 
                 HStack {
-                    EHTag(text: "+\(VitalityEngine.fightBoost) Vitality", style: .accent)
+                    EHTag(text: "+\(fight.attendancePoints) pts", style: .accent)
                     Spacer()
                     if fight.isCheckInOpen() {
                         Text("Check-in open")

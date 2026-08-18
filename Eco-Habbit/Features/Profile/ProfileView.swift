@@ -19,6 +19,11 @@ struct ProfileView: View {
     @State private var headerHeight: CGFloat = 0
     private let sheetTail: CGFloat = 56
 
+    #if DEBUG
+    @State private var showingDebugGate = false
+    @State private var showingDebugTools = false
+    #endif
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -68,20 +73,30 @@ struct ProfileView: View {
             }
             .onPreferenceChange(HeaderHeightKey.self) { headerHeight = $0 }
             .background(Tokens.Palette.white.ignoresSafeArea())
-            .navigationDestination(for: ProfileRoute.self) { route in
+            #if DEBUG
+        .sheet(isPresented: $showingDebugGate, onDismiss: {
+            if app.isDebugUnlocked { showingDebugTools = true }
+        }) {
+            DebugGate()
+        }
+        .sheet(isPresented: $showingDebugTools) {
+            // `TimeTravelMenu` has no stack of its own — it was written to be
+            // pushed into Profile's. Presented as a sheet it needs one for the
+            // title bar.
+            NavigationStack { TimeTravelMenu() }
+        }
+        #endif
+        .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
                 case .favourites: FavouriteCategoriesView()
                 case .notifications: NotificationSettingsView()
                 case .privacy: PrivacySettingsView()
                 case .history: ActivityHistoryView()
-                #if DEBUG
-                case .debug: TimeTravelMenu()
-                #endif
                 }
             }
         }
         .modalCard(item: $badgeDetail) { badge in
-            BadgeDetailSheet(badge: badge, unlocked: app.isUnlocked(badge)){
+            BadgeDetailSheet(badge: badge, unlocked: app.hasEarned(badge.id)){
                 badgeDetail = nil
             }
         }
@@ -90,7 +105,26 @@ struct ProfileView: View {
         }
     }
 
+    /// Long-press the avatar to reach the debug tools.
+    ///
+    /// No visible affordance on purpose: an exhibition visitor should find
+    /// nothing to poke at, and a row labelled "Debug tools" is an invitation.
+    /// `#if DEBUG`, so in Release the gesture does not exist at all.
     private var identity: some View {
+        identityContent
+        #if DEBUG
+            .onLongPressGesture(minimumDuration: 0.8) {
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                if app.isDebugUnlocked {
+                    showingDebugTools = true
+                } else {
+                    showingDebugGate = true
+                }
+            }
+        #endif
+    }
+
+    private var identityContent: some View {
         VStack(alignment: .center, spacing: Tokens.Spacing.xl) {
             Avatar(type: .user, icon: Tokens.Icons.wasteIcon)
                 .clipShape(Circle())
@@ -98,7 +132,7 @@ struct ProfileView: View {
                         Circle()
                             .stroke(Tokens.Palette.white, lineWidth: 5)
                     )
-            Text(app.userName)
+            Text(app.displayName)
                 .textStyle(Tokens.Typography.title2)
                 .foregroundStyle(Tokens.Semantic.text)
         }
@@ -106,13 +140,13 @@ struct ProfileView: View {
     }
 
     private var initials: String {
-        let parts = app.userName.split(separator: " ").prefix(2)
+        let parts = app.displayName.split(separator: " ").prefix(2)
         return parts.compactMap { $0.first.map(String.init) }.joined().uppercased()
     }
 
     private var stats: some View {
         HStack(alignment: .center, spacing: 10) {
-            StatTile(value: "\(app.streakDays)", label: "Day streak", icon: "flame.fill")
+            StatTile(value: "\(app.displayStreak())", label: "Day streak", icon: "flame.fill")
             Divider()
                 .frame(width: 1)
                 .overlay(Tokens.Semantic.statIcon)
@@ -155,7 +189,7 @@ struct ProfileView: View {
                 }
             }
             LazyVGrid(columns: badgeColumns) {
-                ForEach(MockData.badges.filter(app.isUnlocked).prefix(4)) { badge in
+                ForEach(app.badges.filter(\.isUnlocked).prefix(4)) { badge in
                     Button {
                         badgeDetail = badge
                     } label: {
@@ -229,7 +263,7 @@ struct ProfileView: View {
                 .buttonStyle(PlainPressStyle())
 
                 NavigationLink(value: ProfileRoute.history) {
-                    SettingsRow(title: "Activity history", showsDivider: debugRowVisible) {
+                    SettingsRow(title: "Activity history", showsDivider: false) {
                         HStack(spacing: 6) {
                             Text("\(app.totalActionsLogged)")
                                 .font(Theme.F.body(13))
@@ -240,21 +274,6 @@ struct ProfileView: View {
                 }
                 .buttonStyle(PlainPressStyle())
 
-                #if DEBUG
-                // Compiled out of Release entirely — this is the time-travel and
-                // host-verification surface, not a user feature.
-                NavigationLink(value: ProfileRoute.debug) {
-                    SettingsRow(title: "Debug tools", showsDivider: false) {
-                        HStack(spacing: 6) {
-                            Text(app.isOrganization ? "Org" : "")
-                                .font(Theme.F.body(13))
-                                .foregroundStyle(Theme.C.neutral600)
-                            ChevronRight()
-                        }
-                    }
-                }
-                .buttonStyle(PlainPressStyle())
-                #endif
             }
         }
         .padding(.top, 24)
@@ -306,10 +325,10 @@ private struct SignOutFooter: ViewModifier {
             Button("Reset local data") { confirmingReset = true }
                 .buttonStyle(GhostButtonStyle(height: 40, fontSize: 14))
                 .alert("Reset local data?", isPresented: $confirmingReset) {
-                    Button("Reset", role: .destructive) { app.resetEverything() }
+                    Button("Reset", role: .destructive) { Task { await app.resetEverything() } }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("Points, streak, history and settings on this device are deleted. The account starts over at Vitality \(VitalityEngine.startingVitality).")
+                    Text("Points, streak, history and badges on this device are deleted. The account starts over from zero.")
                 }
         }
     }
@@ -317,9 +336,6 @@ private struct SignOutFooter: ViewModifier {
 
 enum ProfileRoute: Hashable {
     case favourites, notifications, privacy, history
-    #if DEBUG
-    case debug
-    #endif
 }
 
 private struct StatTile: View {
@@ -349,10 +365,12 @@ private struct StatTile: View {
 
 #Preview("Profile") {
     ProfileView()
-        .environmentObject(AppState(data: .preview()))
+        .environmentObject(AppState.preview)
 }
 #endif
 
+/// Not `private`: `RootView` presents this too, for the earned-badge card that
+/// pops wherever the user happens to be standing.
 struct BadgeDetailSheet: View {
     let badge: Badge
     let unlocked: Bool
@@ -367,7 +385,7 @@ struct BadgeDetailSheet: View {
                 .foregroundStyle(Tokens.Semantic.text)
                 .multilineTextAlignment(.center)
  
-            Text(badge.detail)
+            Text(badge.description)
                 .textStyle(Tokens.Typography.footnote)
                 .foregroundStyle(Tokens.Semantic.footnote)
                 .multilineTextAlignment(.center)
@@ -384,23 +402,23 @@ struct BadgeDetailSheet: View {
 
 #if DEBUG
 #Preview("Badge · unlocked") {
-    BadgeDetailSheet(badge: MockData.badges[0], unlocked: true) { print("tapped") }
+    BadgeDetailSheet(badge: MockBadgeData.all[0], unlocked: true) { print("tapped") }
         .frame(height: 340)
 }
 
 #Preview("Badge · locked") {
-    BadgeDetailSheet(badge: MockData.badges[0], unlocked: false) { print("tapped") }
+    BadgeDetailSheet(badge: MockBadgeData.all[0], unlocked: false) { print("tapped") }
         .frame(height: 340)
 }
 
 #Preview("Badge · longest copy") {
-    let longest = MockData.badges.max { $0.detail.count < $1.detail.count } ?? MockData.badges[0]
+    let longest = MockBadgeData.all.max { $0.description.count < $1.description.count } ?? MockBadgeData.all[0]
     BadgeDetailSheet(badge: longest, unlocked: true) { print("tapped") }
         .frame(height: 340)
 }
 
 #Preview("Badge · longest · large type") {
-    let longest = MockData.badges.max { $0.detail.count < $1.detail.count } ?? MockData.badges[0]
+    let longest = MockBadgeData.all.max { $0.description.count < $1.description.count } ?? MockBadgeData.all[0]
     BadgeDetailSheet(badge: longest, unlocked: false) { print("tapped") }
         .frame(height: 340)
         .environment(\.dynamicTypeSize, .accessibility1)
@@ -408,7 +426,7 @@ struct BadgeDetailSheet: View {
 
 #Preview("Badge · in a sheet") {
     struct Harness: View {
-        @State private var badge: Badge? = MockData.badges.first
+        @State private var badge: Badge? = MockBadgeData.all.first
         var body: some View {
             Theme.C.bg
                 .ignoresSafeArea()
