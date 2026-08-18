@@ -60,6 +60,16 @@ struct PersistedState: Codable {
     
     // Badge unlock "event" testing
     var announcedBadgeIds: Set<String> = []
+
+    /// Highest globe stage whose unlock animation has already been shown. Lags
+    /// `globeStage` whenever a new stage is reached and catches up one step at a
+    /// time, so every transition gets its own animation.
+    ///
+    /// Optional on purpose: synthesized `Codable` *throws* on a missing key rather than
+    /// using the default, and `load()` reads any throw as "no save", so a non-optional
+    /// field here would wipe every state file written before it existed. `nil` means
+    /// "pre-dates this field" and `AppState` backfills it at launch.
+    var announcedGlobeStage: Int?
 }
 
 enum PersistenceStore {

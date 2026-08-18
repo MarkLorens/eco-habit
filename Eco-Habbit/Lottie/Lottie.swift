@@ -10,10 +10,13 @@ import Lottie
 
 struct DotLottieAsset: View {
     let name: String
-    
+
     var loopMode: LottieLoopMode = .loop
     var speed: Double = 1
-    
+    /// Off by default so existing callers keep the animation's own size; on, it
+    /// scales to whatever frame the parent offers.
+    var resizable: Bool = false
+
     var body: some View{
         LottieView{
             try await DotLottieFile.named(name)
@@ -22,14 +25,19 @@ struct DotLottieAsset: View {
         }
         .playing(loopMode: loopMode)
         .animationSpeed(speed)
+        .resizableIf(resizable)
     }
 }
 
-struct Globe: View{
+private extension LottieView {
+    func resizableIf(_ isResizable: Bool) -> Self {
+        isResizable ? resizable() : self
+    }
+}
+
+struct Globe: View {
     var body: some View{
-        DotLottieAsset(name: "globe")
-            .frame(width: 500, height: 500)
-            .accessibilityHidden(true)
+        DotLottieAsset(name: "stage 3-4")
     }
 }
 
@@ -48,6 +56,6 @@ struct JSONLottieAsset: View {
     }
 }
 
-#Preview{
+#Preview {
     Globe()
 }

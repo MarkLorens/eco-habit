@@ -27,6 +27,12 @@ struct RootView: View {
         )) { badge in
             BadgeDetailSheet(badge: badge, unlocked: true) { app.acknowledgeBadge(badge) }
         }
+        // Above the badge card on purpose: the globe reaching a new stage is the bigger
+        // moment, and the badge is still waiting underneath once this is dismissed.
+        .globeStageUpOverlay(item: Binding(
+            get: { app.pendingGlobeStageUp },
+            set: { if $0 == nil, let stageUp = app.pendingGlobeStageUp { app.acknowledgeGlobeStageUp(stageUp) } }
+        ))
     }
 }
 
@@ -35,7 +41,7 @@ private struct SignInPlaceholder: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            GlobeView(health: 50, size: 180, interactive: false)
+            GlobeView()
             Text("Eco-Habbit")
                 .font(Theme.F.heading(28))
                 .foregroundStyle(Theme.C.text)
