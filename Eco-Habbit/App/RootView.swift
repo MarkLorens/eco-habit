@@ -7,45 +7,29 @@ struct RootView: View {
         ZStack {
             Theme.C.bg.ignoresSafeArea()
 
-            Group {
-                if app.isLoggedIn {
-                    MainTabView()
-                        .transition(.opacity)
-                } else {
-                    SignInPlaceholder()
-                        .transition(.opacity)
-                }
-            }
-            .animation(.easeInOut(duration: 0.35), value: app.isLoggedIn)
+            // No sign-in gate: this data model has no auth yet — `userId` is
+            // fixed at "demo-user" until Firebase Auth lands (FIREBASE_SETUP §4b).
+            // The sign-in screen returns with it.
+            MainTabView()
         }
         .overlay(alignment: .top) {
             ToastLayer()
         }
+        // Earning a badge is worth interrupting whatever screen you are on, so
+        // this sits at the root rather than in Profile. Presented from
+        // `pendingBadge`, which is persisted — dismissing is what marks it seen.
         .modalCard(item: Binding(
             get: { app.pendingBadge },
-            set: { if $0 == nil, let badge = app.pendingBadge { app.acknowledgeBadge(badge) } }
-        )) { badge in
-            BadgeDetailSheet(badge: badge, unlocked: true) { app.acknowledgeBadge(badge) }
-        }
-    }
-}
-
-private struct SignInPlaceholder: View {
-    @EnvironmentObject private var app: AppState
-
-    var body: some View {
-        VStack(spacing: 24) {
-            GlobeView(health: 50, size: 180, interactive: false)
-            Text("Eco-Habbit")
-                .font(Theme.F.heading(28))
-                .foregroundStyle(Theme.C.text)
-            Button("Sign In with Apple") {
-                app.logIn()
+            set: { newValue in
+                guard newValue == nil, let badge = app.pendingBadge else { return }
+                Task { await app.acknowledgeBadge(badge) }
             }
-            .buttonStyle(PrimaryButtonStyle())
+        )) { badge in
+            BadgeDetailSheet(badge: badge, unlocked: true) {
+                Task { await app.acknowledgeBadge(badge) }
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.C.bg)
+        .task { await app.bootstrap() }
     }
 }
 

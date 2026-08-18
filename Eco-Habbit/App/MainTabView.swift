@@ -11,7 +11,9 @@ struct MainTabView: View {
                 switch app.selectedTab {
                 case .home: HomeView()
                 case .actions: ActivityListView()
-                case .ourFights: FightListView()
+                // Hardy's newest screen. `main` still shows `FightListView` here
+                // because his was finished after that wiring; his is the later work.
+                case .ourFights: OurFightListView()
                 case .profile: ProfileView()
                 }
             }

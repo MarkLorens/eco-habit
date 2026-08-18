@@ -15,18 +15,30 @@ struct OurFightDetailCard: View {
     private let date: String
     private let location: String
     private let picture: String
+    /// Hardy's mock read "Organized by Eco Tourism Bali". Defaulted to it so his
+    /// previews are unchanged, but the list passes the real host.
+    private let organiser: String
+    /// Label and action for the primary button. It said "See QR Code" and
+    /// printed; what it does depends on whether you host this Fight or attend it,
+    /// which only the caller knows.
+    private let actionTitle: String
+    private let onAction: () -> Void
 
-    
     init(title: String,
          caption: String,
          category: Color,
          date: String,
          location: String,
          picture: String,
+         organiser: String = "Eco Tourism Bali",
+         actionTitle: String = "See QR Code",
+         onAction: @escaping () -> Void = {},
          onCollapse: @escaping () -> Void,
     )
     {
-        
+        self.organiser = organiser
+        self.actionTitle = actionTitle
+        self.onAction = onAction
         self.title = title
         self.caption = caption
         self.category = category
@@ -85,7 +97,7 @@ struct OurFightDetailCard: View {
                     }
                     
                     VStack(alignment: .leading, spacing: Tokens.Spacing.lg){
-                        Text("Organized by Eco Tourism Bali")
+                        Text("Organized by \(organiser)")
                             .textStyle(Tokens.Typography.footnote)
                             .foregroundStyle(Tokens.Semantic.footnote)
                         
@@ -96,9 +108,9 @@ struct OurFightDetailCard: View {
                     }
                     
                     Button {
-                        print("seeQR code")
+                        onAction()
                     } label: {
-                        Text("See QR Code")
+                        Text(actionTitle)
                             .textStyle(Tokens.Typography.body)
                             .foregroundStyle(Tokens.Semantic.ourFightQR)
                             .frame(maxWidth: .infinity)

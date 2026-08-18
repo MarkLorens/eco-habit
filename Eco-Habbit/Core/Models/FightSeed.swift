@@ -20,6 +20,18 @@ struct FightSeed: Codable {
     /// Hours from now. Negative means it has already started.
     let startOffsetHours: Double
     let durationHours: Double
+
+    /// Fixed in the seed file, not generated.
+    ///
+    /// `Fight.checkInCode` defaults to a fresh random code, which is right for a
+    /// Fight a real organiser creates — but seeded demo Fights are re-materialised
+    /// on every launch, so a generated code would change each time and any
+    /// printed card or poster at the booth would stop working.
+    let checkInCode: String
+
+    /// Optional: `f7` has none, so "points only" has a demo case too.
+    var rewardBadgeId: String?
+
     var preparationNotes: [String] = []
     var isDemo: Bool = true
 
@@ -40,7 +52,9 @@ struct FightSeed: Codable {
             endsAt: start.addingTimeInterval(durationHours * 3600),
             preparationNotes: preparationNotes,
             status: .published,
-            isDemo: isDemo
+            isDemo: isDemo,
+            checkInCode: checkInCode,
+            rewardBadgeId: rewardBadgeId
         )
     }
 }

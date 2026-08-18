@@ -1,307 +1,520 @@
 import SwiftUI
 import Combine
 
-/// The shared store. Holds `PersistedState` and exposes it to views, but **owns no
-/// business rules** — logging goes to `HabitRepository`, Shields to `UserRepository`,
-/// scoring to `EvaluationLoop`. Keeping it a coordinator is what lets three people work
-/// in three feature folders without meeting in this file every day (PRD §9.13.2).
+/// The single object a View touches.
+///
+/// Same role as Tio's `AppStore` on the MockData branch, but an
+/// `ObservableObject` rather than `@Observable` — the rest of this app's views
+/// already bind that way, and converting them all was not worth the churn.
+///
+/// Views never call a service or a repository directly. That is what makes the
+/// Firebase swap a change to `AppState.init` and nothing else: the six
+/// repositories are protocol-typed and constructor-injected all the way down.
 @MainActor
 final class AppState: ObservableObject {
 
-    @Published private(set) var data: PersistedState
+    // MARK: - Published state
 
+    @Published private(set) var userState: UserState
+    /// Derived from today's logs, never stored separately.
+    @Published private(set) var completedTodayIDs: Set<String> = []
+    /// Today's logs in full. Kept, not just their ids, so a row that is already
+    /// ticked can show what it *actually* earned — re-projecting it would use a
+    /// daily cap that this very log has already spent.
+    @Published private(set) var todayLogs: [ActivityLog] = []
+    /// Base points spent against the daily cap so far today. Published rather
+    /// than queried, because every row on the actions list needs it to price
+    /// itself on every redraw.
+    @Published private(set) var basePointsUsedToday = 0
+    /// Every log, newest first. Derived from the log repository, never stored
+    /// separately — the logs are the record.
+    @Published private(set) var history: [ActivityLog] = []
+    /// Every award this user owns. The badge *catalogue* is bundled; this is the
+    /// record of what they actually earned, and it is what survives a badge being
+    /// renamed or retired.
+    @Published private(set) var earnedBadges: [EarnedBadge] = [] {
+        // Every assignment bumps the revision, which is what `badges` caches
+        // against. The count is NOT usable as a key: earn one, reset, earn a
+        // different one, and the count returns to 1 with entirely different
+        // contents — a stale cache showing a badge the user no longer owns.
+        didSet { badgeRevision &+= 1 }
+    }
+    /// Set when a badge is awarded, so a view can play the celebration once.
+    @Published private(set) var recentlyUnlockedBadges: [EarnedBadge] = []
+    @Published private(set) var lastDecay: DecayOutcome?
+    @Published private(set) var isReady = false
+
+    // Transient UI state that shouldn't survive a relaunch.
     @Published var selectedTab: AppTab = .home
-    // Added for the action tab ya
+    /// Navigation inside the Actions tab. Published rather than owned by the tab
+    /// shell so the screen can push and the tab bar can react to the same value —
+    /// that is how the bar hides on a category detail.
     @Published var actionsPath = NavigationPath()
     @Published var isCameraPresented = false
     @Published var toast: Toast?
     @Published var lastAward: Award?
 
-    init(data: PersistedState = PersistenceStore.load()) {
-        self.data = data
-        evaluateIfNeeded()
+    #if DEBUG
+    /// Survives leaving and re-entering Profile, so testing does not mean
+    /// retyping the password on every tab switch. Resets on relaunch.
+    @Published var isDebugUnlocked = false
+    #endif
+
+    // MARK: - Dependencies
+
+    let userId: String
+    let config: PointsConfiguration
+
+    private let activityRepository: any ActivityRepositoryProtocol
+    private let logRepository: any ActivityLogRepositoryProtocol
+    private let userStateRepository: any UserStateRepositoryProtocol
+    private let badgeRepository: any BadgeRepositoryProtocol
+
+    private let loggingService: ActivityLoggingService
+    private let decayService: DecayService
+    private let streakService = StreakService()
+    private let pointsService: PointsCalculationService
+    /// The same provider `ActivityLoggingService` uses. Sharing it means the
+    /// region bonus appears on the rows the day location is switched on, with
+    /// nothing here to remember to update.
+    private let provincePriority: any ProvincePriorityProviding = MockProvincePriorityProvider()
+
+    private let seedDemoDataIfEmpty: Bool
+
+    // Cache for `badges`, keyed on a revision bumped by every `earnedBadges`
+    // assignment rather than on anything derived from its contents.
+    private var cachedBadges: [Badge]?
+    private var cachedBadgesKey = -1
+    private var badgeRevision = 0
+
+    // MARK: - Init
+
+    /// The one place the concrete data layer is chosen. Swapping the six `Mock*`
+    /// types for `Firebase*` ones is the whole Firebase migration on the app side.
+    init(
+        userId: String = "demo-user",
+        config: PointsConfiguration = .default,
+        store: any KeyValueStoring = LocalJSONFileStore(),
+        seedDemoDataIfEmpty: Bool = true
+    ) {
+        self.userId = userId
+        self.config = config
+        self.seedDemoDataIfEmpty = seedDemoDataIfEmpty
+
+        activityRepository = MockActivityRepository()
+        logRepository = MockActivityLogRepository(store: store)
+        userStateRepository = MockUserStateRepository(store: store)
+        badgeRepository = MockBadgeRepository(store: store)
+
+        loggingService = ActivityLoggingService(
+            config: config,
+            activityRepository: activityRepository,
+            logRepository: logRepository,
+            userStateRepository: userStateRepository,
+            badgeRepository: badgeRepository
+        )
+        decayService = DecayService(config: config)
+        pointsService = PointsCalculationService(config: config)
+
+        userState = UserState(userId: userId)
     }
 
-    /// Run at launch and on foreground. Idempotent, so calling it freely is safe.
-    func evaluateIfNeeded() {
-        mutate { EvaluationLoop.evaluate(state: &$0, habits: MockData.habits, today: today) }
-    }
+    // MARK: - Bootstrap
 
-    var today: String { Day.today() }
+    /// App open. Applies decay, loads badges, refreshes today's logs.
+    /// Idempotent — safe to call on every foreground.
+    func bootstrap(now: Date = Date()) async {
+        do {
+            var state = try await userStateRepository.fetchUserState(userId: userId)
 
-    // MARK: - Account
-
-    var isLoggedIn: Bool { data.isLoggedIn }
-    var userName: String { data.userName.isEmpty ? "there" : data.userName }
-    var firstName: String { userName.split(separator: " ").first.map(String.init) ?? userName }
-    var notificationsEnabled: Bool { data.notificationsEnabled }
-    var favouriteCategories: Set<HabitCategory> { data.favouriteCategories }
-
-    // MARK: - Earth
-
-    var vitality: Int { data.vitality }
-    var stage: VitalityStage { VitalityStage.stage(for: data.vitality) }
-    var globeHealth: Double { PointsEngine.globeHealth(vitality: data.vitality) }
-    var level: Int { stage.rawValue + 1 }
-
-    var levelTitle: String {
-        switch stage {
-        case .barren: return "Seedling"
-        case .stirring: return "Sprout"
-        case .recovering: return "Grower"
-        case .thriving: return "Eco Guardian"
-        case .flourishing: return "Planet Keeper"
-        }
-    }
-
-    var stageProgress: Double {
-        guard let next = stage.next else { return 1 }
-        let floor = stage.range.lowerBound
-        let span = next.range.lowerBound - floor
-        guard span > 0 else { return 1 }
-        return min(1, max(0, Double(data.vitality - floor) / Double(span)))
-    }
-
-    /// PRD §9.5 — `streakDays` is a *settled* value that stops at yesterday, so today's
-    /// target has to be added back in for display. Without this a user who just hit their
-    /// target sees the number stall until midnight and concludes it's broken.
-    var displayStreak: Int {
-        data.streakDays + (dailyPoints >= PointsEngine.dailyTarget ? 1 : 0)
-    }
-
-    var streakDays: Int { displayStreak }
-
-    // MARK: - Today
-
-    var todaysLogs: [HabitLog] { HabitRepository.logs(on: today, in: data) }
-
-    var dailyPoints: Int { HabitRepository.dailyTotal(on: today, habits: MockData.habits, in: data) }
-
-    var dailyProgress: Double {
-        min(1, Double(dailyPoints) / Double(PointsEngine.dailyTarget))
-    }
-
-    /// Where today sits against the 60 ceiling, for the second ring in §6.1.
-    var dailyCapProgress: Double {
-        min(1, Double(dailyPoints) / Double(PointsEngine.dailyCap))
-    }
-
-    func log(for habitId: String) -> HabitLog? {
-        todaysLogs.first { $0.habitId == habitId }
-    }
-
-    func isCompletedToday(_ habitId: String) -> Bool { log(for: habitId) != nil }
-
-    func isAvailable(_ habit: Habit) -> Bool {
-        HabitRepository.isAvailable(habit, on: today, in: data)
-    }
-
-    func rows(in category: HabitCategory) -> [HabitRow] {
-        MockData.habits(in: category).map { HabitRow(habit: $0, log: log(for: $0.id)) }
-    }
-
-    func doneCount(in category: HabitCategory) -> Int {
-        rows(in: category).filter(\.isCompletedToday).count
-    }
-
-    /// Up to three things worth doing today: still available, favourites first.
-    var suggestedHabits: [Habit] {
-        let pending = MockData.habits.filter { !$0.isFoundation && isAvailable($0) }
-        let favourites = pending.filter { data.favouriteCategories.contains($0.category) }
-        let rest = pending.filter { !data.favouriteCategories.contains($0.category) }
-        return Array((favourites + rest).prefix(3))
-    }
-
-    // MARK: - History and badges (all derived — nothing summable is stored)
-
-    var history: [HistoryEntry] {
-        data.logs
-            .compactMap { log in
-                MockData.habitsById[log.habitId].map { HistoryEntry(log: log, habit: $0) }
+            if seedDemoDataIfEmpty, state.currentPoints == 0, state.lastActivityDate == nil {
+                state = MockUserStateData.demo
+                try await userStateRepository.save(state)
             }
-            .sorted { $0.date > $1.date }
-    }
 
-    var totalActionsLogged: Int { data.logs.count }
+            // Decay is computed here, on app open — there is no background job.
+            let outcome = decayService.apply(to: &state, asOf: now)
+            if outcome.didDecay {
+                try await userStateRepository.save(state)
+            }
 
-    var foundationsCompleted: Int {
-        data.logs.filter { MockData.habitsById[$0.habitId]?.isFoundation == true }.count
-    }
-
-    func actionCount(in category: HabitCategory) -> Int {
-        data.logs.filter { MockData.habitsById[$0.habitId]?.category == category }.count
-    }
-
-    func isUnlocked(_ badge: Badge) -> Bool {
-        switch badge.requirement {
-        case .totalActions(let n): return totalActionsLogged >= n
-        case .streak(let n): return max(displayStreak, data.longestStreak) >= n
-        case .vitality(let n): return data.vitality >= n
-        case .categoryActions(let category, let n): return actionCount(in: category) >= n
-        case .foundations(let n): return foundationsCompleted >= n
-        case .seasonal: return false
+            userState = state
+            lastDecay = outcome
+            earnedBadges = try await badgeRepository.fetchEarned(userId: userId)
+            await refreshTodayLogs(now: now)
+            await refreshHistory()
+        } catch {
+            // Degrade to an empty account rather than blocking the UI.
+            userState = UserState(userId: userId)
         }
+        isReady = true
     }
-    
+
+    private func refreshHistory() async {
+        let all = (try? await logRepository.fetchAllLogs(userId: userId)) ?? []
+        history = all.sorted { $0.loggedAt > $1.loggedAt }
+    }
+
+    private func refreshTodayLogs(now: Date = Date()) async {
+        let dayKey = DateKeys.dayKey(for: now)
+        let logs = (try? await logRepository.fetchLogs(userId: userId, dayKey: dayKey)) ?? []
+        todayLogs = logs
+        completedTodayIDs = Set(logs.map(\.activityId))
+        basePointsUsedToday = pointsService.basePointsUsed(in: logs)
+    }
+
+    // MARK: - Catalogue
+
+    var activities: [Activity] { MockActivityData.all }
+
+    func activities(in category: Category) -> [Activity] {
+        MockActivityData.activities(in: category)
+    }
+
+    func activity(id: String) -> Activity? {
+        MockActivityData.activity(withID: id)
+    }
+
+    func isCompletedToday(_ activityId: String) -> Bool {
+        completedTodayIDs.contains(activityId)
+    }
+
+    func doneCount(in category: Category) -> Int {
+        activities(in: category).filter { isCompletedToday($0.id) }.count
+    }
+
+    // MARK: - Progress reads
+
+    var currentPoints: Int { userState.currentPoints }
+    var earthStage: EarthStage { userState.earthStage(using: config) }
+
+    /// Cosmetic — reads 0 once a streak is broken but not yet recorded.
+    func displayStreak(asOf now: Date = Date()) -> Int {
+        streakService.displayStreak(for: userState, asOf: now)
+    }
+
+    var pointsToNextStage: Int? {
+        guard let next = earthStage.next else { return nil }
+        return max(0, config.threshold(for: next) - userState.currentPoints)
+    }
+
+    /// The bundled catalogue joined with what this user earned.
+    ///
+    /// Derived, not stored — the catalogue is content that ships with the build
+    /// and the awards are the user's. Keeping them apart is what lets a badge's
+    /// wording be edited without rewriting anybody's history, and what lets an
+    /// award outlive its catalogue entry instead of vanishing with it.
+    /// Cached against a revision of `earnedBadges`, the only thing it depends on.
+    ///
+    /// The join itself is cheap, but this is read from inside the profile grid's
+    /// `ForEach` and by `unlockedBadgeCount` beside it, so it was rebuilding the
+    /// dictionary and remapping all 21 catalogue entries several times per redraw.
+    var badges: [Badge] {
+        if let cachedBadges, cachedBadgesKey == badgeRevision { return cachedBadges }
+        let built = BadgeEvaluationService().display(catalogue: MockBadgeData.all,
+                                                    earned: earnedBadges)
+        cachedBadges = built
+        cachedBadgesKey = badgeRevision
+        return built
+    }
+
+    /// Planet health, 0–100 — the number the profile labels "Vitality".
+    ///
+    /// The Vitality *engine* was retired with Tio's economy, but the idea it
+    /// measured did not go anywhere: how close this Earth is to being restored.
+    /// Derived from the same threshold the sixth stage uses, so it reaches 100
+    /// exactly when the Earth does.
+    var vitality: Int {
+        let restored = config.threshold(for: .restored)
+        guard restored > 0 else { return 0 }
+        return min(100, currentPoints * 100 / restored)
+    }
+
+    var favouriteCategories: Set<Category> {
+        Set(userState.favouriteCategoryIdsRaw.compactMap(Category.init(rawValue:)))
+    }
+
+    func updateFavourites(_ categories: Set<Category>) {
+        Task { await mutateUser { $0.favouriteCategoryIdsRaw = categories.map(\.rawValue).sorted() } }
+    }
+
+    /// There are no accounts yet, so this reports rather than pretends.
+    /// It becomes real with Firebase Auth; the button exists now so the screen
+    /// is not rebuilt around it later.
+    func logOut() {
+        toast = Toast(kind: .info, message: "Accounts arrive with sign-in.")
+    }
+
+    // MARK: - What the home screen reads
+    //
+    // Named as Mark's `HomeView` expects so it ports without edits. Each one is
+    // this economy's equivalent of a Vitality-era number, not a revival of it.
+
+    /// 0–100, the same scale `GlobeView` was drawn against.
+    var globeHealth: Double { Double(vitality) }
+
+    var stage: EarthStage { earthStage }
+    func streakDaysValue() -> Int { displayStreak() }
+
+    /// The daily allowance, in base points — the thing the cap actually meters.
+    /// Both the figure and the bar come from it so they cannot disagree, which
+    /// they would if the number counted multiplied points and the bar counted
+    /// the allowance.
+    var dailyPoints: Int { basePointsUsedToday }
+    var dailyTarget: Int { config.dailyBasePointsCap }
+    var dailyProgress: Double {
+        guard dailyTarget > 0 else { return 0 }
+        return min(1, Double(dailyPoints) / Double(dailyTarget))
+    }
+
+    /// The vitality percentage at which a stage begins — `VitalityStage.range`
+    /// was hardcoded 0–100; here it is derived from the point thresholds.
+    func vitalityFloor(for stage: EarthStage) -> Int {
+        let restored = config.threshold(for: .restored)
+        guard restored > 0 else { return 0 }
+        return config.threshold(for: stage) * 100 / restored
+    }
+
+    /// Up to three things worth doing today: not yet done, favourites first.
+    var suggestedActivities: [Activity] {
+        let pending = MockActivityData.all.filter { !isCompletedToday($0.id) }
+        let favourites = favouriteCategories
+        return Array(
+            pending.sorted { lhs, rhs in
+                let l = favourites.contains(lhs.category)
+                let r = favourites.contains(rhs.category)
+                if l != r { return l }
+                return false
+            }.prefix(3)
+        )
+    }
+
+    var unlockedBadgeCount: Int { earnedBadges.count }
+    var totalActionsLogged: Int { history.count }
+
+    /// The next earned badge that has not been shown to the user yet, or `nil`.
+    ///
+    /// Mark's fix (main `f573b04`), re-expressed against this branch's award
+    /// records. `recentlyUnlockedBadges` was already populated at award time but
+    /// nothing ever read it, and being in-memory it could not survive a relaunch.
     var pendingBadge: Badge? {
-        MockData.badges.first{ isUnlocked($0) && !data.announcedBadgeIds.contains($0.id) }
-    }
-    
-    func acknowledgeBadge(_ badge: Badge){
-        mutate { $0.announcedBadgeIds.insert(badge.id) }
+        let announced = userState.announcedBadgeIds ?? []
+        return badges.first { $0.isUnlocked && !announced.contains($0.id) }
     }
 
-    var unlockedBadgeCount: Int { MockData.badges.filter(isUnlocked).count }
+    /// Marks a badge's card as seen so it does not pop again.
+    func acknowledgeBadge(_ badge: Badge) async {
+        await mutateUser { $0.announcedBadgeIds = ($0.announcedBadgeIds ?? []).union([badge.id]) }
+    }
 
-    // MARK: - Shields
+    func hasEarned(_ badgeId: String) -> Bool {
+        earnedBadges.contains { $0.badgeId == badgeId }
+    }
 
-    var shieldsAvailable: Int { data.shieldsAvailable }
-    var isTodayShielded: Bool { UserRepository.isShielded(today, in: data) }
+    /// Progress toward a badge not yet earned, 0–1, for the profile grid.
+    func progress(towards badge: Badge) -> Double {
+        BadgeEvaluationService().progress(for: badge, state: userState)
+    }
 
-    @discardableResult
-    func activateShield() -> Bool {
-        var ok = false
-        mutate { ok = UserRepository.activateShield(in: &$0, on: today, today: today) }
-        toast = ok
-            ? Toast(kind: .success, message: "Shielded — today won't cost you.")
-            : Toast(kind: .warning, message: "No Shield available for today.")
-        return ok
+    var remainingDailyBasePoints: Int {
+        max(0, config.dailyBasePointsCap - basePointsUsedToday)
+    }
+
+    var isDailyCapReached: Bool { remainingDailyBasePoints == 0 }
+
+    // MARK: - What an action is worth right now
+    //
+    // The actions list prices every row from here. The rule these three exist to
+    // enforce: **the number on the row comes out of the same function that awards
+    // the points.** A view that re-derives the maths drifts from the award, and a
+    // row that promises more than it pays is worse than a row that says nothing.
+
+    /// The streak an action logged *now* would produce — not the streak on
+    /// record.
+    ///
+    /// The distinction is the whole reason this exists. `ActivityLoggingService`
+    /// scores an action with the streak it just became, so a user sitting on day
+    /// 6 who last logged yesterday earns ×1.1 on their next tap. Pricing the row
+    /// from `currentStreak` would quietly show them ×1.0.
+    func prospectiveStreak(now: Date = Date()) -> Int {
+        streakService.outcome(for: userState, loggingOn: now).newStreak
+    }
+
+    /// The multiplier those rows should advertise.
+    func streakMultiplier(now: Date = Date()) -> Double {
+        config.streakMultiplier(forStreak: prospectiveStreak(now: now))
+    }
+
+    /// What logging `activity` right now would award, cap and streak included.
+    func projectedPoints(for activity: Activity, now: Date = Date()) -> PointsBreakdown {
+        pointsService.breakdown(
+            activity: activity,
+            hasEvidence: false,          // tapping a row is a checklist log
+            currentStreak: prospectiveStreak(now: now),
+            isPrioritized: provincePriority.isPrioritized(
+                category: activity.category,
+                provinceCode: userState.currentProvinceCode
+            ),
+            basePointsUsedToday: basePointsUsedToday
+        )
+    }
+
+    /// What an already-logged action actually earned today.
+    func loggedPoints(for activityId: String) -> Int? {
+        todayLogs.first { $0.activityId == activityId }?.finalPoints
     }
 
     // MARK: - Logging
 
     @discardableResult
-    func logHabit(_ habit: Habit, source: HabitLog.Source) -> HabitRepository.LogResult {
-        var result = HabitRepository.LogResult.retroactive
-        mutate {
-            result = HabitRepository.log(habit, on: today, today: today, source: source, in: &$0)
+    func logActivity(
+        _ activity: Activity,
+        hasEvidence: Bool = false,
+        source: LogSource = .manualChecklist,
+        now: Date = Date()
+    ) async -> LogActivityResult {
+        recentlyUnlockedBadges = []
+
+        let result: LogActivityResult
+        do {
+            result = try await loggingService.log(
+                activityId: activity.id,
+                userId: userId,
+                hasEvidence: hasEvidence,
+                source: source,
+                now: now
+            )
+        } catch {
+            toast = Toast(kind: .warning, message: "Couldn't save that. Try again.")
+            return .activityNotFound
         }
 
         switch result {
-        case .logged(let points):
-            lastAward = Award(habit: habit, points: points)
-        case .foundation(let gain):
-            lastAward = Award(habit: habit, vitalityGain: gain)
-        case .alreadyLogged, .weeklyLimitReached, .retroactive:
-            break
+        case .success(let outcome):
+            userState = outcome.userState
+            recentlyUnlockedBadges = outcome.unlockedBadges
+            if !outcome.unlockedBadges.isEmpty {
+                earnedBadges = (try? await badgeRepository.fetchEarned(userId: userId)) ?? earnedBadges
+            }
+            await refreshTodayLogs(now: now)
+            // `history` is newest-first and this log is the newest, so prepending
+            // is the whole update. Re-reading the repository would fetch, filter
+            // and re-sort every log the user has ever made to learn one fact the
+            // write already told us.
+            history.insert(outcome.log, at: 0)
+            lastAward = Award(activity: activity, points: outcome.breakdown.finalPoints)
+            toast = Toast(kind: .success,
+                          message: "\(activity.name) · +\(outcome.breakdown.finalPoints) pts")
+
+        case .alreadyLoggedToday:
+            toast = Toast(kind: .info, message: "Already logged today — back tomorrow.")
+
+        case .onCooldown(let days):
+            toast = Toast(kind: .info,
+                          message: "Available again in \(days) day\(days == 1 ? "" : "s").")
+
+        case .activityNotFound:
+            toast = Toast(kind: .warning, message: "Couldn't log that one.")
         }
         return result
     }
 
-    /// Log and report the outcome. Every logging surface uses this so a weekly cap or a
-    /// duplicate reads the same way from the checklist, the dashboard and the camera.
-    @discardableResult
-    func logAndToast(_ habit: Habit, source: HabitLog.Source) -> HabitRepository.LogResult {
-        let result = logHabit(habit, source: source)
-        switch result {
-        case .logged(let points):
-            toast = Toast(kind: .success, message: "\(habit.name) · +\(points) pts")
-        case .foundation(let gain):
-            toast = Toast(kind: .success, message: "\(habit.name) · +\(gain) Vitality")
-        case .alreadyLogged:
-            toast = Toast(kind: .info, message: habit.isFoundation
-                ? "Already done — Foundations count once."
-                : "Already logged today — back tomorrow.")
-        case .weeklyLimitReached(let limit):
-            toast = Toast(kind: .info, message: "That's all \(limit) for this week.")
-        case .retroactive:
-            toast = Toast(kind: .warning, message: "Only today can be logged.")
-        }
-        return result
-    }
+    // MARK: - Fights
 
-    /// Same-day undo (PRD §3.4).
-    @discardableResult
-    func revertTodaysLog(habitId: String) -> Bool {
-        var ok = false
-        mutate {
-            ok = HabitRepository.unlog(habitId, on: today, today: today, habits: MockData.habits, in: &$0)
-        }
-        return ok
-    }
-
-    // MARK: - Fights (PRD §4)
-
-    /// Seeded events plus anything this account hosts. Everything that browses
-    /// or looks a Fight up goes through here, so a hosted event behaves exactly
-    /// like a bundled one.
-    var allFights: [Fight] { MockData.fights + data.hostedFights }
-
+    var allFights: [Fight] { MockFightData.seeded + userState.hostedFights }
     func fight(id: String) -> Fight? { allFights.first { $0.id == id } }
 
     var upcomingFights: [Fight] { FightRepository.upcoming(allFights) }
-    var myUpcomingFights: [Fight] { FightRepository.signedUp(allFights, in: data) }
-    var pastFights: [Fight] { FightRepository.attended(allFights, in: data) }
+    var savedFights: [Fight] { FightRepository.saved(allFights, in: userState) }
+    var pastFights: [Fight] { FightRepository.attended(allFights, in: userState) }
+    /// The dashboard's "what's next" — a saved Fight if there is one, otherwise
+    /// the soonest public Fight, so the card is never empty for a new user.
+    ///
+    /// Reads `allFights` once. Going through `savedFights` and `upcomingFights`
+    /// concatenated the seeds with the hosted list twice per access, and the home
+    /// screen reads this on every redraw.
+    var nextFight: Fight? {
+        let all = allFights
+        return FightRepository.saved(all, in: userState).first
+            ?? FightRepository.upcoming(all).first
+    }
+    var hostedFights: [Fight] { FightRepository.hostedFights(in: userState) }
 
-    /// The dashboard's "Next Fight" card (§6.1).
-    var nextFight: Fight? { myUpcomingFights.first }
+    var isOrganization: Bool { userState.isOrganization }
+    var orgName: String { userState.orgName.isEmpty ? displayName : userState.orgName }
+    var displayName: String {
+        userState.displayName.isEmpty ? MockUserStateData.demoDisplayName : userState.displayName
+    }
+    var firstName: String { displayName.split(separator: " ").first.map(String.init) ?? displayName }
 
-    func isSignedUp(_ fight: Fight) -> Bool { FightRepository.isSignedUp(fight.id, in: data) }
-    func hasAttended(_ fight: Fight) -> Bool { FightRepository.hasAttended(fight.id, in: data) }
-    func signup(for fight: Fight) -> FightSignup? { FightRepository.signup(for: fight.id, in: data) }
+    /// The Fight a scanned or typed code belongs to.
+    ///
+    /// Searches `allFights` rather than only published ones so an organiser can
+    /// test their own draft's code — `FightRepository.checkIn` still refuses a
+    /// draft, and refusing it there gives a reason instead of "no such code".
+    func fight(matchingCode code: String) -> Fight? {
+        allFights.first { $0.matchesCheckInCode(code) }
+    }
 
+    func isSaved(_ fight: Fight) -> Bool { FightRepository.isSaved(fight.id, in: userState) }
+    func hasAttended(_ fight: Fight) -> Bool { FightRepository.hasAttended(fight.id, in: userState) }
+    func isHost(of fight: Fight) -> Bool { FightRepository.isHost(of: fight, in: userState) }
+    func checkInCount(for fight: Fight) -> Int {
+        FightRepository.knownCheckInCount(for: fight.id, in: userState)
+    }
+
+    /// Badge this Fight awards, if the organiser attached one.
+    func rewardBadge(for fight: Fight) -> Badge? {
+        fight.rewardBadgeId.flatMap { MockBadgeData.fightReward(withID: $0) }
+    }
+
+    func toggleSaved(_ fight: Fight) async {
+        let nowSaved = await mutateUser { FightRepository.toggleSaved(fight.id, in: &$0) }
+        toast = Toast(kind: .info, message: nowSaved ? "Saved." : "Removed from saved.")
+    }
+
+    /// Check in with the code the organiser published.
     @discardableResult
-    func joinFight(_ fight: Fight) -> FightRepository.SignupResult {
-        var result = FightRepository.SignupResult.eventFinished
-        mutate { result = FightRepository.signUp(for: fight, in: &$0, now: Date()) }
+    func checkIn(to fight: Fight, code: String) async -> FightRepository.CheckInResult {
+        recentlyUnlockedBadges = []
 
-        switch result {
-        case .signedUp:
-            toast = Toast(kind: .success, message: "You're in — see you at \(fight.locationName).")
-        case .alreadySignedUp:
-            toast = Toast(kind: .info, message: "You're already signed up.")
-        case .eventFinished:
-            toast = Toast(kind: .warning, message: "That Fight has already finished.")
-        case .eventCancelled:
-            toast = Toast(kind: .warning, message: "The host cancelled this Fight.")
+        let result = await mutateUser {
+            FightRepository.checkIn(to: fight, code: code, in: &$0)
         }
-        return result
-    }
-
-    @discardableResult
-    func cancelFight(_ fight: Fight) -> Bool {
-        var ok = false
-        mutate { ok = FightRepository.cancelSignup(for: fight.id, in: &$0, now: Date()) }
-        if ok { toast = Toast(kind: .info, message: "Signup cancelled. No penalty.") }
-        return ok
-    }
-
-    /// Stands in for the host scanning the attendee's QR. Real cross-device check-in
-    /// arrives with Firebase in Phase 10 (§9.3).
-    @discardableResult
-    func checkIn(to fight: Fight) -> FightRepository.CheckInResult {
-        var result = FightRepository.CheckInResult.notSignedUp
-        mutate { result = FightRepository.checkIn(to: fight, in: &$0, now: Date()) }
 
         switch result {
-        case .checkedIn(let gain):
-            toast = Toast(kind: .success, message: "Checked in — +\(gain) Vitality for today.")
-        case .notSignedUp:
-            toast = Toast(kind: .warning, message: "Sign up before checking in.")
+        case .checkedIn(let points, let capped, let badge):
+            // A Fight badge is *given*, not reached, so it is written straight
+            // here rather than inferred by the threshold evaluator.
+            if let badge {
+                let award = EarnedBadge(awarding: badge, source: .fight(fightId: fight.id))
+                try? await badgeRepository.award(award, userId: userId)
+                earnedBadges = (try? await badgeRepository.fetchEarned(userId: userId)) ?? earnedBadges
+                recentlyUnlockedBadges = [award]
+                toast = Toast(kind: .success,
+                              message: "Checked in · +\(points) pts · \(badge.name) unlocked")
+            } else {
+                toast = Toast(kind: .success, message: capped
+                    ? "Checked in — monthly event cap reached."
+                    : "Checked in · +\(points) pts")
+            }
+        case .wrongCode:
+            toast = Toast(kind: .warning, message: "That code doesn't match this Fight.")
         case .alreadyCheckedIn:
-            toast = Toast(kind: .info, message: "Already checked in to this Fight.")
+            toast = Toast(kind: .info, message: "Already checked in.")
+        case .notPublished:
+            toast = Toast(kind: .warning,
+                          message: "\(fight.title) is still a draft — publish it before anyone can check in.")
         case .windowClosed:
-            toast = Toast(kind: .warning, message: "Check-in opens an hour before the start.")
+            // Naming the Fight and when it starts matters more than the rule:
+            // with several codes in circulation, "opens an hour before" does not
+            // tell you *which* one you just pointed at.
+            toast = Toast(kind: .warning,
+                          message: "\(fight.title) — \(FightFormat.countdown(fight)). Check-in opens an hour before.")
         case .eventCancelled:
-            toast = Toast(kind: .warning, message: "The host cancelled this Fight.")
+            toast = Toast(kind: .warning, message: "The organiser cancelled this Fight.")
         }
         return result
-    }
-
-    // MARK: - Host mode (PRD §6.5.1)
-
-    var isOrganization: Bool { data.isOrganization }
-    var orgName: String { data.orgName.isEmpty ? userName : data.orgName }
-    var hostedFights: [Fight] { FightRepository.hostedFights(in: data) }
-
-    func isHost(of fight: Fight) -> Bool { FightRepository.isHost(of: fight, in: data) }
-    func scans(for fight: Fight) -> [HostScan] { FightRepository.scans(for: fight.id, in: data) }
-
-    /// How many local signups exist for a hosted event. Until Phase 10 the only
-    /// account on the device is this one, so this is 0 or 1 — the number is
-    /// honest, the scale is not.
-    func signupCount(for fight: Fight) -> Int {
-        FightRepository.isSignedUp(fight.id, in: data) ? 1 : 0
     }
 
     func newDraft(type: FightType = .beachCleanup) -> Fight {
@@ -309,7 +522,7 @@ final class AppState: ObservableObject {
         return Fight(
             id: "host-\(UUID().uuidString.prefix(8))",
             title: "", summary: "", type: type,
-            hostName: orgName, hostId: "local-host",
+            hostName: orgName, hostId: userId,
             locationName: "", address: "",
             latitude: nil, longitude: nil,
             startsAt: start, endsAt: start.addingTimeInterval(3 * 3600),
@@ -317,94 +530,108 @@ final class AppState: ObservableObject {
         )
     }
 
-    func saveDraft(_ fight: Fight) {
-        mutate {
-            if $0.hostedFights.contains(where: { $0.id == fight.id }) {
-                FightRepository.update(fight, in: &$0)
+    func saveDraft(_ fight: Fight) async {
+        await mutateUser { state in
+            if state.hostedFights.contains(where: { $0.id == fight.id }) {
+                FightRepository.update(fight, in: &state)
             } else {
-                FightRepository.createDraft(fight, in: &$0)
+                FightRepository.createDraft(fight, in: &state)
             }
         }
         toast = Toast(kind: .success, message: "Saved as a draft.")
     }
 
-    func publishFight(_ fight: Fight) {
-        var ok = false
-        mutate { ok = FightRepository.publish(fight.id, in: &$0) }
+    func publishFight(_ fight: Fight) async {
+        let ok = await mutateUser { FightRepository.publish(fight.id, in: &$0) }
         toast = ok
             ? Toast(kind: .success, message: "Published — it's in the public list now.")
             : Toast(kind: .info, message: "Already published.")
     }
 
-    func cancelHostedFight(_ fight: Fight) {
-        var ok = false
-        mutate { ok = FightRepository.cancel(fight.id, in: &$0) }
-        if ok {
-            toast = Toast(kind: .info, message: "Cancelled. Anyone signed up still sees it.")
-        }
+    func cancelHostedFight(_ fight: Fight) async {
+        let ok = await mutateUser { FightRepository.cancel(fight.id, in: &$0) }
+        if ok { toast = Toast(kind: .info, message: "Cancelled. Anyone who saved it still sees it.") }
     }
 
-    /// One scanned QR. Records it on the host roster, and — when the code turns
-    /// out to be this device's own signup — also credits the attendee side, so
-    /// the whole loop is demonstrable on a single phone (§12.1).
-    @discardableResult
-    func recordScan(_ raw: String, for fight: Fight) -> FightRepository.ScanResult {
-        var result = FightRepository.ScanResult.unreadable
-        mutate { result = FightRepository.recordScan(raw, for: fight, in: &$0) }
+    // MARK: - Settings
 
-        if case .accepted = result,
-           FightRepository.signup(for: fight.id, in: data)?.checkInToken == raw {
-            checkIn(to: fight)
-        }
-        return result
+    var notificationsEnabled: Bool { userState.notificationsEnabled }
+
+    func setNotifications(_ on: Bool) async {
+        await mutateUser { $0.notificationsEnabled = on }
     }
 
-    // MARK: - Mutations
-
-    func updateFavourites(_ categories: Set<HabitCategory>) {
-        mutate { $0.favouriteCategories = categories }
-    }
-
-    func setNotifications(_ on: Bool) { mutate { $0.notificationsEnabled = on } }
-
-    func logIn() { mutate { $0.isLoggedIn = true } }
-
-    func logOut() {
-        mutate { $0.isLoggedIn = false }
-        selectedTab = .home
-    }
-
-    func resetEverything() {
-        PersistenceStore.wipe()
-        data = PersistedState()
-        selectedTab = .home
-        evaluateIfNeeded()
-        toast = Toast(kind: .info, message: "Local data cleared.")
-    }
-
-    // MARK: - Debug
-
-    #if DEBUG
-    /// Time travel (PRD §13 Phase 2). Runs the real loop against a chosen day.
-    func debugEvaluate(asOf day: String) {
-        mutate { EvaluationLoop.evaluate(state: &$0, habits: MockData.habits, today: day) }
-    }
-
-    /// PRD §4.3 — verification is a human flipping a flag, and there is no admin
-    /// surface until Phase 10. DEBUG-only on purpose: `isOrganization` must never
-    /// be user-writable, and §9.6 makes that a Security Rules requirement.
-    func debugSetOrganization(_ on: Bool, name: String = "Ombak Bersih") {
-        mutate {
+    func setOrganization(_ on: Bool, name: String = "Ombak Bersih") async {
+        await mutateUser {
             $0.isOrganization = on
             $0.orgName = on ? name : ""
         }
     }
+
+    /// Wipes the account: points, streak, badges **and every log**.
+    ///
+    /// Clearing only `UserState` is not a reset — the logs survive, so the next
+    /// `refreshTodayLogs` puts today's activities straight back, and their
+    /// dedup keys go on blocking re-logging with nothing on screen to explain
+    /// why. All four stores have to go.
+    func resetEverything() async {
+        try? await logRepository.deleteAll(userId: userId)
+        try? await badgeRepository.deleteAll(userId: userId)
+
+        let fresh = UserState(userId: userId)
+        try? await userStateRepository.save(fresh)
+
+        userState = fresh
+        completedTodayIDs = []
+        todayLogs = []
+        basePointsUsedToday = 0
+        history = []
+        recentlyUnlockedBadges = []
+        lastAward = nil
+        lastDecay = nil
+        earnedBadges = (try? await badgeRepository.fetchEarned(userId: userId)) ?? []
+
+        selectedTab = .home
+        toast = Toast(kind: .info, message: "Local data cleared.")
+    }
+
+    // MARK: - Plumbing
+
+    #if DEBUG
+    /// Force the streak, for the debug menu.
+    ///
+    /// **`lastActivityDate` has to move too.** The streak the app displays is
+    /// derived from that date, not read off the counter: `displayStreak` returns
+    /// 0 once the last activity is more than a day old, however large the stored
+    /// number, and `prospectiveStreak` — which prices every row on the actions
+    /// list — would compute a fresh streak of 1. Setting the counter alone looks
+    /// like the control is broken.
+    ///
+    /// Stamped to *now* rather than yesterday so the number you type is the
+    /// number you get: with a same-day gap the streak neither advances nor
+    /// resets on the next log.
+    func debugSetStreak(_ days: Int, now: Date = Date()) async {
+        await mutateUser { state in
+            state.currentStreak = max(0, days)
+            state.lastActivityDate = days > 0 ? now : nil
+            // A stale freeze period would make the next gap behave oddly.
+            state.streakFreezeUsedPeriod = nil
+        }
+        toast = Toast(kind: .info, message: days > 0
+            ? "Streak set to \(days) — multiplier ×\(streakMultiplier().formatted(.number.precision(.fractionLength(0...2))))"
+            : "Streak cleared.")
+    }
     #endif
 
-    private func mutate(_ change: (inout PersistedState) -> Void) {
-        var next = data
-        change(&next)
-        data = next
-        PersistenceStore.save(next)
+    /// Mutate the user record and persist it. The Fight repository is a set of
+    /// pure functions over `UserState`, so this is the only place they touch
+    /// storage — the same shape the rest of the app uses.
+    @discardableResult
+    private func mutateUser<T>(_ change: (inout UserState) -> T) async -> T {
+        var next = userState
+        let result = change(&next)
+        userState = next
+        try? await userStateRepository.save(next)
+        return result
     }
 }
