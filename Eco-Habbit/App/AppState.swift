@@ -124,6 +124,18 @@ final class AppState: ObservableObject {
             var next = data
             if let remote = try await sync.fetch(userId: uid) {
                 if !hasLocalCopy { remote.apply(to: &next) }
+
+                // `isOrganization` is the one field the SERVER owns, so it is copied
+                // down unconditionally — outside the `hasLocalCopy` gate, because a
+                // device that already has a file is exactly the one being promoted.
+                //
+                // It is not a nicety. The push sends every scalar, and the rules require
+                // `isOrganization` to arrive equal to what is stored. Leave the local
+                // copy at `false` after an admin sets it `true` and the two disagree
+                // forever: EVERY user-document write is refused from then on, silently,
+                // taking points, streak and name with it. Reading it down is what keeps
+                // the client agreeing with the server about a value it may not author.
+                next.isOrganization = remote.isOrganization
             } else {
                 // Brand-new account: the local state becomes the server's first copy.
                 try await sync.push(UserDocument(next), userId: uid)
@@ -495,7 +507,30 @@ final class AppState: ObservableObject {
     /// Seeded events plus anything this account hosts. Everything that browses
     /// or looks a Fight up goes through here, so a hosted event behaves exactly
     /// like a bundled one.
-    var allFights: [Fight] { MockData.fights + data.hostedFights }
+    /// Published Fights from the server. Empty until `refreshFights` returns, and empty
+    /// forever on a local-only build — which is why it is additive rather than a
+    /// replacement for the bundled seeds.
+    @Published private(set) var remoteFights: [Fight] = []
+
+    /// Bundled seeds, this device's own hosted events, and everybody else's published
+    /// ones.
+    ///
+    /// **Local wins on a tie.** A host's own Fight exists in both `hostedFights` and,
+    /// once published, in `remoteFights`; taking the local copy means an edit shows
+    /// immediately instead of after the next fetch. The seeds stay because they are what
+    /// the app has to show with no network and no organiser.
+    var allFights: [Fight] {
+        let local = MockData.fights + data.hostedFights
+        let known = Set(local.map(\.id))
+        return local + remoteFights.filter { !known.contains($0.id) }
+    }
+
+    /// Pull the shared list. Silent on failure — no network means the bundled seeds and
+    /// your own events, not an error screen.
+    func refreshFights() async {
+        guard let sync else { return }
+        if let fights = try? await sync.fetchPublishedFights() { remoteFights = fights }
+    }
 
     func fight(id: String) -> Fight? { allFights.first { $0.id == id } }
 
@@ -505,6 +540,32 @@ final class AppState: ObservableObject {
 
     /// The dashboard's "Next Fight" card (§6.1).
     var nextFight: Fight? { myUpcomingFights.first }
+
+    // MARK: - Saved Fights
+    //
+    // Replaces signup. A save is a private bookmark: the host is never told, so there
+    // is no promise to break and no cross-user write to authorise. Attending is decided
+    // on the day, by presenting the organiser's code.
+
+    func isFavourite(_ fight: Fight) -> Bool { data.favouriteFightIds.contains(fight.id) }
+
+    func toggleFavourite(_ fight: Fight) {
+        let saving = !isFavourite(fight)
+        mutate {
+            if saving { $0.favouriteFightIds.insert(fight.id) }
+            else { $0.favouriteFightIds.remove(fight.id) }
+        }
+        toast = Toast(kind: .info, message: saving ? "Saved to your Fights." : "Removed from your Fights.")
+    }
+
+    /// Every Fight worth showing, soonest first, with anything already over dropped.
+    var browsableFights: [Fight] {
+        allFights
+            .filter { $0.status == .published }
+            .sorted { $0.startsAt < $1.startsAt }
+    }
+
+    var favouriteFights: [Fight] { browsableFights.filter(isFavourite) }
 
     func isSignedUp(_ fight: Fight) -> Bool { FightRepository.isSignedUp(fight.id, in: data) }
     func hasAttended(_ fight: Fight) -> Bool { FightRepository.hasAttended(fight.id, in: data) }
@@ -558,12 +619,22 @@ final class AppState: ObservableObject {
 
     func checkIn(to fight: Fight, code: String? = nil) -> FightRepository.CheckInResult {
         var result = FightRepository.CheckInResult.notSignedUp
-        mutate { result = FightRepository.checkIn(to: fight, code: code, in: &$0, now: Date()) }
+        mutate {
+            result = FightRepository.checkIn(to: fight, code: code, userId: userId ?? "",
+                                             in: &$0, now: Date())
+        }
 
         switch result {
         case .checkedIn(let points):
             awardNewBadges()
             toast = Toast(kind: .success, message: "Checked in — +\(points) pts.")
+            // Fire and forget, unlike publishing. The points are already credited
+            // locally and the local record is what the app reads; the server copy is
+            // what lets the host see a roster. A failed write costs the attendee
+            // nothing, so it must not block the reward.
+            if let sync, let attendance = data.fightAttendance[fight.id] {
+                Task { try? await sync.checkIn(attendance) }
+            }
         case .notSignedUp:
             toast = Toast(kind: .warning, message: "Sign up before checking in.")
         case .alreadyCheckedIn:
@@ -589,6 +660,22 @@ final class AppState: ObservableObject {
     var orgName: String { data.orgName.isEmpty ? userName : data.orgName }
     var hostedFights: [Fight] { FightRepository.hostedFights(in: data) }
 
+    /// Who actually turned up, from the server.
+    ///
+    /// **Not from `hostScans`.** That was the old model, where the host scanned each
+    /// attendee's personal QR — a cross-user write that needed a server to authorise.
+    /// What shipped is the inverse: one code per Fight, and each attendee's own device
+    /// writes its own `/attendance` record. The host reads that list rather than
+    /// building one.
+    ///
+    /// No names. The rules deliberately keep `/users` private, so a host can see that
+    /// somebody checked in and when, but not who they are.
+    func attendees(for fight: Fight) async -> [FightAttendance] {
+        guard let sync else { return [] }
+        let records = (try? await sync.fetchAttendance(fightId: fight.id)) ?? []
+        return records.sorted { $0.checkedInAt < $1.checkedInAt }
+    }
+
     func isHost(of fight: Fight) -> Bool { FightRepository.isHost(of: fight, in: data) }
     func scans(for fight: Fight) -> [HostScan] { FightRepository.scans(for: fight.id, in: data) }
 
@@ -604,7 +691,9 @@ final class AppState: ObservableObject {
         return Fight(
             id: "host-\(UUID().uuidString.prefix(8))",
             title: "", summary: "", type: type,
-            hostName: orgName, hostId: "local-host",
+            // The real uid, not a placeholder: the rules require
+            // `hostId == request.auth.uid`, so "local-host" would be refused on publish.
+            hostName: orgName, hostId: userId ?? "local-host",
             locationName: "", address: "",
             latitude: nil, longitude: nil,
             startsAt: start, endsAt: start.addingTimeInterval(3 * 3600),
@@ -612,6 +701,15 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// Save an edit. **Pushes when the Fight is already live.**
+    ///
+    /// `ManageEventView` offers "Edit details" after publishing, and without this the
+    /// server copy silently kept the old title, time and place while the host looked at
+    /// the corrected version on their own screen — and was told it had been "saved as a
+    /// draft", which it had not.
+    ///
+    /// Fire-and-forget, unlike the initial publish. The event is already visible, so a
+    /// failed edit degrades to one stale field rather than an event nobody can see.
     func saveDraft(_ fight: Fight) {
         mutate {
             if $0.hostedFights.contains(where: { $0.id == fight.id }) {
@@ -620,22 +718,63 @@ final class AppState: ObservableObject {
                 FightRepository.createDraft(fight, in: &$0)
             }
         }
-        toast = Toast(kind: .success, message: "Saved as a draft.")
+
+        guard let stored = hostedFights.first(where: { $0.id == fight.id }),
+              stored.status == .published, let sync
+        else {
+            toast = Toast(kind: .success, message: "Saved as a draft.")
+            return
+        }
+
+        Task { try? await sync.putFight(stored); await refreshFights() }
+        toast = Toast(kind: .success, message: "Saved — everyone sees the change.")
     }
 
-    func publishFight(_ fight: Fight) {
+    /// Publish, then push. **Awaited, unlike every other sync in the app.**
+    ///
+    /// Publishing is the one action whose whole purpose is that somebody else sees it,
+    /// so "it saved locally and the upload may or may not have happened" is not an
+    /// outcome worth reporting as success. If the write is refused the local state is
+    /// rolled back to draft, because a Fight the host believes is live but which nobody
+    /// can see is the worst of the three possible states.
+    ///
+    /// The likely refusal is `isOrganization` — the rules only let a verified
+    /// organisation create a Fight, and that flag is admin-set on the server. The
+    /// message says so rather than reporting a permissions error nobody can act on.
+    func publishFight(_ fight: Fight) async {
         var ok = false
         mutate { ok = FightRepository.publish(fight.id, in: &$0) }
-        toast = ok
-            ? Toast(kind: .success, message: "Published — it's in the public list now.")
-            : Toast(kind: .info, message: "Already published.")
+        guard ok else {
+            toast = Toast(kind: .info, message: "Already published.")
+            return
+        }
+
+        guard let sync, let published = hostedFights.first(where: { $0.id == fight.id }) else {
+            toast = Toast(kind: .success, message: "Published — it's in the public list now.")
+            return
+        }
+
+        do {
+            try await sync.putFight(published)
+            await refreshFights()
+            toast = Toast(kind: .success, message: "Published — everyone can see it now.")
+        } catch {
+            mutate { _ = FightRepository.unpublish(fight.id, in: &$0) }
+            toast = Toast(kind: .warning,
+                          message: "Couldn't publish. This account isn't verified as an organisation yet.")
+        }
     }
 
     func cancelHostedFight(_ fight: Fight) {
         var ok = false
         mutate { ok = FightRepository.cancel(fight.id, in: &$0) }
-        if ok {
-            toast = Toast(kind: .info, message: "Cancelled. Anyone signed up still sees it.")
+        guard ok else { return }
+        toast = Toast(kind: .info, message: "Cancelled. Anyone who saved it still sees it.")
+
+        // Cancelling is a status change, not a delete — the rules refuse deletes, and
+        // people who saved it need to be told rather than have it vanish.
+        if let sync, let cancelled = hostedFights.first(where: { $0.id == fight.id }) {
+            Task { try? await sync.putFight(cancelled); await refreshFights() }
         }
     }
 
@@ -740,6 +879,13 @@ final class AppState: ObservableObject {
     /// PRD §4.3 — verification is a human flipping a flag, and there is no admin
     /// surface until Phase 10. DEBUG-only on purpose: `isOrganization` must never
     /// be user-writable, and §9.6 makes that a Security Rules requirement.
+    ///
+    /// **This unlocks the host UI locally; it does not make publishing work.** The
+    /// rules read `isOrganization` from the server, so a Fight published on the
+    /// strength of this flag alone is refused and rolled back. It also disagrees with
+    /// the stored value until the next launch, which means user-document writes are
+    /// refused in the meantime. The real switch is the field on `/users/{uid}` in the
+    /// Firebase console; this is for demoing host mode with no network.
     func debugSetOrganization(_ on: Bool, name: String = "Ombak Bersih") {
         mutate {
             $0.isOrganization = on

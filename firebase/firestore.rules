@@ -127,15 +127,24 @@ service cloud.firestore {
 
     match /fights/{fightId} {
       // Drafts are private to their host until published — a half-written Fight
-      // must never appear in the public list.
+      // must never appear in the public list. Currently matches nothing, because
+      // drafts are not uploaded at all; kept for the day they are.
       allow read: if signedIn()
         && (resource.data.status != 'draft'
             || resource.data.hostId == request.auth.uid
             || isAdmin());
 
+      // A Fight may be born already published, and usually is.
+      //
+      // This used to demand `status == 'draft'` on create, on the assumption that
+      // drafts live here too and publishing is an update. **They do not.** Drafts stay
+      // on the host's device and the first write happens at publish, so that condition
+      // rejected the only create the client ever attempts — silently, and the app
+      // blamed the organisation flag. Nothing was protected by it either: a host could
+      // create a draft and update it to published a millisecond later.
       allow create: if isVerifiedOrganisation()
         && request.resource.data.hostId == request.auth.uid
-        && request.resource.data.status == 'draft'
+        && request.resource.data.status in ['draft', 'published']
         && request.resource.data.checkInCode is string;
 
       // A host may edit their own event, but may never hand it to somebody else.

@@ -49,6 +49,7 @@ struct UserDocument: Codable, Equatable {
     var lastShieldGrantMonth: String?
 
     var fightAttendedDates: [String]
+    var favouriteFightIds: [String]
 
     var isOrganization: Bool
     var orgName: String
@@ -78,6 +79,7 @@ struct UserDocument: Codable, Equatable {
         lastShieldGrantMonth = state.lastShieldGrantMonth
 
         fightAttendedDates = state.fightAttendedDates.sorted()
+        favouriteFightIds = state.favouriteFightIds.sorted()
 
         isOrganization = state.isOrganization
         orgName = state.orgName
@@ -93,9 +95,11 @@ struct UserDocument: Codable, Equatable {
     /// they live in subcollections and are not this document's to overwrite — clearing
     /// them here would delete a user's history on every sign-in.
     ///
-    /// `isOrganization` is deliberately **not** applied. It is set by an admin, server
-    /// side, and the security rules refuse a client that tries to change it; letting a
-    /// fetch write it locally would make the app briefly believe a lie.
+    /// `isOrganization` is deliberately **not** applied *here* — `AppState.pullRemoteState`
+    /// copies it down separately and unconditionally. It is the one field the server
+    /// owns, so it must survive the "does this device already have a file" gate that
+    /// governs everything else: the device being promoted to an organisation is
+    /// precisely the one that already has local state.
     func apply(to state: inout PersistedState) {
         state.userName = userName
         state.email = email
@@ -116,6 +120,7 @@ struct UserDocument: Codable, Equatable {
         state.lastShieldGrantMonth = lastShieldGrantMonth
 
         state.fightAttendedDates = Set(fightAttendedDates)
+        state.favouriteFightIds = Set(favouriteFightIds)
 
         state.orgName = orgName
 

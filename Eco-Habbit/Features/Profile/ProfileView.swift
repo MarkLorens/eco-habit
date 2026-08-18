@@ -15,13 +15,18 @@ struct ProfileView: View {
     @State private var showingBadges = false
     @State private var confirmingDelete = false
 
+    /// Bound so the avatar's long-press menu can push. `settings` — the list that used
+    /// to hold every route — is commented out of `body`, which left Debug tools with no
+    /// door at all.
+    @State private var path = NavigationPath()
+
     private let badgeColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
     
     @State private var headerHeight: CGFloat = 0
     private let sheetTail: CGFloat = 56
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     stats
@@ -107,6 +112,14 @@ struct ProfileView: View {
                     // `contextMenu` IS the long press, so there is no gesture to wire up
                     // and no state to hold for the menu itself.
                     .contextMenu {
+                        #if DEBUG
+                        // Compiled out of Release entirely. The only way in: the
+                        // settings list that used to carry this route is commented
+                        // out of `body`.
+                        Button { path.append(ProfileRoute.debug) } label: {
+                            Label("Debug tools", systemImage: "hammer")
+                        }
+                        #endif
                         Button { app.logOut() } label: {
                             Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
                         }

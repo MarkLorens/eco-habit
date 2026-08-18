@@ -16,23 +16,41 @@ struct OurFightDetailCard: View {
     private let location: String
     private let picture: String
 
-    
+    // Everything below is additive and defaulted, so the original call — and
+    // `ExpandableFightWrapper`, which is not ours to change — still compiles and still
+    // looks exactly as designed.
+    private let host: String
+    private let actionTitle: String?
+    private let onAction: () -> Void
+    private let isFavourite: Bool
+    private let onToggleFavourite: (() -> Void)?
+
     init(title: String,
          caption: String,
          category: Color,
          date: String,
          location: String,
          picture: String,
+         host: String = "Eco Tourism Bali",
+         actionTitle: String? = "See QR Code",
+         isFavourite: Bool = false,
+         onToggleFavourite: (() -> Void)? = nil,
+         onAction: @escaping () -> Void = {},
          onCollapse: @escaping () -> Void,
     )
     {
-        
+
         self.title = title
         self.caption = caption
         self.category = category
         self.date = date
         self.location = location
         self.picture = picture
+        self.host = host
+        self.actionTitle = actionTitle
+        self.isFavourite = isFavourite
+        self.onToggleFavourite = onToggleFavourite
+        self.onAction = onAction
         self.onCollapse = onCollapse
     }
     
@@ -76,16 +94,27 @@ struct OurFightDetailCard: View {
                             }
                         }
                         Spacer()
-                        
+
+                        if let onToggleFavourite {
+                            Button(action: onToggleFavourite) {
+                                Image(systemName: isFavourite ? "bookmark.fill" : "bookmark")
+                                    .font(.system(size: 17, weight: .medium))
+                                    .foregroundStyle(Tokens.Semantic.text)
+                                    .frame(width: 32, height: 32)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(isFavourite ? "Saved" : "Save this Fight")
+                        }
+
                         NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .edit) {
                             onCollapse()
                         }
                         .padding(.trailing, 0)
-                        
+
                     }
-                    
+
                     VStack(alignment: .leading, spacing: Tokens.Spacing.lg){
-                        Text("Organized by Eco Tourism Bali")
+                        Text("Organized by \(host)")
                             .textStyle(Tokens.Typography.footnote)
                             .foregroundStyle(Tokens.Semantic.footnote)
                         
@@ -95,18 +124,21 @@ struct OurFightDetailCard: View {
                             .frame(width: 230)
                     }
                     
-                    Button {
-                        print("seeQR code")
-                    } label: {
-                        Text("See QR Code")
-                            .textStyle(Tokens.Typography.body)
-                            .foregroundStyle(Tokens.Semantic.ourFightQR)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 40)
-                            .background(Color(hex: 0x2F3A32))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    // `nil` hides it — outside a Fight's check-in window there is
+                    // nothing for either side to do, and a button that only ever
+                    // reports "not yet" is worse than no button.
+                    if let actionTitle {
+                        Button(action: onAction) {
+                            Text(actionTitle)
+                                .textStyle(Tokens.Typography.body)
+                                .foregroundStyle(Tokens.Semantic.ourFightQR)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 40)
+                                .background(Color(hex: 0x2F3A32))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .padding(.bottom, Tokens.Spacing.xl)
                     }
-                    .padding(.bottom, Tokens.Spacing.xl)
                 }
             }
             .padding(.horizontal, Tokens.Spacing.xl)

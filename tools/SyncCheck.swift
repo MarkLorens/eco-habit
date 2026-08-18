@@ -48,6 +48,7 @@ state.shieldsAvailable = 2
 state.shieldedDates = ["2026-08-20"]
 state.favouriteCategories = [.energy, .waste]
 state.announcedBadgeIds = ["b1", "b2"]
+state.favouriteFightIds = ["fight-a", "fight-b"]
 state.announcedGlobeStage = 4
 state.lastActiveDay = "2026-08-24"
 state.decayBaselinePoints = 1_700
@@ -65,6 +66,9 @@ eq("shieldsAvailable", restored.shieldsAvailable, 2)
 ok("shieldedDates", restored.shieldedDates == ["2026-08-20"])
 ok("favouriteCategories", restored.favouriteCategories == [.energy, .waste])
 ok("announcedBadgeIds", restored.announcedBadgeIds == ["b1", "b2"])
+// Saved Fights replaced signup, so they are the only record that a user cared about an
+// event before the day. Losing them on a reinstall would empty the "Saved" list.
+ok("favouriteFightIds", restored.favouriteFightIds == ["fight-a", "fight-b"])
 eq("announcedGlobeStage", restored.announcedGlobeStage, 4)
 eq("lastActiveDay", restored.lastActiveDay, "2026-08-24")
 eq("decayBaselinePoints", restored.decayBaselinePoints, 1_700)
@@ -105,6 +109,43 @@ eq("saved streak survives a reload", reloaded?.streakDays ?? -1, 12)
 PersistenceStore.wipe(userId: ghost)
 ok("load returns nil again after a wipe", PersistenceStore.load(userId: ghost) == nil)
 
+// --- attendance must carry what the security rules demand ------------------------
+//
+// rules: attendanceId == fightId + '_' + request.auth.uid
+//     && request.resource.data.userId == request.auth.uid
+//     && request.resource.data.code == fight(fightId).checkInCode
+let attendance = FightAttendance(fightId: "f1", checkedInAt: Date(),
+                                 localDate: "2026-08-24", userId: "uid123", code: "ABC234")
+eq("attendance document id", "\(attendance.fightId)_\(attendance.userId)", "f1_uid123")
+
+let attendanceBack = try dec.decode(FightAttendance.self, from: enc.encode(attendance))
+eq("attendance userId survives", attendanceBack.userId, "uid123")
+eq("attendance code survives", attendanceBack.code, "ABC234")
+
+// --- an attendance record saved BEFORE those fields existed must still load -------
+//
+// This is the one that would have cost real accounts. `fightAttendance` is a dictionary
+// inside `PersistedState`, and `decodeIfPresent` on a key whose VALUE fails to decode
+// throws rather than returning nil — so a synthesized decoder here would not degrade to
+// an empty dictionary, it would take the entire account down to blank.
+var legacyState = PersistedState()
+legacyState.userName = "Vincent"
+legacyState.currentPoints = 1_640
+
+var raw = try JSONSerialization.jsonObject(with: enc.encode(legacyState)) as? [String: Any] ?? [:]
+raw["fightAttendance"] = [
+    "f1": ["fightId": "f1",
+           "checkedInAt": ISO8601DateFormatter().string(from: Date()),
+           "localDate": "2026-08-24"]     // no userId, no code — the old shape
+]
+let recovered = try dec.decode(PersistedState.self,
+                               from: JSONSerialization.data(withJSONObject: raw))
+
+eq("a pre-Stage-5 account still loads its name", recovered.userName, "Vincent")
+eq("a pre-Stage-5 account still loads its points", recovered.currentPoints, 1_640)
+eq("the old attendance record survives", recovered.fightAttendance.count, 1)
+eq("its missing userId reads as empty, not a throw", recovered.fightAttendance["f1"]?.userId ?? "?", "")
+
 // --- every field must be somewhere, or deliberately nowhere ----------------------
 //
 // The reinstall bug is really one instance of "this field is not backed up anywhere".
@@ -113,10 +154,10 @@ ok("load returns nil again after a wipe", PersistenceStore.load(userId: ghost) =
 // is not meant to sync, add it to `notSynced` WITH a reason — that is the point.
 let notSynced: [String: String] = [
     "isLoggedIn":      "dead field, kept only so old files still decode; userId replaced it",
-    "fightSignups":    "Stage 5 — moves to the shared /fights collection",
-    "fightAttendance": "Stage 5 — moves to /attendance/{fightId}_{uid}",
-    "hostedFights":    "Stage 5 — an organiser's events become server-side documents",
-    "hostScans":       "host-scanner subsystem, deferred and unreferenced by any shipped view",
+    "fightSignups":    "dead — signup was replaced by favouriteFightIds, which does sync",
+    "fightAttendance": "syncs to the SHARED /attendance/{fightId}_{uid}, not the user doc",
+    "hostedFights":    "syncs to the SHARED /fights/{id} on publish, not the user doc",
+    "hostScans":       "host's own scan roster; local by design, and /attendance replaces it",
 ]
 let inSubcollections: Set<String> = ["logs", "earnedBadges"]
 

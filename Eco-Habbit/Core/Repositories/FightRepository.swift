@@ -95,6 +95,7 @@ enum FightRepository {
     /// button a week earlier is the wrong answer.
     static func checkIn(to fight: Fight,
                         code: String? = nil,
+                        userId: String = "",
                         in state: inout PersistedState,
                         now: Date = Date()) -> CheckInResult {
         guard fight.status != .cancelled else { return .eventCancelled }
@@ -113,7 +114,11 @@ enum FightRepository {
         state.fightAttendance[fight.id] = FightAttendance(
             fightId: fight.id,
             checkedInAt: now,
-            localDate: day
+            localDate: day,
+            userId: userId,
+            // The code that was actually presented. Falls back to the Fight's own only
+            // on the legacy no-code path, which nothing in the UI reaches any more.
+            code: code ?? fight.checkInCode
         )
         state.fightAttendedDates.insert(day)
 
@@ -229,6 +234,18 @@ enum FightRepository {
         guard let index = state.hostedFights.firstIndex(where: { $0.id == fightId }),
               state.hostedFights[index].status == .draft else { return false }
         state.hostedFights[index].status = .published
+        return true
+    }
+
+    /// Back to draft. Only for rolling back a publish whose upload was refused — a
+    /// Fight the host believes is live but that nobody else can see is worse than one
+    /// that is honestly still a draft. Not a user-facing "unpublish": once an event is
+    /// really live, `cancel` is the way out, so people who saved it are told.
+    @discardableResult
+    static func unpublish(_ fightId: String, in state: inout PersistedState) -> Bool {
+        guard let index = state.hostedFights.firstIndex(where: { $0.id == fightId }),
+              state.hostedFights[index].status == .published else { return false }
+        state.hostedFights[index].status = .draft
         return true
     }
 

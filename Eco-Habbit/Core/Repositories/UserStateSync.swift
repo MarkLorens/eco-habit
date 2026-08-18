@@ -23,6 +23,28 @@ protocol UserStateSyncing: Sendable {
 
     /// Remove every log and badge, leaving the user document alone.
     func purgeSubcollections(userId: String) async throws
+
+    // MARK: - Fights
+    //
+    // The only genuinely SHARED data in the app. Everything above is one account's own
+    // record; a Fight is written by its host and read by everybody, which is what makes
+    // "an organiser publishes an event and other people turn up" work at all. Until
+    // this existed, a hosted Fight lived on exactly one phone.
+
+    /// Publish or update a Fight the signed-in user hosts.
+    func putFight(_ fight: Fight) async throws
+
+    /// Every published Fight. Drafts are excluded by the rules, not by the query — a
+    /// half-written event must not be listable even if the client asks for it.
+    func fetchPublishedFights() async throws -> [Fight]
+
+    /// Record attendance at `/attendance/{fightId}_{userId}`.
+    func checkIn(_ attendance: FightAttendance) async throws
+
+    /// Everyone who checked in to one Fight. **Host-only in practice** — the rules let
+    /// a caller read an attendance record if they own it or host the Fight, so this
+    /// query only returns anything to the organiser.
+    func fetchAttendance(fightId: String) async throws -> [FightAttendance]
 }
 
 
@@ -123,6 +145,40 @@ struct FirebaseUserStateSync: UserStateSyncing {
                 try await batch.commit()
             }
         }
+    }
+
+    // MARK: - Fights
+
+    func putFight(_ fight: Fight) async throws {
+        // merge: true so editing a published Fight does not blank fields a future
+        // version of the app might add.
+        try db.collection("fights").document(fight.id).setData(from: fight, merge: true)
+    }
+
+    func fetchPublishedFights() async throws -> [Fight] {
+        try await db.collection("fights")
+            .whereField("status", isEqualTo: Fight.Status.published.rawValue)
+            .getDocuments()
+            .documents
+            // `compactMap` rather than a throwing map: one malformed Fight written by a
+            // future version of the app must not empty the whole list.
+            .compactMap { try? $0.data(as: Fight.self) }
+    }
+
+    func checkIn(_ attendance: FightAttendance) async throws {
+        // The composite id is what makes one-check-in-per-person structural: `create`
+        // fails when the document exists, so a second scan cannot pay twice. No lock,
+        // no transaction, no race.
+        let id = "\(attendance.fightId)_\(attendance.userId)"
+        try db.collection("attendance").document(id).setData(from: attendance)
+    }
+
+    func fetchAttendance(fightId: String) async throws -> [FightAttendance] {
+        try await db.collection("attendance")
+            .whereField("fightId", isEqualTo: fightId)
+            .getDocuments()
+            .documents
+            .compactMap { try? $0.data(as: FightAttendance.self) }
     }
 
     /// Deletes the user's data, then the account itself.

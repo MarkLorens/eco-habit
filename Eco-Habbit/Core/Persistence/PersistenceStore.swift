@@ -54,6 +54,14 @@ struct PersistedState: Codable {
     /// `fightAttendance` below is the record it is derived from.
     var fightAttendedDates: Set<String> = []
 
+    /// Fights the user has saved. Replaces signup as the only thing an attendee does
+    /// to a Fight before the day itself.
+    ///
+    /// Private to the user by design — a host cannot see who saved their event. It is a
+    /// bookmark, not an RSVP, so it promises the organiser nothing and needs no
+    /// cross-user write.
+    var favouriteFightIds: Set<String> = []
+
     var logs: [HabitLog] = []
 
     /// Keyed by fight id — the local stand-in for `/events/{id}/signups/{uid}`.
@@ -137,6 +145,7 @@ struct PersistedState: Codable {
         lastShieldGrantMonth = try c.decodeIfPresent(String.self, forKey: .lastShieldGrantMonth)
 
         fightAttendedDates  = try v(.fightAttendedDates, [])
+        favouriteFightIds   = try v(.favouriteFightIds, [])
         logs                = try v(.logs, [])
         fightSignups        = try v(.fightSignups, [:])
         fightAttendance     = try v(.fightAttendance, [:])
