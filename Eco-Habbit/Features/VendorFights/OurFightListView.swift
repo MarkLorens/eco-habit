@@ -55,7 +55,12 @@ struct OurFightListView: View {
     }
 }
 
+// `#Preview` compiles in RELEASE too, and AppState.preview /
+// PersistedState.preview are `#if DEBUG`. Without this guard the
+// archive build fails — which is what blocks TestFlight.
+#if DEBUG
 #Preview {
     OurFightListView()
         .environmentObject(AppState.preview)
 }
+#endif

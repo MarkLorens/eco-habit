@@ -18,12 +18,31 @@ struct PersistedState: Codable {
 
     var notificationsEnabled = true
 
-    var vitality = VitalityEngine.startingVitality
+    /// **Cumulative Earth points.** Unbounded and only ever spent by decay — this
+    /// is the number the stages are drawn against.
+    ///
+    /// Replaces the old 0–100 `vitality`, which was a *level*, not a total. The
+    /// two cannot be migrated into one another: 30 vitality is not 30 points and
+    /// never was. An account carried over from that model starts the new Earth at
+    /// zero, which is honest — its history was scored under different rules.
+    var currentPoints = 0
+
     var streakDays = 0
     var longestStreak = 0
     var lastActiveDay: String?
     /// The last day the evaluation loop has **scored**. See `EvaluationLoop`.
     var lastEvaluatedDate: String?
+
+    /// Points at the START of the current absence. The "drop at most one stage"
+    /// limit is measured from here, not from the current total — measured from
+    /// the current total, someone who opens the app every few days during a long
+    /// absence loses a stage on every single open.
+    ///
+    /// Cleared when anything is logged, because the absence is over.
+    var decayBaselinePoints: Int?
+    /// Last day decay was charged for, so re-opening the app twice in a day
+    /// cannot charge twice. Cleared on log, like the baseline.
+    var lastDecayAppliedDay: String?
 
     var shieldsAvailable = 0
     /// Days a Shield covers. The consecutive-run limit is derived from this, not stored.
@@ -58,6 +77,11 @@ struct PersistedState: Codable {
     /// Scans taken on this device, keyed by fight id.
     var hostScans: [String: [HostScan]] = [:]
     
+    /// **Award records, not flags.** A badge is earned once and stays earned; the
+    /// catalogue is joined onto these for display. Recomputing `isUnlocked` from
+    /// live criteria meant decay could silently take a badge back.
+    var earnedBadges: [EarnedBadge] = []
+
     // Badge unlock "event" testing
     var announcedBadgeIds: Set<String> = []
 
@@ -70,6 +94,63 @@ struct PersistedState: Codable {
     /// field here would wipe every state file written before it existed. `nil` means
     /// "pre-dates this field" and `AppState` backfills it at launch.
     var announcedGlobeStage: Int?
+    init() {}
+
+    // MARK: - Decoding
+
+    /// Hand-written, and it has to stay that way.
+    ///
+    /// Synthesized `Decodable` **ignores property default values** — a key missing
+    /// from the file throws `keyNotFound` rather than falling back. `load()` then
+    /// swallows that into a fresh `PersistedState()`, so adding one field to this
+    /// struct silently wiped every existing account: name, streak, logs, badges,
+    /// all of it, with no error anywhere.
+    ///
+    /// That was not hypothetical. `announcedBadgeIds` was added on 18 Aug and any
+    /// state saved before it decoded to a blank account on the next launch.
+    ///
+    /// Reading every field with `decodeIfPresent` makes adding a field a
+    /// non-event, which is the only way this is safe to keep evolving.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func v<T: Decodable>(_ k: CodingKeys, _ fallback: T) throws -> T {
+            try c.decodeIfPresent(T.self, forKey: k) ?? fallback
+        }
+
+        isLoggedIn          = try v(.isLoggedIn, false)
+        userName            = try v(.userName, "")
+        email               = try v(.email, "")
+        favouriteCategories = try v(.favouriteCategories, [])
+        notificationsEnabled = try v(.notificationsEnabled, true)
+
+        currentPoints       = try v(.currentPoints, 0)
+        streakDays          = try v(.streakDays, 0)
+        longestStreak       = try v(.longestStreak, 0)
+        lastActiveDay       = try c.decodeIfPresent(String.self, forKey: .lastActiveDay)
+        lastEvaluatedDate   = try c.decodeIfPresent(String.self, forKey: .lastEvaluatedDate)
+
+        decayBaselinePoints = try c.decodeIfPresent(Int.self, forKey: .decayBaselinePoints)
+        lastDecayAppliedDay = try c.decodeIfPresent(String.self, forKey: .lastDecayAppliedDay)
+
+        shieldsAvailable    = try v(.shieldsAvailable, 0)
+        shieldedDates       = try v(.shieldedDates, [])
+        lastShieldGrantMonth = try c.decodeIfPresent(String.self, forKey: .lastShieldGrantMonth)
+
+        fightAttendedDates  = try v(.fightAttendedDates, [])
+        logs                = try v(.logs, [])
+        fightSignups        = try v(.fightSignups, [:])
+        fightAttendance     = try v(.fightAttendance, [:])
+
+        isOrganization      = try v(.isOrganization, false)
+        orgName             = try v(.orgName, "")
+        hostedFights        = try v(.hostedFights, [])
+        hostScans           = try v(.hostScans, [:])
+        earnedBadges        = try v(.earnedBadges, [])
+        announcedBadgeIds   = try v(.announcedBadgeIds, [])
+        // Mark's, and Optional for exactly the reason documented above — nil
+        // means "pre-dates this field" and AppState backfills it at launch.
+        announcedGlobeStage = try c.decodeIfPresent(Int.self, forKey: .announcedGlobeStage)
+    }
 }
 
 enum PersistenceStore {

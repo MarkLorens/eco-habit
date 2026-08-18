@@ -309,7 +309,7 @@ private struct SignOutFooter: ViewModifier {
                     Button("Reset", role: .destructive) { app.resetEverything() }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("Points, streak, history and settings on this device are deleted. The account starts over at Vitality \(VitalityEngine.startingVitality).")
+                    Text("Points, streak, history and settings on this device are deleted. The Earth starts over from the beginning.")
                 }
         }
     }
