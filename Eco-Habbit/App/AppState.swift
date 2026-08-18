@@ -48,18 +48,35 @@ final class AppState: ObservableObject {
 
     // MARK: - Earth
 
-    var vitality: Int { data.vitality }
-    var stage: VitalityStage { VitalityStage.stage(for: data.vitality) }
-    var globeHealth: Double { PointsEngine.globeHealth(vitality: data.vitality) }
+    /// Cumulative Earth points — the real total, unbounded.
+    var currentPoints: Int { data.currentPoints }
 
-    /// PROTOTYPE — stands in for `globeHealth` until the health system lands.
-    /// One stage per two logged actions, so the globe visibly moves within a demo,
-    /// capped at the last stage with artwork.
-    var globeStage: Int {
-        min(totalActionsLogged / GlobeStaging.actionsPerStage, GlobeView.lastStage)
+    var stage: EarthStage { config.stage(forPoints: data.currentPoints) }
+
+    /// Kept as a 0–100 reading because that is what the globe and the profile
+    /// tile draw. It is now **derived** from points rather than stored: it
+    /// reaches 100 exactly when the Earth is Restored, so the two can never
+    /// disagree the way a separately-stored level could.
+    var vitality: Int {
+        let restored = config.threshold(for: .restored)
+        guard restored > 0 else { return 0 }
+        return min(100, data.currentPoints * 100 / restored)
     }
-    /// The next unlock animation owed to the user, one stage at a time: logging four
-    /// actions in a row plays 0→1 first, then 1→2 once that one is dismissed.
+
+    var globeHealth: Double { Double(vitality) }
+
+    // MARK: - Globe (Mark's stage art and transitions)
+
+    /// Which globe illustration to show, 0…5.
+    ///
+    /// **Was a prototype** — `totalActionsLogged / 2`, marked "awaiting globe
+    /// points". These are those points. `EarthStage` has exactly the six stages
+    /// the artwork was drawn for, so the stage the economy computes *is* the
+    /// stage the globe renders, and the two can no longer disagree.
+    var globeStage: Int { min(stage.rawValue, GlobeView.lastStage) }
+
+    /// The next unlock animation owed to the user, one stage at a time: crossing
+    /// two thresholds at once plays 0→1 first, then 1→2 once that is dismissed.
     var pendingGlobeStageUp: GlobeStageUp? {
         let announced = min(max(data.announcedGlobeStage ?? 0, 0), GlobeView.lastStage)
         guard globeStage > announced else { return nil }
@@ -69,32 +86,39 @@ final class AppState: ObservableObject {
     func acknowledgeGlobeStageUp(_ stageUp: GlobeStageUp) {
         mutate { $0.announcedGlobeStage = max($0.announcedGlobeStage ?? 0, stageUp.to) }
     }
-
     var level: Int { stage.rawValue + 1 }
 
     var levelTitle: String {
         switch stage {
-        case .barren: return "Seedling"
-        case .stirring: return "Sprout"
-        case .recovering: return "Grower"
-        case .thriving: return "Eco Guardian"
-        case .flourishing: return "Planet Keeper"
+        case .critical: return "Seedling"
+        case .fragile: return "Sprout"
+        case .stabilizing: return "Grower"
+        case .recovering: return "Caretaker"
+        case .flourishing: return "Eco Guardian"
+        case .restored: return "Planet Keeper"
         }
     }
 
+    /// How far through the current stage, for the ring. Measured in points now,
+    /// against the next stage's threshold.
     var stageProgress: Double {
         guard let next = stage.next else { return 1 }
-        let floor = stage.range.lowerBound
-        let span = next.range.lowerBound - floor
+        let floor = config.threshold(for: stage)
+        let span = config.threshold(for: next) - floor
         guard span > 0 else { return 1 }
-        return min(1, max(0, Double(data.vitality - floor) / Double(span)))
+        return min(1, max(0, Double(data.currentPoints - floor) / Double(span)))
     }
+
+    private var config: PointsConfiguration { .default }
 
     /// PRD §9.5 — `streakDays` is a *settled* value that stops at yesterday, so today's
     /// target has to be added back in for display. Without this a user who just hit their
     /// target sees the number stall until midnight and concludes it's broken.
+    /// The stored streak is only true as of the last day something was logged.
+    /// After two missed days with no Shield it is stale, and showing it would be
+    /// a lie — so the number on screen is recomputed against today.
     var displayStreak: Int {
-        data.streakDays + (dailyPoints >= PointsEngine.dailyTarget ? 1 : 0)
+        HabitRepository.displayStreak(on: today, in: data)
     }
 
     var streakDays: Int { displayStreak }
@@ -103,7 +127,7 @@ final class AppState: ObservableObject {
 
     var todaysLogs: [HabitLog] { HabitRepository.logs(on: today, in: data) }
 
-    var dailyPoints: Int { HabitRepository.dailyTotal(on: today, habits: MockData.habits, in: data) }
+    var dailyPoints: Int { HabitRepository.dailyTotal(on: today, in: data) }
 
     var dailyProgress: Double {
         min(1, Double(dailyPoints) / Double(PointsEngine.dailyTarget))
@@ -112,6 +136,21 @@ final class AppState: ObservableObject {
     /// Where today sits against the 60 ceiling, for the second ring in §6.1.
     var dailyCapProgress: Double {
         min(1, Double(dailyPoints) / Double(PointsEngine.dailyCap))
+    }
+
+    /// What logging this habit would pay **right now** — the streak multiplier
+    /// and whatever is left of today's cap already applied.
+    ///
+    /// Priced through the same service that does the real awarding, so the
+    /// number on a chip cannot drift from the number the user then receives.
+    func projectedPoints(for habit: Habit, hasEvidence: Bool = false) -> PointsBreakdown {
+        PointsCalculationService().breakdown(
+            habit: habit,
+            hasEvidence: hasEvidence,
+            currentStreak: displayStreak,
+            isPrioritized: false,
+            basePointsUsedToday: HabitRepository.basePointsUsed(on: today, in: data)
+        )
     }
 
     func log(for habitId: String) -> HabitLog? {
@@ -134,7 +173,7 @@ final class AppState: ObservableObject {
 
     /// Up to three things worth doing today: still available, favourites first.
     var suggestedHabits: [Habit] {
-        let pending = MockData.habits.filter { !$0.isFoundation && isAvailable($0) }
+        let pending = MockData.habits.filter { isAvailable($0) }
         let favourites = pending.filter { data.favouriteCategories.contains($0.category) }
         let rest = pending.filter { !data.favouriteCategories.contains($0.category) }
         return Array((favourites + rest).prefix(3))
@@ -152,24 +191,38 @@ final class AppState: ObservableObject {
 
     var totalActionsLogged: Int { data.logs.count }
 
-    var foundationsCompleted: Int {
-        data.logs.filter { MockData.habitsById[$0.habitId]?.isFoundation == true }.count
-    }
-
     func actionCount(in category: HabitCategory) -> Int {
         data.logs.filter { MockData.habitsById[$0.habitId]?.category == category }.count
     }
 
+    /// The catalogue joined with this account's awards.
+    var badges: [Badge] { badgeService.display(catalogue: MockData.badges, earned: data.earnedBadges) }
+
+    /// **Reads the award record, not live criteria.** Earned is permanent: decay
+    /// can take the points back without taking the badge, which is what the spec
+    /// says and what anybody who earned it would expect.
     func isUnlocked(_ badge: Badge) -> Bool {
-        switch badge.requirement {
-        case .totalActions(let n): return totalActionsLogged >= n
-        case .streak(let n): return max(displayStreak, data.longestStreak) >= n
-        case .vitality(let n): return data.vitality >= n
-        case .categoryActions(let category, let n): return actionCount(in: category) >= n
-        case .foundations(let n): return foundationsCompleted >= n
-        case .seasonal: return false
+        data.earnedBadges.contains { $0.badgeId == badge.id }
+    }
+
+    /// How close an unearned badge is, 0–1.
+    func progress(towards badge: Badge) -> Double {
+        badgeService.progress(for: badge, state: data, today: today)
+    }
+
+    /// Awards anything newly reached. Called after every log and check-in.
+    private func awardNewBadges() {
+        mutate { state in
+            let already = Set(state.earnedBadges.map(\.badgeId))
+            let fresh = badgeService.newlyEarned(from: MockData.badges,
+                                                 state: state,
+                                                 alreadyEarned: already,
+                                                 today: Day.today())
+            state.earnedBadges.append(contentsOf: fresh)
         }
     }
+
+    private let badgeService = BadgeEvaluationService()
     
     var pendingBadge: Badge? {
         MockData.badges.first{ isUnlocked($0) && !data.announcedBadgeIds.contains($0.id) }
@@ -208,9 +261,10 @@ final class AppState: ObservableObject {
         switch result {
         case .logged(let points):
             lastAward = Award(habit: habit, points: points)
-        case .foundation(let gain):
-            lastAward = Award(habit: habit, vitalityGain: gain)
-        case .alreadyLogged, .weeklyLimitReached, .retroactive:
+            // Awarded here, after the log has landed, so the counters the
+            // criteria read are already up to date.
+            awardNewBadges()
+        case .alreadyLogged, .onCooldown, .retroactive:
             break
         }
         return result
@@ -224,14 +278,12 @@ final class AppState: ObservableObject {
         switch result {
         case .logged(let points):
             toast = Toast(kind: .success, message: "\(habit.name) · +\(points) pts")
-        case .foundation(let gain):
-            toast = Toast(kind: .success, message: "\(habit.name) · +\(gain) Vitality")
         case .alreadyLogged:
-            toast = Toast(kind: .info, message: habit.isFoundation
-                ? "Already done — Foundations count once."
-                : "Already logged today — back tomorrow.")
-        case .weeklyLimitReached(let limit):
-            toast = Toast(kind: .info, message: "That's all \(limit) for this week.")
+            toast = Toast(kind: .info, message: "Already logged today — back tomorrow.")
+        case .onCooldown(let days):
+            toast = Toast(kind: .info, message: days == 1
+                ? "Back again tomorrow."
+                : "Back again in \(days) days.")
         case .retroactive:
             toast = Toast(kind: .warning, message: "Only today can be logged.")
         }
@@ -297,13 +349,31 @@ final class AppState: ObservableObject {
     /// Stands in for the host scanning the attendee's QR. Real cross-device check-in
     /// arrives with Firebase in Phase 10 (§9.3).
     @discardableResult
-    func checkIn(to fight: Fight) -> FightRepository.CheckInResult {
+    /// The Fight owning a scanned code, if any.
+    func fight(matchingCode code: String) -> Fight? {
+        FightRepository.fight(matchingCode: code, in: allFights)
+    }
+
+    /// Check in from a scanned QR. The code identifies the Fight, so the scanner
+    /// never has to know which event it is pointed at.
+    ///
+    /// Returns `nil` when no Fight owns the code — a well-formed
+    /// `ecohabit://fight/` payload for an event this device has never heard of.
+    /// Silent on purpose at the call site; the camera decides what to say.
+    @discardableResult
+    func checkIn(withCode code: String) -> FightRepository.CheckInResult? {
+        guard let fight = fight(matchingCode: code) else { return nil }
+        return checkIn(to: fight, code: code)
+    }
+
+    func checkIn(to fight: Fight, code: String? = nil) -> FightRepository.CheckInResult {
         var result = FightRepository.CheckInResult.notSignedUp
-        mutate { result = FightRepository.checkIn(to: fight, in: &$0, now: Date()) }
+        mutate { result = FightRepository.checkIn(to: fight, code: code, in: &$0, now: Date()) }
 
         switch result {
-        case .checkedIn(let gain):
-            toast = Toast(kind: .success, message: "Checked in — +\(gain) Vitality for today.")
+        case .checkedIn(let points):
+            awardNewBadges()
+            toast = Toast(kind: .success, message: "Checked in — +\(points) pts.")
         case .notSignedUp:
             toast = Toast(kind: .warning, message: "Sign up before checking in.")
         case .alreadyCheckedIn:
@@ -312,6 +382,13 @@ final class AppState: ObservableObject {
             toast = Toast(kind: .warning, message: "Check-in opens an hour before the start.")
         case .eventCancelled:
             toast = Toast(kind: .warning, message: "The host cancelled this Fight.")
+        case .wrongCode:
+            toast = Toast(kind: .warning, message: "That code isn't for this Fight.")
+        case .notPublished:
+            // Distinct from windowClosed on purpose: a draft's window is often
+            // wide open, and saying "the window is shut" sends the organiser
+            // hunting a clock bug instead of pressing Publish.
+            toast = Toast(kind: .info, message: "This Fight isn't published yet.")
         }
         return result
     }
