@@ -59,6 +59,8 @@ extension Tokens{
             static let buttonTintDefault = Color(hex: 0xF9F9F9)
             static let profileBg = Color(hex: 0xF2FCD2)
             static let statIcon = Color(hex: 0xA0A6A3)
+            static let ourFightCaption = Color(hex: 0x2F3A32)
+            static let ourFightQR = Color(hex: 0xFFFFFF)
         }
 }
 
@@ -125,6 +127,7 @@ extension Tokens {
     
     // Fely rules: 4 multiplier. Add as necessary.
     enum Spacing {
+        static let xxs: CGFloat = 2
         static let xs: CGFloat = 4
         static let sm: CGFloat = 8
         static let md: CGFloat = 12

@@ -9,17 +9,23 @@ import SwiftUI
 enum ButtonAction {
     case back
     case forward
+    case down
+    case edit
     case close
     case share
     case love
+    case plus
     
     var action: String {
         switch self {
         case .back: "chevron.left"
         case .forward: "chevron.right"
+        case .down: "chevron.down"
+        case .edit: "square.and.pencil"
         case .close: "xmark"
         case .share: "square.and.arrow.up"
         case .love: "heart.fill"
+        case .plus: "plus"
         }
     }
 }
@@ -66,7 +72,7 @@ struct NavigateButton: View {
 }
 
 #Preview{
-    NavigateButton(background: Tokens.Palette.yellowCard, buttonAction: .close) {
-        print("Tapped!")
+    NavigateButton(background: Tokens.Palette.yellowCard, buttonAction: .edit) {
+        print("edit!")
     }
 }
