@@ -2,16 +2,26 @@ import SwiftUI
 
 /// Point, shoot, and either it logs itself or it asks.
 ///
-/// The two outcomes come from `EvidenceStrength`. A reusable bottle in frame is
-/// `.direct` — the object *is* the proof — so a confident match logs and
-/// celebrates. A tap is `.contextual`: the photo shows a tap, it does not show
-/// the tap being turned off, so those always ask however sure the model is.
+/// The verdict comes from `HabitClassifier`: a `.confident` direct match logs
+/// and celebrates on the spot; `.unsure`, `.nothing` and `.rejected` hand over
+/// to the "What Did You Do?" picker (`CameraActionView`) seeded with today's
+/// unlogged habits. The camera also reads Fight check-in QRs continuously —
+/// a code in frame checks the user in without a shutter press.
 ///
-/// **No photo is stored.** The frame is classified in memory and discarded.
+/// **No photo is stored.** The frame is classified in memory; the picker shows
+/// it and lets it go.
 struct VisualSearchView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
     @StateObject private var camera = CameraService()
+
+    private enum Overlay { case firstTimer, analyzing, whoops }
+
+    @AppStorage("hasSeenCameraIntro") private var hasSeenIntro = false
+    @State private var overlay: Overlay?
+    @State private var pickerPhoto: UIImage?
+    @State private var pickerSuggestions: [Habit] = []
+    @State private var showingPicker = false
 
     /// What the reward animation should show. Set by a logged habit or by a
     /// Fight check-in — the overlay does not care which.
@@ -34,6 +44,36 @@ struct VisualSearchView: View {
 
     var body: some View {
         ZStack {
+            if showingPicker, let photo = pickerPhoto {
+                CameraActionView(
+                    photo: photo,
+                    suggestions: pickerSuggestions,
+                    onBack: { showingPicker = false },
+                    onDone: { dismiss() }
+                )
+                .transition(.move(edge: .trailing))
+            } else {
+                cameraScreen
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: showingPicker)
+        .task { await camera.start() }
+        .onAppear { if !hasSeenIntro { overlay = .firstTimer } }
+        .onDisappear { camera.stop() }
+        .onChange(of: camera.scannedFightCode) { _, code in
+            guard let code else { return }
+            checkIn(withCode: code)
+        }
+        .onChange(of: camera.verdict) { _, verdict in
+            guard let verdict else { return }
+            resolve(verdict)
+        }
+    }
+
+    // MARK: - Camera screen
+
+    private var cameraScreen: some View {
+        ZStack {
             Color.black.ignoresSafeArea()
 
             if camera.isAvailable {
@@ -42,22 +82,26 @@ struct VisualSearchView: View {
                 placeholder
             }
 
-            LinearGradient(colors: [.black.opacity(0.35), .clear, .black.opacity(0.6)],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
+            // Keeps the white title legible over a bright scene.
+            LinearGradient(
+                colors: [.black.opacity(0.45), .clear],
+                startPoint: .top, endPoint: .center
+            )
+            .ignoresSafeArea()
 
             VStack {
                 topBar
                 Spacer()
-                detectionReadout
-                bottomContent
+                bottomBar
             }
 
             // `ToastLayer` also lives in `RootView`, but a `fullScreenCover`
             // presents in its own layer *above* the presenting view's overlays —
-            // so every message raised in here was rendering behind the camera and
-            // only appearing once it was dismissed. It needs its own copy.
+            // so every message raised in here (check-in windows, rejections)
+            // would render behind the camera. It needs its own copy.
             ToastLayer()
+
+            if let overlay { modal(overlay) }
 
             if showAward, let award {
                 AwardOverlay(icon: award.icon,
@@ -68,346 +112,175 @@ struct VisualSearchView: View {
                              onFinished: { awardFinished(closesCamera: award.closesCamera) })
             }
         }
-        .task { await camera.start() }
-        .onDisappear { camera.stop() }
-        .onChange(of: camera.scannedFightCode) { _, code in
-            guard let code else { return }
-            checkIn(withCode: code)
-        }
-        .onChange(of: camera.verdict) { _, verdict in
-            // A confident, direct match needs no confirmation — log it.
-            if case .confident(let match) = verdict,
-               let habit = MockData.habitsById[match.habitId] {
-                log(habit)
-            }
-        }
     }
-
-    // MARK: - Chrome
 
     private var topBar: some View {
+        ZStack {
+            VStack(spacing: Tokens.Spacing.xs) {
+                Text("Take a Picture")
+                    .textStyle(Tokens.Typography.title2)
+                    .foregroundStyle(Tokens.Palette.white)
+                Text("Log your action")
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Palette.white.opacity(0.85))
+            }
+
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Tokens.Palette.white)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(.black.opacity(0.35)))
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+        }
+        .padding(.horizontal, Tokens.Spacing.xl)
+        .padding(.top, Tokens.Spacing.sm)
+    }
+
+    private var bottomBar: some View {
         HStack {
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(.black.opacity(0.35)))
+            control(icon: camera.isTorchOn ? "bolt.fill" : "bolt.slash.fill") {
+                camera.toggleTorch()
             }
+
             Spacer()
-            Text(hint)
-                .font(Theme.F.body(13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(.black.opacity(0.35)))
-            Spacer()
-            Color.clear.frame(width: 36, height: 36)
-        }
-        .padding(.horizontal, Theme.S.x4)
-        .padding(.top, Theme.S.x2)
-    }
 
-    private var hint: String {
-        if let error = camera.classifierError { return error }
-        if camera.permissionDenied { return "Camera access is off" }
-        if camera.isAnalysing { return "Looking…" }
-        switch camera.verdict {
-        case .unsure: return "Which one was it?"
-        case .nothing: return "Not sure what that is"
-        case .rejected(let d): return "That looks like \(d.label)"
-        default: return "Point at what you did"
-        }
-    }
-
-    // MARK: - Detection readout
-    //
-    // TEMPORARY — a tuning aid, not product UI. Shows the raw top 3 with their
-    // cosines after every shot, including activities already logged today, so
-    // "did it detect anything?" has a visible answer. Delete once
-    // `minSimilarity` / `autoLogSimilarity` are tuned on a real device.
-
-    @ViewBuilder
-    private var detectionReadout: some View {
-        if !camera.lastFrame.habits.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("DETECTED")
-                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.55))
-                    Spacer()
-                    Text("p \(camera.lastFrame.confidence, specifier: "%.2f")  ·  log ≥\(camera.autoLogThreshold, specifier: "%.2f")/\(camera.confidenceThreshold, specifier: "%.2f")")
-                        .font(.system(size: 9.5, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.4))
-                }
-
-                ForEach(camera.lastFrame.habits) { match in
-                    readoutRow(match)
-                }
-
-                // The line that makes tuning possible: what the frame looked
-                // like that ISN'T a habit, and whether it won.
-                if let distractor = camera.lastFrame.topDistractor {
-                    Divider().overlay(.white.opacity(0.2)).padding(.vertical, 2)
-                    let beatsTop = distractor.similarity >= (camera.lastFrame.habits.first?.similarity ?? 0)
-                    HStack(spacing: 8) {
-                        Text(String(format: "%.3f", distractor.similarity))
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(beatsTop ? .red : .white.opacity(0.5))
-                        Text(distractor.label)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .lineLimit(1)
-                        Spacer(minLength: 4)
-                        Text(beatsTop ? "REJECT" : "not")
-                            .font(.system(size: 9.5, design: .monospaced))
-                            .foregroundStyle(beatsTop ? .red : .white.opacity(0.4))
-                    }
-                } else {
-                    Text("no distractors bundled — rerun ml/generate_vectors.py")
-                        .font(.system(size: 9.5, design: .monospaced))
-                        .foregroundStyle(.orange.opacity(0.8))
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 10).fill(.black.opacity(0.55)))
-            .padding(.horizontal, Theme.S.x4)
-            .padding(.bottom, Theme.S.x2)
-        }
-    }
-
-    private func readoutRow(_ match: HabitMatch) -> some View {
-        let habit = MockData.habitsById[match.habitId]
-        let logged = app.isCompletedToday(match.habitId)
-        let strength = habit?.evidenceStrength
-
-        // Green = would auto-log. Yellow = over the floor but will ask.
-        // Grey = below the floor, reported only so you can see the score.
-        let colour: Color =
-            match.similarity >= camera.autoLogThreshold && strength == .direct ? .green
-            : match.similarity >= camera.minThreshold ? .yellow
-            : .white.opacity(0.45)
-
-        return HStack(spacing: 8) {
-            Text(String(format: "%.3f", match.similarity))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(colour)
-
-            Text(habit?.name ?? match.habitId)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.white.opacity(logged ? 0.45 : 0.9))
-                .lineLimit(1)
-
-            Spacer(minLength: 4)
-
-            if logged {
-                Text("logged")
-                    .font(.system(size: 9.5, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.45))
-            }
-            Text(strength.map { String($0.rawValue.prefix(4)) } ?? "?")
-                .font(.system(size: 9.5, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.4))
-        }
-    }
-
-    // MARK: - Bottom
-
-    @ViewBuilder
-    private var bottomContent: some View {
-        switch camera.verdict {
-        case .unsure(let matches):
-            candidates(matches)
-        case .nothing:
-            retry
-        case .rejected(let distractor):
-            rejected(distractor)
-        default:
-            shutter
-        }
-    }
-
-    /// Naming what it saw is the point. "Nothing recognised" invites the user to
-    /// try the same shot again; "that's a single-use bottle" tells them the
-    /// answer is no and why, which is the whole reason distractors exist.
-    private func rejected(_ distractor: DistractorMatch) -> some View {
-        VStack(spacing: Theme.S.x3) {
-            Text("That looks like \(distractor.label) — not one of your actions.")
-                .font(Theme.F.body(14))
-                .foregroundStyle(.white.opacity(0.9))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.S.x6)
-
-            HStack(spacing: Theme.S.x2) {
-                retakeButton
-                browseButton
-            }
-        }
-        .padding(.bottom, Theme.S.x6)
-    }
-
-    private var shutter: some View {
-        VStack(spacing: Theme.S.x3) {
-            Button { camera.capture() } label: {
+            Button { takeSnap() } label: {
                 ZStack {
-                    Circle().stroke(.white, lineWidth: 4).frame(width: 76, height: 76)
-                    Circle().fill(.white).frame(width: 62, height: 62)
-                    if camera.isAnalysing {
-                        ProgressView().tint(.black)
-                    }
+                    Circle()
+                        .stroke(Tokens.Palette.white.opacity(0.55), lineWidth: 4)
+                        .frame(width: 78, height: 78)
+                    Circle()
+                        .fill(Tokens.Palette.white)
+                        .frame(width: 64, height: 64)
                 }
             }
-            .buttonStyle(PlainPressStyle())
-            .disabled(!camera.isReady || camera.isAnalysing)
-            .opacity(camera.isReady ? 1 : 0.4)
-            .accessibilityLabel("Take a picture to log an action")
+            .buttonStyle(.plain)
+            .disabled(overlay == .analyzing || showAward
+                      || (camera.isAvailable && (!camera.isReady || camera.isAnalysing)))
 
-            browseButton
+            Spacer()
+
+            control(icon: "arrow.triangle.2.circlepath") {
+                camera.flipCamera()
+            }
         }
-        .padding(.bottom, Theme.S.x6)
+        .padding(.horizontal, 44)
+        .padding(.bottom, Tokens.Spacing.goodLord)
     }
 
-    private func candidates(_ matches: [HabitMatch]) -> some View {
-        VStack(spacing: Theme.S.x2) {
-            Text("Tap the one you did")
-                .font(Theme.F.body(13))
-                .foregroundStyle(.white.opacity(0.8))
+    /// Bare white glyphs, as in the design — no circles behind them.
+    private func control(icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Tokens.Palette.white)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
 
-            ForEach(matches) { match in
+    // MARK: - Snap → two flows
+
+    private func takeSnap() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        overlay = .analyzing
+
+        if camera.isAvailable {
+            camera.capture()
+        } else {
+            // No camera on the Simulator — a placeholder image keeps the whole
+            // flow (analyzing → whoops → picker) testable end to end.
+            Task {
+                try? await Task.sleep(for: .seconds(0.6))
+                overlay = nil
+                pickerPhoto = Self.simulatorPhoto()
+                pickerSuggestions = suggestions(from: [])
+                overlay = .whoops
+            }
+        }
+    }
+
+    private func resolve(_ verdict: CaptureVerdict) {
+        let photo = camera.capturedImage
+        Task {
+            // Let "Wait a Minute…" read as a beat, not a flicker.
+            try? await Task.sleep(for: .seconds(0.6))
+            overlay = nil
+
+            switch verdict {
+            case .confident(let match):
+                // Flow 1 — the photo is unambiguous: score it immediately.
                 if let habit = MockData.habitsById[match.habitId] {
-                    candidateRow(habit)
+                    log(habit)
+                } else {
+                    camera.reset()
                 }
+
+            case .unsure(let matches):
+                // Flow 2 — plausible candidates: own up, then let the user pick.
+                pickerPhoto = photo ?? Self.simulatorPhoto()
+                pickerSuggestions = suggestions(from: matches)
+                overlay = .whoops
+
+            case .nothing, .rejected:
+                // Nothing recognisable (or a known non-habit won) — same picker,
+                // seeded with whatever is still available today.
+                pickerPhoto = photo ?? Self.simulatorPhoto()
+                pickerSuggestions = suggestions(from: [])
+                overlay = .whoops
             }
-
-            HStack(spacing: Theme.S.x2) {
-                retakeButton
-                browseButton
-            }
-            .padding(.top, 4)
-        }
-        .padding(.horizontal, Theme.S.x4)
-        .padding(.bottom, Theme.S.x6)
-    }
-
-    /// An already-logged habit is greyed with a label rather than hidden —
-    /// hiding it makes the camera look broken.
-    private func candidateRow(_ habit: Habit) -> some View {
-        let available = !app.isCompletedToday(habit.id)
-
-        return Button {
-            guard available else { return }
-            log(habit)
-        } label: {
-            HStack(spacing: Theme.S.x3) {
-                Image(habit.category.mascotName)
-                    .resizable().scaledToFit()
-                    .frame(width: 26, height: 26)
-
-                Text(habit.name)
-                    .font(Theme.F.body(15, weight: .semibold))
-                    .foregroundStyle(available ? Theme.C.text : Theme.C.neutral600)
-                    .multilineTextAlignment(.leading)
-
-                Spacer(minLength: Theme.S.x2)
-
-                // Same projection the actions list uses — the two screens must
-                // never quote different numbers for the same action.
-                Text(available ? "+\(app.projectedPoints(for: habit).finalPoints)" : "done")
-                    .font(Theme.F.body(13, weight: .bold))
-                    .foregroundStyle(available ? Theme.C.accent700 : Theme.C.neutral500)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.R.lg)
-                    .fill(available ? Theme.C.bg : Theme.C.neutral200)
-            )
-        }
-        .buttonStyle(PlainPressStyle())
-        .disabled(!available)
-    }
-
-    private var retry: some View {
-        VStack(spacing: Theme.S.x3) {
-            Text("Nothing recognised. Try getting closer, or pick it by hand.")
-                .font(Theme.F.body(14))
-                .foregroundStyle(.white.opacity(0.85))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.S.x6)
-
-            HStack(spacing: Theme.S.x2) {
-                retakeButton
-                browseButton
-            }
-        }
-        .padding(.bottom, Theme.S.x6)
-    }
-
-    private var retakeButton: some View {
-        Button { camera.reset() } label: {
-            Text("Retake")
-                .font(Theme.F.body(14, weight: .bold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background(Capsule().fill(.white.opacity(0.18)))
         }
     }
 
-    private var browseButton: some View {
-        Button {
-            app.selectedTab = .actions
-            dismiss()
-        } label: {
-            Text("Browse all")
-                .font(Theme.F.body(14, weight: .bold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background(Capsule().fill(.white.opacity(0.18)))
-                .overlay(Capsule().stroke(.white.opacity(0.35), lineWidth: 1))
+    /// Classifier's best guesses first, topped up with other habits still
+    /// available today so the picker never shows fewer than three options.
+    private func suggestions(from matches: [HabitMatch]) -> [Habit] {
+        var out = matches
+            .compactMap { MockData.habitsById[$0.habitId] }
+            .filter { app.isAvailable($0) }
+
+        if out.count < 3 {
+            let fill = MockData.habits.filter { habit in
+                app.isAvailable(habit) && !out.contains(where: { $0.id == habit.id })
+            }
+            out += fill.prefix(3 - out.count)
         }
+        return Array(out.prefix(3))
     }
 
     // MARK: - Logging
 
     private func log(_ habit: Habit) {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        // main's logging is synchronous — one atomic `mutate` on PersistedState
-        // rather than a chain of async repository calls — so this needs no Task.
-        // `.visualSearch` is what marks the log as photo-evidence; it is what the
-        // evidence badges count.
+        // `.visualSearch` is what marks the log as photo-evidence; it is what
+        // the evidence badges count.
         let result = app.logAndToast(habit, source: .visualSearch)
 
-        do {
-            // `atDailyCap` gets the same treatment as a refusal *for the overlay only* —
-            // the log itself has already landed and still counts. `AwardOverlay` counts
-            // up to `points`, so at the cap it would run the whole celebration to
-            // arrive at "+0". `logAndToast` has already said what happened; go straight
-            // back to scanning.
-            guard case .logged(let points, let atDailyCap) = result, !atDailyCap else {
-                camera.reset()
-                return
-            }
-            award = Reward(
-                icon: Image(habit.category.mascotName),
-                title: habit.name,
-                points: points,
-                tint: habit.category.accentColor,
-                // main awards badges inside `logAndToast`; the freshest one is
-                // whatever landed last in the award log.
-                badgeName: app.data.earnedBadges.last?.name,
-                closesCamera: false
-            )
-            // No transition animation here. The overlay runs its own timeline
-            // and takes itself away; wrapping it in one would fight that.
-            showAward = true
-            // The medium impact above acknowledged the shutter. This one is the
-            // reward, and it lands with the icon.
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        // `atDailyCap` gets the same treatment as a refusal *for the overlay
+        // only* — the log itself has already landed and still counts. The
+        // overlay counts up to `points`, so at the cap it would run the whole
+        // celebration to arrive at "+0".
+        guard case .logged(let points, let atDailyCap) = result, !atDailyCap else {
+            camera.reset()
+            return
         }
+        award = Reward(
+            icon: Image(habit.category.mascotName),
+            title: habit.name,
+            points: points,
+            tint: habit.category.accentColor,
+            badgeName: app.data.earnedBadges.last?.name,
+            closesCamera: false
+        )
+        // No transition animation here. The overlay runs its own timeline and
+        // takes itself away; wrapping it in one would fight that.
+        showAward = true
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     /// Called by the overlay once it has floated off, so the two never disagree
@@ -432,8 +305,7 @@ struct VisualSearchView: View {
 
         // A QR sitting in frame is re-reported on every metadata callback, many
         // times a second. Without this, one poster that cannot be checked into
-        // raises the same toast dozens of times — which is what made the message
-        // look "late": it was a backlog draining after the camera closed.
+        // raises the same toast dozens of times.
         guard code != lastRejectedCode else { return }
 
         guard let fight = app.fight(matchingCode: code) else {
@@ -443,9 +315,6 @@ struct VisualSearchView: View {
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        // Synchronous on main, and main's result carries only the points — the
-        // reward badge an organiser can attach lands with `Fight.rewardBadgeId`
-        // when host mode grows a picker for it.
         let result = app.checkIn(to: fight, code: code)
 
         // `AppState.checkIn` raises the toast for the window, the cancelled
@@ -487,39 +356,109 @@ struct VisualSearchView: View {
         }
     }
 
+    // MARK: - Modals
+
+    private func modal(_ kind: Overlay) -> some View {
+        ZStack {
+            Color.black.opacity(0.35).ignoresSafeArea()
+
+            VStack(spacing: Tokens.Spacing.md) {
+                Image(mascot(kind))
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 72)
+
+                Text(title(kind))
+                    .textStyle(Tokens.Typography.title)
+                    .foregroundStyle(Tokens.Semantic.text)
+
+                Text(message(kind))
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if kind != .analyzing {
+                    Text("Tap Anywhere to Continue")
+                        .textStyle(Tokens.Typography.footnote)
+                        .foregroundStyle(Tokens.Semantic.footnote.opacity(0.6))
+                        .padding(.top, Tokens.Spacing.xs)
+                }
+            }
+            .padding(Tokens.Spacing.xxl)
+            .frame(maxWidth: 300)
+            .background(RoundedRectangle(cornerRadius: 20).fill(Tokens.Palette.white))
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { tapModal(kind) }
+        .transition(.opacity)
+    }
+
+    private func tapModal(_ kind: Overlay) {
+        switch kind {
+        case .firstTimer:
+            hasSeenIntro = true
+            overlay = nil
+        case .whoops:
+            overlay = nil
+            camera.reset()
+            showingPicker = true
+        case .analyzing:
+            break   // nothing to skip to — the classifier decides where we go
+        }
+    }
+
+    private func mascot(_ kind: Overlay) -> String {
+        switch kind {
+        // The pink "?!" mascot fronts both the intro and the miss, as designed.
+        case .firstTimer, .whoops: return "mascot-whoops"
+        case .analyzing: return "mascot-analyzing"
+        }
+    }
+
+    private func title(_ kind: Overlay) -> String {
+        switch kind {
+        case .firstTimer: return "Show us what you did!"
+        case .analyzing: return "Wait a Minute…"
+        case .whoops: return "Whoops!"
+        }
+    }
+
+    private func message(_ kind: Overlay) -> String {
+        switch kind {
+        case .firstTimer: return "Take a picture of your action and log it in seconds."
+        case .analyzing: return "We're identifying your action.\nThis will only take a moment."
+        case .whoops: return "We can't identify that but you can choose what you did and we'll log it for you!"
+        }
+    }
+
     // MARK: - Simulator
 
     private var placeholder: some View {
-        VStack(spacing: Theme.S.x3) {
+        VStack(spacing: Tokens.Spacing.md) {
             Image(systemName: "camera.viewfinder")
                 .font(.system(size: 46, weight: .light))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(Tokens.Palette.white.opacity(0.5))
             Text(camera.permissionDenied
                  ? "Camera access is off.\nTurn it on in iOS Settings."
-                 : "No camera on this device.")
-                .font(Theme.F.body(14))
-                .foregroundStyle(.white.opacity(0.7))
+                 : "No camera on this device.\nThe shutter still walks the whole flow.")
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Palette.white.opacity(0.7))
                 .multilineTextAlignment(.center)
+        }
+    }
+
+    private static func simulatorPhoto() -> UIImage {
+        let size = CGSize(width: 960, height: 720)
+        return UIGraphicsImageRenderer(size: size).image { context in
+            UIColor(white: 0.35, alpha: 1).setFill()
+            context.fill(CGRect(origin: .zero, size: size))
         }
     }
 }
 
-/// The pickup moment — deliberately **not** a card.
-///
-/// A game never puts a reward in a dialog. It happens on top of the world, it
-/// moves, and it takes itself away: the icon punches in over the live camera
-/// feed, the number is the hero, and the whole group drifts upward and
-/// dissolves. Nothing to dismiss and nothing boxed.
-///
-/// The one concession to a background is `legibilityWash` — a soft radial
-/// darkening under the middle of the burst. Without it white numerals vanish
-/// against a bright wall, which is the same reason games put a shadow or a
-/// gradient under floating combat text. It has no edge, so it never reads as a
-/// container.
-///
-/// Owns its whole lifecycle and calls `onFinished` when it has faded, so the
-/// timing lives here rather than in a `Task.sleep` on the far side of the app
-/// that has to be kept in step by hand.
+// MARK: - Award overlay
+
 private struct AwardOverlay: View {
     /// Takes what it draws rather than a domain type, so the same timeline
     /// serves a logged habit and a Fight check-in. Two callers, one
@@ -728,7 +667,3 @@ private struct AwardOverlay: View {
     }
     return Harness()
 }
-
-// No reduce-motion preview: `accessibilityReduceMotion` is read-only in the
-// environment, so it cannot be forced from here. Check that path in the
-// simulator under Settings → Accessibility → Motion → Reduce Motion.

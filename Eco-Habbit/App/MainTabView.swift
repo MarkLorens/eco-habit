@@ -11,7 +11,7 @@ struct MainTabView: View {
                 switch app.selectedTab {
                 case .home: HomeView()
                 case .actions: ActivityListView()
-                case .ourFights: FightListView()
+                case .ourFights: CustomerFightListView()
                 case .profile: ProfileView()
                 }
             }

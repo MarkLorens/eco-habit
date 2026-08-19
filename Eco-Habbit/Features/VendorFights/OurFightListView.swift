@@ -33,14 +33,14 @@ struct OurFightListView: View {
                     }
                     .padding(.horizontal, Tokens.Spacing.xxl)
                     
-                    ForEach(0..<6, id: \.self) { _ in
+                    ForEach(app.upcomingFights) { fight in
                         ExpandableFightWrapper(
-                            title: "Pick N Choose",
-                            caption: "Let's collect items that can be reused and share them with others who need them",
-                            category: Tokens.Palette.purple,
-                            date: "Wed, 9 Sep • 15.00",
-                            location: "Kuta Art Market",
-                            picture: "our-fight-example",
+                            title: fight.title,
+                            caption: fight.summary,
+                            category: fight.type.tint,
+                            date: fight.cardDate,
+                            location: fight.locationName,
+                            picture: fight.cardPicture,
                             status: false
                         )
                     }
