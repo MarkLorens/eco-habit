@@ -30,6 +30,7 @@ COMMON="$MODELS/Day.swift $MODELS/EarthStage.swift $MODELS/ActivityCategory.swif
         Eco-Habbit/Core/Repositories/HabitRepository.swift \
         Eco-Habbit/Core/Repositories/FightRepository.swift \
         Eco-Habbit/Core/Repositories/UserRepository.swift \
+        Eco-Habbit/Core/Repositories/UserDocument.swift \
         Eco-Habbit/DesignSystem/Tokens.swift"
 
 FILTER="${1:-}"

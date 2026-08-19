@@ -3,8 +3,15 @@ import Foundation
 #if DEBUG
 extension AppState {
     @MainActor
+    /// The id previews and the `-EHDemo` launch path sign in as.
+    ///
+    /// `isLoggedIn` is derived from `userId` now, so a preview with no id would render
+    /// the sign-in screen instead of the app. This keeps every preview and the offline
+    /// demo working without any of them touching Firebase.
+    static let previewUserId = "preview"
+
     static var preview: AppState {
-        let state = AppState(data: .preview)
+        let state = AppState(userId: previewUserId, data: .preview)
         
         // Seeding badge to prevent re-showing badges on announcedBadgesIDs empty
         // Guard to "catch up" in case we add new badges to the catalogue

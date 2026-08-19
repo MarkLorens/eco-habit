@@ -382,7 +382,12 @@ struct VisualSearchView: View {
         let result = app.logAndToast(habit, source: .visualSearch)
 
         do {
-            guard case .logged(let points) = result else {
+            // `atDailyCap` gets the same treatment as a refusal *for the overlay only* —
+            // the log itself has already landed and still counts. `AwardOverlay` counts
+            // up to `points`, so at the cap it would run the whole celebration to
+            // arrive at "+0". `logAndToast` has already said what happened; go straight
+            // back to scanning.
+            guard case .logged(let points, let atDailyCap) = result, !atDailyCap else {
                 camera.reset()
                 return
             }

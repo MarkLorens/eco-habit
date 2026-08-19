@@ -305,6 +305,39 @@ struct FightAttendance: Codable, Hashable, Identifiable {
     let checkedInAt: Date
     /// The day Vitality is credited against — written at check-in, never re-derived.
     let localDate: String
+
+    /// Who checked in. Duplicates the document id `{fightId}_{userId}` on purpose: the
+    /// security rules compare the two, and a host's roster can list attendees without
+    /// parsing ids.
+    let userId: String
+
+    /// The code that was actually presented. The rules check it against the Fight's own
+    /// `checkInCode`, which is what stops a check-in forged by someone who never had it.
+    let code: String
+
+    init(fightId: String, checkedInAt: Date, localDate: String, userId: String, code: String) {
+        self.fightId = fightId
+        self.checkedInAt = checkedInAt
+        self.localDate = localDate
+        self.userId = userId
+        self.code = code
+    }
+
+    /// Hand-written for the same reason `PersistedState`'s is.
+    ///
+    /// Synthesized `Decodable` throws on a missing key rather than using a default, and
+    /// these records sit inside `PersistedState.fightAttendance`. A throw there does not
+    /// degrade to an empty dictionary — it propagates and takes the **entire account**
+    /// down to a blank state. `userId` and `code` were added after people already had
+    /// attendance saved, so without this, shipping this change would have wiped them.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fightId = try c.decode(String.self, forKey: .fightId)
+        checkedInAt = try c.decode(Date.self, forKey: .checkedInAt)
+        localDate = try c.decode(String.self, forKey: .localDate)
+        userId = try c.decodeIfPresent(String.self, forKey: .userId) ?? ""
+        code = try c.decodeIfPresent(String.self, forKey: .code) ?? ""
+    }
 }
 
 /// One scan on the **host's** device (PRD §6.5.1).
