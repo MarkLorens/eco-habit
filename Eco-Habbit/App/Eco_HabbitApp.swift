@@ -45,7 +45,11 @@ struct Eco_HabbitApp: App {
                     _ = HabitClassifier.shared
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { appState.evaluateIfNeeded() }
+                    guard phase == .active else { return }
+                    appState.evaluateIfNeeded()
+                    // A launch with no signal should reconcile as soon as there is one,
+                    // rather than staying local until the next cold start.
+                    appState.retrySyncIfNeeded()
                 }
         }
     }

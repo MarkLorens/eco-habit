@@ -54,6 +54,38 @@ final class AppState: ObservableObject {
     /// Decides which side wins for the scalars. See `pullRemoteState`.
     private var hasLocalCopy = false
 
+    /// What the remote layer is actually doing.
+    ///
+    /// Every call into Firestore is `try?` or an empty catch, deliberately — a sync
+    /// problem must never interrupt someone logging an action. The cost is that when
+    /// sync stops working there is nothing on screen, in the logs, or anywhere else to
+    /// say so, and "signed in but nothing saves" looks identical to "working". This is
+    /// where that goes. Shown in the debug menu.
+    enum SyncStatus: Equatable {
+        /// No sync injected — previews, the checks, the offline demo build.
+        case localOnly
+        /// Signed in, not yet reconciled with the server.
+        case pending
+        case synced
+        case failed(String)
+
+        var label: String {
+            switch self {
+            case .localOnly: "Local only (no Firebase)"
+            case .pending:   "Not reconciled yet"
+            case .synced:    "Synced"
+            case .failed:    "FAILED"
+            }
+        }
+
+        var detail: String? {
+            if case .failed(let message) = self { return message }
+            return nil
+        }
+    }
+
+    @Published private(set) var syncStatus: SyncStatus = .pending
+
     init(userId: String? = nil,
          data: PersistedState? = nil,
          sync: UserStateSyncing? = nil) {
@@ -76,6 +108,7 @@ final class AppState: ObservableObject {
         // Closed until `pullRemoteState` has run. Everything below this line mutates,
         // and on a reinstall `data` is blank — see `remoteResolved`.
         remoteResolved = false
+        syncStatus = .pending
 
         userId = uid
         let stored = PersistenceStore.load(userId: uid)
@@ -119,7 +152,7 @@ final class AppState: ObservableObject {
     /// session simply stays local and reconciles on the next launch instead of writing
     /// something it could not verify.
     private func pullRemoteState(uid: String) async {
-        guard let sync else { return }
+        guard let sync else { syncStatus = .localOnly; return }
         do {
             var next = data
             if let remote = try await sync.fetch(userId: uid) {
@@ -175,6 +208,7 @@ final class AppState: ObservableObject {
             // was correctly withheld.
             remoteResolved = true
             hasLocalCopy = true
+            syncStatus = .synced
 
             evaluateIfNeeded()
             backfillGlobeStageAnnouncement()
@@ -195,9 +229,32 @@ final class AppState: ObservableObject {
             try await sync.pushLogs(localOnlyLogs, userId: uid)
             try await sync.pushBadges(localOnlyBadges, userId: uid)
         } catch {
-            // Deliberately swallowed. Surfacing "sync failed" on every launch without
-            // wifi would train people to ignore it.
+            syncStatus = .failed(String(describing: error))
+
+            // **A failed pull must not lock the session out of syncing.** It did: the
+            // gate opened only at the end of the `do`, so one refused read — old rules
+            // deployed, Firestore not reachable, anything — left `remoteResolved` false
+            // and every write suppressed for the whole session. Silently, and sign-in
+            // still worked, because Auth does not touch Firestore. The app looked fine
+            // and saved nothing.
+            //
+            // The gate exists to stop a BLANK local state being pushed over good server
+            // data on a reinstall, and that danger only exists when this device has no
+            // file. With a real local file the data is genuine and is safe to send, so
+            // open the gate; without one, stay shut and retry.
+            remoteResolved = hasLocalCopy
+
+            // No toast. Surfacing this on every launch without wifi would train people
+            // to ignore it — `syncStatus` in the debug menu is where it belongs.
         }
+    }
+
+    /// Re-attempt a pull that failed. Called when the app returns to the foreground, so
+    /// a launch with no signal reconciles as soon as there is one rather than waiting
+    /// for the next cold start.
+    func retrySyncIfNeeded() {
+        guard sync != nil, let userId, syncStatus != .synced else { return }
+        Task { await pullRemoteState(uid: userId) }
     }
 
     /// Drop back to the signed-out local account.
