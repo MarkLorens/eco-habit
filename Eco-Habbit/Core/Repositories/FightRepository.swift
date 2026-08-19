@@ -17,11 +17,20 @@ enum FightRepository {
     }
 
     enum CheckInResult: Equatable {
-        case checkedIn(vitalityGain: Int)
+        /// Earth points credited. Was `vitalityGain` — attendance used to be paid
+        /// by the nightly Vitality pass, which no longer exists; the points are
+        /// credited here, at check-in, like every other award.
+        case checkedIn(points: Int)
         case notSignedUp
         case alreadyCheckedIn
         case windowClosed
         case eventCancelled
+        /// The code did not match this Fight.
+        case wrongCode
+        /// A draft. Its window may well be open, but it is not live yet — and
+        /// reporting "the window is shut" for a draft sent an organiser hunting
+        /// a clock bug that was never there.
+        case notPublished
     }
 
     // MARK: - Signup (PRD §4.4)
@@ -74,9 +83,30 @@ enum FightRepository {
     /// guarantee is the same one the composite document ID gives in Firestore (§9.3):
     /// one check-in per attendee per event, no race.
     @discardableResult
-    static func checkIn(to fight: Fight, in state: inout PersistedState, now: Date = Date()) -> CheckInResult {
+    /// Check in to a Fight.
+    ///
+    /// `code` is what the attendee scanned or typed. Pass `nil` to skip the code
+    /// check — that is the pre-QR path, kept so the existing detail-screen button
+    /// keeps working while the scanning UI lands.
+    ///
+    /// **Signup is not required when a code is presented.** Somebody standing at
+    /// the venue holding the organiser's code has demonstrated more than a signup
+    /// ever did, and turning them away at the beach because they forgot to tap a
+    /// button a week earlier is the wrong answer.
+    static func checkIn(to fight: Fight,
+                        code: String? = nil,
+                        userId: String = "",
+                        in state: inout PersistedState,
+                        now: Date = Date()) -> CheckInResult {
         guard fight.status != .cancelled else { return .eventCancelled }
-        guard isSignedUp(fight.id, in: state) else { return .notSignedUp }
+        guard fight.status == .published else { return .notPublished }
+
+        if let code {
+            guard fight.matchesCheckInCode(code) else { return .wrongCode }
+        } else {
+            guard isSignedUp(fight.id, in: state) else { return .notSignedUp }
+        }
+
         guard state.fightAttendance[fight.id] == nil else { return .alreadyCheckedIn }
         guard fight.isCheckInOpen(at: now) else { return .windowClosed }
 
@@ -84,11 +114,26 @@ enum FightRepository {
         state.fightAttendance[fight.id] = FightAttendance(
             fightId: fight.id,
             checkedInAt: now,
-            localDate: day
+            localDate: day,
+            userId: userId,
+            // The code that was actually presented. Falls back to the Fight's own only
+            // on the legacy no-code path, which nothing in the UI reaches any more.
+            code: code ?? fight.checkInCode
         )
         state.fightAttendedDates.insert(day)
 
-        return .checkedIn(vitalityGain: VitalityEngine.fightBoost)
+        // Credited here rather than by a nightly pass. Leaving it to the loop is
+        // what made this silently pay nothing once the loop stopped scoring.
+        // Paid by tier now, not a flat placeholder.
+        let award = fight.attendancePoints
+        state.currentPoints += award
+        return .checkedIn(points: award)
+    }
+
+    /// The Fight owning this code, if any. Used by the scanner, which knows only
+    /// the code and has to find the event itself.
+    static func fight(matchingCode code: String, in fights: [Fight]) -> Fight? {
+        fights.first { $0.matchesCheckInCode(code) }
     }
 
     static func attendance(for fightId: String, in state: PersistedState) -> FightAttendance? {
@@ -189,6 +234,18 @@ enum FightRepository {
         guard let index = state.hostedFights.firstIndex(where: { $0.id == fightId }),
               state.hostedFights[index].status == .draft else { return false }
         state.hostedFights[index].status = .published
+        return true
+    }
+
+    /// Back to draft. Only for rolling back a publish whose upload was refused — a
+    /// Fight the host believes is live but that nobody else can see is worse than one
+    /// that is honestly still a draft. Not a user-facing "unpublish": once an event is
+    /// really live, `cancel` is the way out, so people who saved it are told.
+    @discardableResult
+    static func unpublish(_ fightId: String, in state: inout PersistedState) -> Bool {
+        guard let index = state.hostedFights.firstIndex(where: { $0.id == fightId }),
+              state.hostedFights[index].status == .published else { return false }
+        state.hostedFights[index].status = .draft
         return true
     }
 

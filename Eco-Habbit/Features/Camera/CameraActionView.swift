@@ -44,7 +44,7 @@ struct CameraActionView: View {
                         ForEach(suggestions) { habit in
                             ActivityListCard(
                                 title: habit.name,
-                                points: habit.isFoundation ? VitalityEngine.foundationBoost : habit.tier.points,
+                                points: habit.basePoints,
                                 icon: habit.category.icon,
                                 tint: habit.category.tint,
                                 background: habit.category.background,

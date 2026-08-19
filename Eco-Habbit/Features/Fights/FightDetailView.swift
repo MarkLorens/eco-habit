@@ -5,7 +5,7 @@ struct FightDetailView: View {
     @EnvironmentObject private var app: AppState
     let fight: Fight
 
-    @State private var showingQR = false
+    @State private var showingHostCode = false
 
     private var isSignedUp: Bool { app.isSignedUp(fight) }
     private var hasAttended: Bool { app.hasAttended(fight) }
@@ -25,10 +25,8 @@ struct FightDetailView: View {
         }
         .background(Theme.C.bg.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showingQR) {
-            if let signup = app.signup(for: fight) {
-                CheckInQRView(fight: fight, signup: signup)
-            }
+        .sheet(isPresented: $showingHostCode) {
+            FightCodeView(fight: fight)
         }
     }
 
@@ -139,7 +137,7 @@ struct FightDetailView: View {
     private var reward: some View {
         EHCard(background: AnyShapeStyle(Theme.C.accent2_100)) {
             HStack(spacing: Theme.S.x3) {
-                Text("+\(VitalityEngine.fightBoost)")
+                Text("+\(PointsConfiguration.default.fightAttendancePoints)")
                     .font(Theme.F.heading(30))
                     .foregroundStyle(Theme.C.accent2_700)
                 VStack(alignment: .leading, spacing: 2) {
@@ -174,10 +172,16 @@ struct FightDetailView: View {
                         .background(Capsule().fill(Theme.C.accent))
                 }
                 .buttonStyle(PlainPressStyle())
+
+                // The organiser's one code for the whole Fight. Attendees scan
+                // this with their own camera and credit their own accounts —
+                // which is why no host-side scanner is needed.
+                Button("Show check-in code") { showingHostCode = true }
+                    .buttonStyle(SecondaryButtonStyle())
             }
 
             if hasAttended {
-                Label("Attended — +\(VitalityEngine.fightBoost) Vitality credited",
+                Label("Attended — +\(fight.attendancePoints) pts credited",
                       systemImage: "checkmark.seal.fill")
                     .font(Theme.F.body(14.5, weight: .bold))
                     .foregroundStyle(Theme.C.accent2_700)
@@ -185,13 +189,18 @@ struct FightDetailView: View {
                     .padding(.vertical, Theme.S.x3)
 
             } else if isSignedUp {
-                Button("Show my check-in code") { showingQR = true }
-                    .buttonStyle(PrimaryButtonStyle())
-
-                // Stands in for the host's scanner until Phase 10 (§9.3).
+                // The attendee's personal QR and the "simulate host scan" stand-in
+                // are gone: check-in direction inverted. The organiser shows one
+                // code for the whole Fight and the attendee scans it with their
+                // own camera, so there is nothing here for a host to scan and
+                // nothing to simulate.
                 if fight.isCheckInOpen() {
-                    Button("Simulate host scan") { app.checkIn(to: fight) }
-                        .buttonStyle(SecondaryButtonStyle())
+                    Label("Scan the organiser's code to check in",
+                          systemImage: "qrcode.viewfinder")
+                        .font(Theme.F.body(13.5, weight: .semibold))
+                        .foregroundStyle(Theme.C.neutral700)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Theme.S.x2)
                 }
 
                 Button("Cancel signup") { app.cancelFight(fight) }

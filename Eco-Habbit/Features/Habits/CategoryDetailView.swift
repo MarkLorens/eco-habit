@@ -16,17 +16,14 @@ struct CategoryDetailView: View {
     private let sheetTail: CGFloat = 56
     
     @State private var searchText = ""
-    
+    // Sorting done activity.
     var filteredActivity: [HabitRow] {
         let rows = app.rows(in: category)
-        
-        guard !searchText.isEmpty else {
-            return rows
-        }
-        
-        return rows.filter {
-            $0.habit.name.localizedCaseInsensitiveContains(searchText)
-        }
+
+        let matching = searchText.isEmpty
+            ? rows
+            : rows.filter { $0.habit.name.localizedCaseInsensitiveContains(searchText) }
+        return matching.filter { !$0.isCompletedToday } + matching.filter(\.isCompletedToday)
     }
 
     var body: some View {
@@ -38,7 +35,7 @@ struct CategoryDetailView: View {
                 } else {
                     ForEach(filteredActivity) { row in
                         ActivityListCard(title: row.habit.name,
-                                         points: PointsEngine.tierPoints(row.habit.tier),
+                                         points: row.habit.basePoints,
                                          icon: category.icon,
                                          tint: category.tint,
                                          background: category.background,

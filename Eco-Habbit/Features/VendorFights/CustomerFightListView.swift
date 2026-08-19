@@ -18,7 +18,7 @@ struct CustomerFightListView: View {
     @State private var showingLovedOnly = false
 
     private var fights: [Fight] {
-        showingLovedOnly ? app.upcomingFights.filter(app.isLoved) : app.upcomingFights
+        showingLovedOnly ? app.favouriteFights : app.browsableFights
     }
 
     var body: some View {
@@ -58,11 +58,11 @@ struct CustomerFightListView: View {
                                 title: fight.title,
                                 caption: fight.summary,
                                 category: fight.type.tint,
-                                date: fight.cardDateText,
+                                date: fight.cardDate,
                                 location: fight.locationName,
                                 picture: fight.cardPicture,
-                                isLoved: app.isLoved(fight),
-                                onLove: { app.toggleLoved(fight) }
+                                isLoved: app.isFavourite(fight),
+                                onLove: { app.toggleFavourite(fight) }
                             )
                         }
                         .padding(.horizontal, Tokens.Spacing.xl)

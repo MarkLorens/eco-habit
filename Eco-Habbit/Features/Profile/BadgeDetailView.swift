@@ -71,6 +71,10 @@ private struct Locked: View {
 }
 
 
+// `#Preview` compiles in RELEASE too, and AppState.preview /
+// PersistedState.preview are `#if DEBUG`. Without this guard the
+// archive build fails — which is what blocks TestFlight.
+#if DEBUG
 #Preview("Badges · mostly unlocked") {
     BadgeDetailView()
         .environmentObject(AppState(data: .preview(vitality: 92, streak: 34, actions: 120)))
@@ -80,3 +84,4 @@ private struct Locked: View {
     BadgeDetailView()
         .environmentObject(AppState(data: .preview(streak: 0, actions: 0)))
 }
+#endif

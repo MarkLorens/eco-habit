@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		50E0E69C302DA48700E63E49 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 50E0E69B302DA48700E63E49 /* Lottie */; };
+		50884EA130342AF9002A28A2 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 50884EA030342AF9002A28A2 /* Lottie */; };
+		BF44EA2130356C54000467FC /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BF44EA2030356C54000467FC /* FirebaseAuth */; };
+		BF44EA2330356C54000467FC /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = BF44EA2230356C54000467FC /* FirebaseFirestore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,7 +29,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				50E0E69C302DA48700E63E49 /* Lottie in Frameworks */,
+				50884EA130342AF9002A28A2 /* Lottie in Frameworks */,
+				BF44EA2130356C54000467FC /* FirebaseAuth in Frameworks */,
+				BF44EA2330356C54000467FC /* FirebaseFirestore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,7 +74,9 @@
 			);
 			name = "Eco-Habbit";
 			packageProductDependencies = (
-				50E0E69B302DA48700E63E49 /* Lottie */,
+				50884EA030342AF9002A28A2 /* Lottie */,
+				BF44EA2030356C54000467FC /* FirebaseAuth */,
+				BF44EA2230356C54000467FC /* FirebaseFirestore */,
 			);
 			productName = "Eco-Habbit";
 			productReference = 3725B3F33023DDC40036EE22 /* Eco-Habbit.app */;
@@ -101,7 +107,8 @@
 			mainGroup = 3725B3EA3023DDC40036EE22;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				50E0E69A302DA48700E63E49 /* XCRemoteSwiftPackageReference "lottie-ios" */,
+				50884E9F30342AF9002A28A2 /* XCRemoteSwiftPackageReference "lottie-ios" */,
+				BF44EA1F30356C54000467FC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3725B3F43023DDC40036EE22 /* Products */;
@@ -260,9 +267,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Eco-Habbit/Eco-Habbit.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BYX72AR3JC;
+				DEVELOPMENT_TEAM = M853XY9U3D;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Eco Habit";
@@ -283,7 +291,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Ardhana.Eco-Habbit";
+				PRODUCT_BUNDLE_IDENTIFIER = com.greenapple.ecohabit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -300,9 +308,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Eco-Habbit/Eco-Habbit.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = BYX72AR3JC;
+				DEVELOPMENT_TEAM = M853XY9U3D;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Eco Habit";
@@ -323,7 +332,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "Ardhana.Eco-Habbit";
+				PRODUCT_BUNDLE_IDENTIFIER = com.greenapple.ecohabit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -359,7 +368,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		50E0E69A302DA48700E63E49 /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
+		50884E9F30342AF9002A28A2 /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/airbnb/lottie-ios.git";
 			requirement = {
@@ -367,13 +376,31 @@
 				minimumVersion = 4.6.1;
 			};
 		};
+		BF44EA1F30356C54000467FC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.17.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		50E0E69B302DA48700E63E49 /* Lottie */ = {
+		50884EA030342AF9002A28A2 /* Lottie */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 50E0E69A302DA48700E63E49 /* XCRemoteSwiftPackageReference "lottie-ios" */;
+			package = 50884E9F30342AF9002A28A2 /* XCRemoteSwiftPackageReference "lottie-ios" */;
 			productName = Lottie;
+		};
+		BF44EA2030356C54000467FC /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF44EA1F30356C54000467FC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		BF44EA2230356C54000467FC /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BF44EA1F30356C54000467FC /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

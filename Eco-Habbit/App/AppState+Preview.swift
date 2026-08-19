@@ -3,8 +3,15 @@ import Foundation
 #if DEBUG
 extension AppState {
     @MainActor
+    /// The id previews and the `-EHDemo` launch path sign in as.
+    ///
+    /// `isLoggedIn` is derived from `userId` now, so a preview with no id would render
+    /// the sign-in screen instead of the app. This keeps every preview and the offline
+    /// demo working without any of them touching Firebase.
+    static let previewUserId = "preview"
+
     static var preview: AppState {
-        let state = AppState(data: .preview)
+        let state = AppState(userId: previewUserId, data: .preview)
         
         // Seeding badge to prevent re-showing badges on announcedBadgesIDs empty
         // Guard to "catch up" in case we add new badges to the catalogue
@@ -55,13 +62,18 @@ extension PersistedState {
     ) -> PersistedState {
         var state = PersistedState.preview
         state.userName = name
-        state.vitality = vitality
+        // The parameter is still a 0–100 reading, because that is how every
+        // preview call site reads. Converted to the points that produce it, so
+        // the derived `vitality` comes back out at the number asked for.
+        state.currentPoints = PersistedState.points(forVitality: vitality)
         state.streakDays = streak
         state.longestStreak = longestStreak
         state.favouriteCategories = favourites
         state.notificationsEnabled = notifications
 
-        let catalogue = MockData.habits.sorted { $0.isFoundation && !$1.isFoundation }
+        // Was foundations-first; that ordering went with the old catalogue.
+        // Cheapest-first keeps the seeded history looking like a real ramp-up.
+        let catalogue = MockData.habits.sorted { $0.basePoints < $1.basePoints }
         state.logs = (0..<max(0, actions)).map { i in
             let habit = catalogue[i % catalogue.count]
             return HabitLog(
@@ -80,10 +92,15 @@ extension PersistedState {
         state.userName = MockData.demoName
         state.email = MockData.demoEmail
         state.favouriteCategories = [.waste, .energy, .water]
-        state.vitality = 65
+        state.currentPoints = PersistedState.points(forVitality: 65)
         state.streakDays = 12
         state.longestStreak = 18
         return state
+    }
+
+    /// Inverse of `AppState.vitality`, for fixtures written in the old 0–100 terms.
+    static func points(forVitality vitality: Int) -> Int {
+        PointsConfiguration.default.threshold(for: .restored) * vitality / 100
     }
 }
 #endif

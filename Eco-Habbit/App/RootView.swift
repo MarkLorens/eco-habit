@@ -1,22 +1,56 @@
 import SwiftUI
 
+/// Decides which of the three top-level states the app is in — resolving, signed in,
+/// or signed out — and owns the auth listener that moves between them.
 struct RootView: View {
     @EnvironmentObject private var app: AppState
+
+    /// False until the auth listener has reported once. See the `Color.clear` branch.
+    @State private var sessionResolved = false
+
+    /// The `-EHDemo` launch path builds a signed-in demo account with no Firebase
+    /// session behind it. Letting the listener run would immediately sign it out.
+    private var isDemoLaunch: Bool {
+        #if DEBUG
+        UserDefaults.standard.bool(forKey: "EHDemo")
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         ZStack {
             Theme.C.bg.ignoresSafeArea()
 
             Group {
-                if app.isLoggedIn {
+                if !sessionResolved {
+                    // Nothing, briefly. Firebase is configured in the app delegate,
+                    // which runs *after* App.init, so the restored session is not known
+                    // until the listener below fires. Rendering the sign-in screen in
+                    // the meantime would flash it at every returning user.
+                    Color.clear
+                } else if app.isLoggedIn {
                     MainTabView()
                         .transition(.opacity)
                 } else {
-                    SignInPlaceholder()
+                    SignInView()
                         .transition(.opacity)
                 }
             }
             .animation(.easeInOut(duration: 0.35), value: app.isLoggedIn)
+        }
+        .task {
+            guard !isDemoLaunch else { sessionResolved = true; return }
+            // The single writer of session state. The sign-in button deliberately does
+            // not call `signedIn` itself — two writers race.
+            AppleSignInService.observeSession { uid, displayName in
+                if let uid {
+                    app.signedIn(uid: uid, displayName: displayName)
+                } else {
+                    app.signedOut()
+                }
+                sessionResolved = true
+            }
         }
         .overlay(alignment: .top) {
             ToastLayer()
@@ -27,25 +61,12 @@ struct RootView: View {
         )) { badge in
             BadgeDetailSheet(badge: badge, unlocked: true) { app.acknowledgeBadge(badge) }
         }
-    }
-}
-
-private struct SignInPlaceholder: View {
-    @EnvironmentObject private var app: AppState
-
-    var body: some View {
-        VStack(spacing: 24) {
-            GlobeView(health: 50, size: 180, interactive: false)
-            Text("Eco-Habbit")
-                .font(Theme.F.heading(28))
-                .foregroundStyle(Theme.C.text)
-            Button("Sign In with Apple") {
-                app.logIn()
-            }
-            .buttonStyle(PrimaryButtonStyle())
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.C.bg)
+        // Above the badge card on purpose: the globe reaching a new stage is the bigger
+        // moment, and the badge is still waiting underneath once this is dismissed.
+        .globeStageUpOverlay(item: Binding(
+            get: { app.pendingGlobeStageUp },
+            set: { if $0 == nil, let stageUp = app.pendingGlobeStageUp { app.acknowledgeGlobeStageUp(stageUp) } }
+        ))
     }
 }
 
