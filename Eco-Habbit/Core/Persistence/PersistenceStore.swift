@@ -60,6 +60,11 @@ struct PersistedState: Codable {
     
     // Badge unlock "event" testing
     var announcedBadgeIds: Set<String> = []
+
+    /// Customer-side saved ("loved") events, by Fight id. Optional so state
+    /// files written before this field existed still decode; read it through
+    /// `AppState.isLoved(_:)` which defaults to empty.
+    var lovedFightIds: Set<String>? = []
 }
 
 enum PersistenceStore {

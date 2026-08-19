@@ -236,6 +236,20 @@ final class AppState: ObservableObject {
     /// The dashboard's "Next Fight" card (§6.1).
     var nextFight: Fight? { myUpcomingFights.first }
 
+    /// Customer-side "loved" list — bookmarking only, deliberately separate
+    /// from signups: loving an event does not reserve a spot or issue a token.
+    var lovedFights: [Fight] { allFights.filter(isLoved) }
+
+    func isLoved(_ fight: Fight) -> Bool { (data.lovedFightIds ?? []).contains(fight.id) }
+
+    func toggleLoved(_ fight: Fight) {
+        mutate {
+            var ids = $0.lovedFightIds ?? []
+            if ids.contains(fight.id) { ids.remove(fight.id) } else { ids.insert(fight.id) }
+            $0.lovedFightIds = ids
+        }
+    }
+
     func isSignedUp(_ fight: Fight) -> Bool { FightRepository.isSignedUp(fight.id, in: data) }
     func hasAttended(_ fight: Fight) -> Bool { FightRepository.hasAttended(fight.id, in: data) }
     func signup(for fight: Fight) -> FightSignup? { FightRepository.signup(for: fight.id, in: data) }

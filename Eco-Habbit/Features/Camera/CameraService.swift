@@ -2,24 +2,34 @@ import AVFoundation
 import SwiftUI
 import Combine
 
-/// Capture stack for the visual-search viewfinder (PRD §5.3).
+/// One shutter press: the captured frame and what the classifier made of it.
+struct SnapResult: Equatable {
+    let image: UIImage
+    let matches: [HabitMatch]
+}
+
+/// Capture stack for the camera flow (PRD §5.3, revised).
 ///
-/// There is no photo output and no shutter — nothing is ever captured. Frames go
-/// to a video data output, get classified in memory, and are discarded (§5.1).
+/// The viewfinder no longer classifies continuously — frames flow to the video
+/// output untouched until the shutter is pressed, then exactly one frame is
+/// classified and returned as a `SnapResult`. Nothing is written to disk (§5.1).
 /// On the Simulator there is no capture device, so `isAvailable` stays false and
-/// the view shows its placeholder.
+/// the view drives the same flow with a placeholder image.
 @MainActor
 final class CameraService: NSObject, ObservableObject {
     @Published private(set) var isAvailable = false
     @Published private(set) var isRunning = false
     @Published var permissionDenied = false
 
-    /// Latest ranked matches, replaced wholesale each inference pass.
-    @Published private(set) var matches: [HabitMatch] = []
+    /// Set once per shutter press; the view reads it and calls `clearSnap()`.
+    @Published private(set) var snap: SnapResult?
     @Published private(set) var classifierError: String?
-    /// False until the model is loaded, so the viewfinder can say "warming up"
-    /// rather than sit there showing nothing and looking broken.
+    /// False until the model is loaded, so the shutter can wait for a model
+    /// that is actually ready rather than silently classifying with nothing.
     @Published private(set) var isReady = false
+
+    @Published private(set) var isTorchOn = false
+    @Published private(set) var position: AVCaptureDevice.Position = .back
 
     let session = AVCaptureSession()
 
@@ -27,6 +37,8 @@ final class CameraService: NSObject, ObservableObject {
     private let frameQueue = DispatchQueue(label: "eco.camera.frames", qos: .userInitiated)
     private let processor = FrameProcessor()
     private var isConfigured = false
+    private var device: AVCaptureDevice?
+    private var input: AVCaptureDeviceInput?
 
     func start() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -50,8 +62,8 @@ final class CameraService: NSObject, ObservableObject {
             isReady = true
         }
 
-        processor.onResults = { [weak self] results in
-            Task { @MainActor in self?.matches = results }
+        processor.onSnapshot = { [weak self] result in
+            Task { @MainActor in self?.snap = result }
         }
 
         guard configureIfNeeded() else { return }
@@ -63,10 +75,58 @@ final class CameraService: NSObject, ObservableObject {
 
     func stop() {
         guard isConfigured else { return }
+        if isTorchOn { toggleTorch() }
         let session = self.session
         Task.detached { session.stopRunning() }
         isRunning = false
-        matches = []
+        snap = nil
+    }
+
+    /// The next frame off the capture queue gets classified and delivered
+    /// through `snap`.
+    func requestSnapshot() {
+        let processor = self.processor
+        frameQueue.async { processor.snapshotRequested = true }
+    }
+
+    func clearSnap() { snap = nil }
+
+    /// Torch, not true flash — the light stays on while composing, which is
+    /// what a viewfinder-based capture can actually honour.
+    func toggleTorch() {
+        guard let device, device.hasTorch else { return }
+        guard (try? device.lockForConfiguration()) != nil else { return }
+        device.torchMode = isTorchOn ? .off : .on
+        device.unlockForConfiguration()
+        isTorchOn.toggle()
+    }
+
+    func flipCamera() {
+        guard isConfigured, isAvailable else { return }
+        let newPosition: AVCaptureDevice.Position = position == .back ? .front : .back
+        guard let newDevice = AVCaptureDevice.default(
+            .builtInWideAngleCamera, for: .video, position: newPosition
+        ), let newInput = try? AVCaptureDeviceInput(device: newDevice) else { return }
+
+        session.beginConfiguration()
+        if let input { session.removeInput(input) }
+        guard session.canAddInput(newInput) else {
+            if let input { session.addInput(input) }
+            session.commitConfiguration()
+            return
+        }
+        session.addInput(newInput)
+        session.commitConfiguration()
+
+        device = newDevice
+        input = newInput
+        position = newPosition
+        isTorchOn = false
+
+        // The front camera's buffer is mirrored; the classifier needs to know.
+        let processor = self.processor
+        let orientation: CGImagePropertyOrientation = newPosition == .front ? .leftMirrored : .right
+        frameQueue.async { processor.orientation = orientation }
     }
 
     private func configureIfNeeded() -> Bool {
@@ -79,23 +139,23 @@ final class CameraService: NSObject, ObservableObject {
             isAvailable = false
             return false
         }
+        self.device = device
+        self.input = input
 
         session.beginConfiguration()
-        // 720p, not 1080p or .photo. The preview layer needs to look sharp, but
-        // 1080p BGRA is 8.3 MB a frame — at 30 fps that is ~250 MB/s allocated,
-        // copied and thrown away, which is felt as heat long before it is seen
-        // as lag.
+        // 720p, not 1080p or .photo — the preview needs to look sharp without
+        // the heat of shuttling full-resolution BGRA frames around.
         session.sessionPreset = .hd1280x720
         if session.canAddInput(input) { session.addInput(input) }
 
         videoOutput.alwaysDiscardsLateVideoFrames = true
-        // Ask the capture pipeline to hand us small buffers rather than scaling
-        // 720p down inside Vision on every pass. The encoder centre-crops to
-        // 256², so 480x270 loses nothing that survives the crop anyway.
+        // 960×540: big enough that the captured photo survives being shown as
+        // the hero image on the results screen, small enough to stay cheap.
+        // Nothing is classified per-frame anymore, so this is copy cost only.
         videoOutput.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: 480,
-            kCVPixelBufferHeightKey as String: 270,
+            kCVPixelBufferWidthKey as String: 960,
+            kCVPixelBufferHeightKey as String: 540,
         ]
         videoOutput.setSampleBufferDelegate(processor, queue: frameQueue)
         if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
@@ -108,25 +168,22 @@ final class CameraService: NSObject, ObservableObject {
 }
 
 /// Owns the classifier and runs it **on the capture queue, inside the delegate
-/// call**.
+/// call** — a `CVPixelBuffer` is only valid until the delegate returns.
 ///
-/// That placement is load-bearing. A `CVPixelBuffer` is only valid until the
-/// delegate returns — AVFoundation recycles it immediately after. Handing it to
-/// a `Task { @MainActor }` and classifying there reads whatever the buffer has
-/// been refilled with by the time the task is scheduled, which produces
-/// plausible results from the wrong frame. Only the finished array crosses back.
+/// All mutable state here lives on the capture queue: `snapshotRequested` and
+/// `orientation` are only ever touched via `frameQueue.async`.
 private final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
 
-    /// PRD §5.3 — target ~3 fps, tuned for thermals. Inference on every frame
-    /// would heat the phone and buy nothing: chips cannot usefully change 30
-    /// times a second, and a hand does not move that fast.
-    private let interval: TimeInterval = 1.0 / 3.0
+    /// Armed by the shutter; consumed by the next frame.
+    var snapshotRequested = false
+    /// `.right` is the back camera's native landscape buffer seen in portrait.
+    var orientation: CGImagePropertyOrientation = .right
 
-    /// Called on the capture queue with the finished ranking.
-    var onResults: (@Sendable ([HabitMatch]) -> Void)?
+    /// Called on the capture queue with the finished capture.
+    var onSnapshot: (@Sendable (SnapResult) -> Void)?
 
     private var classifier: HabitClassifier?
-    private var lastInferenceAt: TimeInterval = 0
+    private let ciContext = CIContext()
 
     /// Returns the failure, if there was one. Off the main actor because the
     /// very first call in a process is where the model actually loads.
@@ -151,16 +208,22 @@ private final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBuff
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        let now = CACurrentMediaTime()
-        guard now - lastInferenceAt >= interval else { return }
-        guard let classifier, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        lastInferenceAt = now
+        // Detection happens per shutter press now — untouched frames just pass by.
+        guard snapshotRequested else { return }
+        guard let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        snapshotRequested = false
 
-        // `.right` is the back camera's native landscape buffer seen in portrait.
-        // Get this wrong and Vision feeds the encoder a sideways image, which
-        // scores wrong-but-plausible for everything.
-        guard let results = try? classifier.search(buffer, orientation: .right) else { return }
-        onResults?(results)
+        var matches: [HabitMatch] = []
+        if let classifier, let results = try? classifier.search(buffer, orientation: orientation) {
+            matches = results
+        }
+
+        let ciImage = CIImage(cvPixelBuffer: buffer)
+        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
+        let imageOrientation: UIImage.Orientation = orientation == .leftMirrored ? .leftMirrored : .right
+        let image = UIImage(cgImage: cgImage, scale: 1, orientation: imageOrientation)
+
+        onSnapshot?(SnapResult(image: image, matches: matches))
     }
 }
 
