@@ -57,6 +57,57 @@ struct UserDocument: Codable, Equatable {
     var announcedBadgeIds: [String]
     var announcedGlobeStage: Int?
 
+    // MARK: - Decoding
+
+    /// Hand-written, and it has to stay that way — for the third time in this codebase.
+    ///
+    /// Synthesized `Decodable` **ignores property defaults**: a key missing from the
+    /// document throws `keyNotFound` rather than falling back. Every document already in
+    /// Firestore was written by an older build, so **adding one field here breaks the
+    /// fetch for every existing account** — and because the fetch is the first thing
+    /// `pullRemoteState` does, the failure takes the whole sync down with it.
+    ///
+    /// That is not hypothetical. `favouriteFightIds` was added on 18 Aug and every live
+    /// account immediately failed with
+    /// `keyNotFound: favouriteFightIds`, which read as "signed in but nothing syncs".
+    /// `PersistedState` and `FightAttendance` already had this treatment; this did not.
+    ///
+    /// Reading every field with `decodeIfPresent` makes adding a field a non-event,
+    /// which is the only way a schema that lives on other people's devices can evolve.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func v<T: Decodable>(_ k: CodingKeys, _ fallback: T) throws -> T {
+            try c.decodeIfPresent(T.self, forKey: k) ?? fallback
+        }
+
+        userName             = try v(.userName, "")
+        email                = try v(.email, "")
+        favouriteCategories  = try v(.favouriteCategories, [])
+        notificationsEnabled = try v(.notificationsEnabled, true)
+
+        currentPoints        = try v(.currentPoints, 0)
+        streakDays           = try v(.streakDays, 0)
+        longestStreak        = try v(.longestStreak, 0)
+        lastActiveDay        = try c.decodeIfPresent(String.self, forKey: .lastActiveDay)
+        lastEvaluatedDate    = try c.decodeIfPresent(String.self, forKey: .lastEvaluatedDate)
+
+        decayBaselinePoints  = try c.decodeIfPresent(Int.self, forKey: .decayBaselinePoints)
+        lastDecayAppliedDay  = try c.decodeIfPresent(String.self, forKey: .lastDecayAppliedDay)
+
+        shieldsAvailable     = try v(.shieldsAvailable, 0)
+        shieldedDates        = try v(.shieldedDates, [])
+        lastShieldGrantMonth = try c.decodeIfPresent(String.self, forKey: .lastShieldGrantMonth)
+
+        fightAttendedDates   = try v(.fightAttendedDates, [])
+        favouriteFightIds    = try v(.favouriteFightIds, [])
+
+        isOrganization       = try v(.isOrganization, false)
+        orgName              = try v(.orgName, "")
+
+        announcedBadgeIds    = try v(.announcedBadgeIds, [])
+        announcedGlobeStage  = try c.decodeIfPresent(Int.self, forKey: .announcedGlobeStage)
+    }
+
     // MARK: - Mapping
 
     init(_ state: PersistedState) {

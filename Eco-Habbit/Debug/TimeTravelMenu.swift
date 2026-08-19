@@ -25,6 +25,21 @@ struct TimeTravelMenu: View {
                     .foregroundStyle(.secondary)
             }
 
+            // First section on purpose. "Signed in but nothing saves" is invisible
+            // otherwise — every Firestore call swallows its error so that a sync
+            // problem can never interrupt logging.
+            Section("Firebase") {
+                LabeledContent("Sync", value: app.syncStatus.label)
+                LabeledContent("Account", value: app.userId ?? "signed out")
+                if let detail = app.syncStatus.detail {
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
+                Button("Retry sync") { app.retrySyncIfNeeded() }
+            }
+
             Section("Host mode") {
                 Toggle("Organisation", isOn: Binding(
                     get: { app.isOrganization },

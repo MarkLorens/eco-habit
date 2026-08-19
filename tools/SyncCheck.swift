@@ -167,6 +167,38 @@ state.lastEvaluatedDate = "2026-08-24"
 state.lastDecayAppliedDay = "2026-08-24"
 state.lastShieldGrantMonth = "2026-08"
 
+// --- a document written by an OLDER build must still decode ----------------------
+//
+// The round-trip above encodes and decodes the current shape, so it passes no matter
+// what — it cannot see the one failure that actually happens: a field added to
+// `UserDocument` while live accounts still have documents without it. Synthesized
+// `Decodable` throws `keyNotFound` there, `fetch` fails, and `pullRemoteState` takes
+// the whole sync down. That is exactly how `favouriteFightIds` broke every account.
+//
+// Removing each key in turn is the honest version of that test, and it guards every
+// field added from here on rather than just the ones somebody remembered.
+let fullDoc = try JSONSerialization.jsonObject(with: enc.encode(UserDocument(state))) as? [String: Any] ?? [:]
+var brittle: [String] = []
+for key in fullDoc.keys.sorted() {
+    var reduced = fullDoc
+    reduced.removeValue(forKey: key)
+    do { _ = try dec.decode(UserDocument.self, from: JSONSerialization.data(withJSONObject: reduced)) }
+    catch { brittle.append(key) }
+}
+ok("UserDocument decodes with any single field missing", brittle.isEmpty)
+if !brittle.isEmpty {
+    print("       throws without: \(brittle.joined(separator: ", "))")
+    print("       → give UserDocument.init(from:) a decodeIfPresent fallback for each")
+}
+
+// The oldest possible document. A user document created before any of this existed.
+do {
+    _ = try dec.decode(UserDocument.self, from: Data("{}".utf8))
+    ok("UserDocument decodes from an empty document", true)
+} catch {
+    ok("UserDocument decodes from an empty document (\(error))", false)
+}
+
 let stateKeys = Set((try JSONSerialization.jsonObject(with: enc.encode(state)) as? [String: Any] ?? [:]).keys)
 let docKeys = Set((try JSONSerialization.jsonObject(with: enc.encode(UserDocument(state))) as? [String: Any] ?? [:]).keys)
 
