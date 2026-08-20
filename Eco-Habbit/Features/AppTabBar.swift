@@ -41,19 +41,27 @@ enum AppTab: String, CaseIterable, Identifiable {
 
 struct AppTabBar: View {
     @Binding var selection: AppTab
+
+    /// Which tabs to draw. Defaults to all of them, so the preview and any existing
+    /// caller are unchanged — an organisation passes a shorter list, because it has no
+    /// habits to log and no dashboard to look at.
+    var tabs: [AppTab] = AppTab.allCases
+
+    /// The camera logs habits, so it goes with them.
+    var showsCapture = true
+
     var onCapture: () -> Void = {}
     @Namespace private var pill
-    
+
     // Separate first two and last two because Camera button isn't actually a tab item
     // I think?
-    private var tabs: [AppTab] { Array(AppTab.allCases) }
     private var leadingTabs: ArraySlice<AppTab> { tabs.prefix(tabs.count / 2) }
     private var trailingTabs: ArraySlice<AppTab> { tabs.dropFirst(tabs.count / 2) }
-    
+
     var body: some View{
         HStack(spacing: 0){
             ForEach(leadingTabs) { tabButton($0) }
-            captureButton
+            if showsCapture { captureButton }
             ForEach(trailingTabs) { tabButton($0) }
         }
         .padding(.vertical, Tokens.Spacing.sm)

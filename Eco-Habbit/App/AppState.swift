@@ -919,6 +919,25 @@ final class AppState: ObservableObject {
     ///
     /// Empty is refused rather than stored: `userName` falls back to "there" when blank,
     /// and letting someone save nothing would look like the rename silently failed.
+    /// Rename the organisation.
+    ///
+    /// Propagates to every Fight this account already hosts, published ones included:
+    /// `hostName` is a snapshot taken at creation, so without this a rename would leave
+    /// old events crediting a name that no longer exists. Each edit is pushed, so the
+    /// change reaches anyone browsing.
+    func setOrganisationName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != data.orgName else { return }
+        mutate { $0.orgName = trimmed }
+
+        for fight in hostedFights where fight.hostName != trimmed {
+            var renamed = fight
+            renamed.hostName = trimmed
+            saveDraft(renamed)
+        }
+        toast = Toast(kind: .success, message: "Organisation renamed.")
+    }
+
     func setUserName(_ name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != data.userName else { return }

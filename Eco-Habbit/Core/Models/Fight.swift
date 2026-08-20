@@ -41,7 +41,12 @@ struct Fight: Identifiable, Codable, Hashable {
     var title: String
     var summary: String
     var type: FightType
-    let hostName: String
+    /// Display only, and **not** a snapshot — unlike `EarnedBadge.name`, which freezes
+    /// because the catalogue entry behind it can vanish. `hostId` is what actually owns
+    /// this Fight; the name is what people read, so an organiser renaming itself should
+    /// see the change on events it already published rather than a name it no longer
+    /// goes by. `AppState.setOrganisationName` rewrites and re-pushes them.
+    var hostName: String
     let hostId: String
     var locationName: String
     var address: String

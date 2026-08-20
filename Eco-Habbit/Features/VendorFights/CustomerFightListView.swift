@@ -4,13 +4,16 @@
 //
 //  Created by Tio Dwi Ardhana on 18/08/26.
 //
-//  The Fights tab, for everyone. The header heart is a plain filter: on, the
-//  same list shows only loved events; off, it shows everything.
+//  The Fights tab. One screen, two audiences.
 //
-//  An organisation gets **more of this screen, not a different one**: a segmented
-//  control adding "My Fights", and a plus button to draft one. Splitting hosts onto
-//  a separate view meant two screens to keep in step, and a host still browses
-//  other people's events like anybody else.
+//  A person browses: the header heart filters to loved events, and a card offers
+//  check-in. An **organisation only ever sees its own events** — create, edit,
+//  publish, show the code. No browse list and no heart, because an organiser is here
+//  to run events, not to attend them.
+//
+//  Still one view rather than two. The difference is which list it draws, and a
+//  second file would be a second thing to keep in step — the last split left a
+//  vendor screen that nothing rendered for days.
 //
 
 import Foundation
@@ -19,9 +22,6 @@ import SwiftUI
 struct CustomerFightListView: View {
     @EnvironmentObject private var app: AppState
 
-    private enum Scope: Hashable { case all, mine }
-
-    @State private var scope: Scope = .all
     @State private var showingLovedOnly = false
     @State private var showingCreate = false
     @State private var checkingInTo: Fight?
@@ -34,21 +34,14 @@ struct CustomerFightListView: View {
         showingLovedOnly ? app.favouriteFights : app.browsableFights
     }
 
-    private var isHosting: Bool { app.isOrganization && scope == .mine }
+    /// An organisation gets the hosting list and nothing else.
+    private var isHosting: Bool { app.isOrganization }
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
                     header
-
-                    if app.isOrganization {
-                        EHSegmented(
-                            options: [(Scope.all, "All Fights"), (Scope.mine, "My Fights")],
-                            selection: $scope
-                        )
-                        .padding(.horizontal, Tokens.Spacing.xxl)
-                    }
 
                     if isHosting { hosted } else { browsing }
                 }
@@ -77,8 +70,6 @@ struct CustomerFightListView: View {
                 Spacer()
 
                 if isHosting {
-                    // Only where a new event would appear. On the browse list a plus
-                    // would create something the user is not looking at.
                     NavigateButton(background: Tokens.Semantic.buttonTintDefault,
                                    buttonAction: .plus) { showingCreate = true }
                 } else {

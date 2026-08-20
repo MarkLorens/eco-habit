@@ -3,25 +3,47 @@ import SwiftUI
 struct MainTabView: View {
     @EnvironmentObject private var app: AppState
 
+    /// An organisation runs events. It has no habits to log, so Home, Practices and the
+    /// camera are not just empty for it — they are not its app.
+    private var tabs: [AppTab] {
+        app.isOrganization ? [.ourFights, .profile] : AppTab.allCases
+    }
+
+    /// What to actually draw. A stored `selectedTab` of `.home` — the default, or left
+    /// over from before the account was verified — would otherwise render a dashboard
+    /// with no tab to leave by.
+    private var activeTab: AppTab {
+        tabs.contains(app.selectedTab) ? app.selectedTab : .ourFights
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             Theme.C.bg.ignoresSafeArea()
 
             Group {
-                switch app.selectedTab {
+                switch activeTab {
                 case .home: HomeView()
                 case .actions: ActivityListView()
-                // One Fights screen for everyone. An organisation gets a "My Fights"
-                // segment and a plus button inside it, rather than a separate view —
-                // a host still browses other people's events like anybody else, and
-                // two screens would be two things to keep in step.
+                // One Fights screen for both audiences: a person browses and checks in,
+                // an organisation sees only its own events. Two files would be two
+                // things to keep in step.
                 case .ourFights: CustomerFightListView()
-                case .profile: ProfileView()
+                // An organiser has no streak, vitality, badges or Earth — showing
+                // those as permanent zeroes reads as a broken account rather than a
+                // different kind of one.
+                case .profile:
+                    if app.isOrganization {
+                        OrganisationProfileView()
+                    } else {
+                        ProfileView()
+                    }
                 }
             }
-            if app.selectedTab != .actions || app.actionsPath.isEmpty {
+            if activeTab != .actions || app.actionsPath.isEmpty {
                 AppTabBar(
                     selection: $app.selectedTab,
+                    tabs: tabs,
+                    showsCapture: !app.isOrganization,
                     onCapture: { app.isCameraPresented = true }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -29,6 +51,11 @@ struct MainTabView: View {
         }
         .animation(.easeInOut(duration: 0.25), value: app.actionsPath.isEmpty)
         .ignoresSafeArea(.keyboard)
+        // Writes the correction back, so the selected pill matches what is on screen.
+        // `activeTab` alone would leave the bar highlighting a tab it no longer draws.
+        .onChange(of: app.isOrganization, initial: true) { _, _ in
+            if !tabs.contains(app.selectedTab) { app.selectedTab = activeTab }
+        }
         .fullScreenCover(isPresented: $app.isCameraPresented) {
             VisualSearchView()
         }
