@@ -50,6 +50,14 @@ struct AppTabBar: View {
     /// The camera logs habits, so it goes with them.
     var showsCapture = true
 
+    /// Whether the bar spans the screen or hugs its contents.
+    ///
+    /// Four tabs plus the camera fill the width and want equal columns. Two tabs do not
+    /// — stretched across a phone they sit marooned at the far edges with a lake of
+    /// black between them. The hi-fi shows a small pill in the middle, which is what
+    /// hugging gives, since `MainTabView` centres the bar anyway.
+    var fillsWidth = true
+
     var onCapture: () -> Void = {}
     @Namespace private var pill
 
@@ -73,6 +81,9 @@ struct AppTabBar: View {
                 .shadow(color: Color.black.opacity(0.16), radius: 16, x: 0, y: 8)
         }
         .padding(.horizontal, Tokens.Spacing.md)
+        // Hugging is the default for an `HStack`; the width only comes from the tab
+        // buttons expanding, so this stops them.
+        .fixedSize(horizontal: !fillsWidth, vertical: false)
     }
     
     // MARK: - Building the tabs
@@ -95,7 +106,10 @@ struct AppTabBar: View {
                 ? Tokens.Palette.white
                 : Tokens.Palette.white.opacity(0.55)
             )
-            .frame(maxWidth: .infinity)
+            // Equal columns when the bar fills the screen; intrinsic width when it is a
+            // pill, so the two items sit together rather than at opposite edges.
+            .frame(maxWidth: fillsWidth ? .infinity : nil)
+            .padding(.horizontal, fillsWidth ? 0 : Tokens.Spacing.lg)
             .padding(.vertical, Tokens.Spacing.sm)
             .background {
                 if isSelected {

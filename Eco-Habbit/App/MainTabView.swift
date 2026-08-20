@@ -44,6 +44,9 @@ struct MainTabView: View {
                     selection: $app.selectedTab,
                     tabs: tabs,
                     showsCapture: !app.isOrganization,
+                    // Two tabs stretched across a phone leave a lake of black between
+                    // them; the hi-fi shows a small centred pill.
+                    fillsWidth: !app.isOrganization,
                     onCapture: { app.isCameraPresented = true }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))

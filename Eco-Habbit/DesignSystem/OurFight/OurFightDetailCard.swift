@@ -25,6 +25,11 @@ struct OurFightDetailCard: View {
     private let isFavourite: Bool
     private let onToggleFavourite: (() -> Void)?
 
+    /// When set, the pencil **edits** and the card collapses on a tap elsewhere, which
+    /// is what the hi-fi shows for an organiser. Left `nil`, the pencil collapses — the
+    /// original behaviour, so nothing that already calls this changes.
+    private let onEdit: (() -> Void)?
+
     init(title: String,
          caption: String,
          category: Color,
@@ -36,9 +41,11 @@ struct OurFightDetailCard: View {
          isFavourite: Bool = false,
          onToggleFavourite: (() -> Void)? = nil,
          onAction: @escaping () -> Void = {},
+         onEdit: (() -> Void)? = nil,
          onCollapse: @escaping () -> Void,
     )
     {
+        self.onEdit = onEdit
 
         self.title = title
         self.caption = caption
@@ -107,7 +114,7 @@ struct OurFightDetailCard: View {
                         }
 
                         NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .edit) {
-                            onCollapse()
+                            (onEdit ?? onCollapse)()
                         }
                         .padding(.trailing, 0)
 
@@ -121,7 +128,7 @@ struct OurFightDetailCard: View {
                         Text(caption)
                             .textStyle(Tokens.Typography.footnote)
                             .foregroundStyle(Tokens.Semantic.ourFightCaption)
-                            .frame(width: 230)
+                            .frame(maxWidth: 230, alignment: .leading)
                     }
                     
                     // `nil` hides it — outside a Fight's check-in window there is
@@ -149,6 +156,10 @@ struct OurFightDetailCard: View {
         .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.basicCards, style: .continuous))
         .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
         .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
+        // Only when the pencil has been given a job of its own — otherwise the pencil
+        // is still the way back and a tap-to-collapse would be a second, invisible one.
+        .contentShape(Rectangle())
+        .onTapGesture { if onEdit != nil { onCollapse() } }
     }
 }
 

@@ -353,10 +353,10 @@ struct VisualSearchView: View {
         }
 
         award = Reward(
-            icon: Image(systemName: fight.type.symbol),
+            icon: Image(fight.category.icon),
             title: fight.title,
             points: points,
-            tint: fight.type.tint,
+            tint: fight.category.tint,
             badgeName: nil,
             closesCamera: true
         )

@@ -795,11 +795,11 @@ final class AppState: ObservableObject {
         FightRepository.isSignedUp(fight.id, in: data) ? 1 : 0
     }
 
-    func newDraft(type: FightType = .beachCleanup) -> Fight {
+    func newDraft(category: HabitCategory = .actions) -> Fight {
         let start = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
         return Fight(
             id: "host-\(UUID().uuidString.prefix(8))",
-            title: "", summary: "", type: type,
+            title: "", summary: "", category: category,
             // The real uid, not a placeholder: the rules require
             // `hostId == request.auth.uid`, so "local-host" would be refused on publish.
             hostName: orgName, hostId: userId ?? "local-host",
@@ -839,6 +839,36 @@ final class AppState: ObservableObject {
         toast = Toast(kind: .success, message: "Saved — everyone sees the change.")
     }
 
+    /// Save a Fight with the status its switch is showing, and sync accordingly.
+    ///
+    /// One write rather than draft-then-publish. Awaited, because if the server refuses
+    /// — an unverified organisation is the likely reason — the host has to be told
+    /// rather than left believing an invisible event is live. On refusal it stays a
+    /// draft locally, so what is on screen matches what other people can see.
+    func saveFight(_ fight: Fight, enabled: Bool) async {
+        var next = fight
+        next.status = enabled ? .published : .draft
+        mutate { FightRepository.save(next, in: &$0) }
+
+        guard let sync else {
+            toast = Toast(kind: .success, message: enabled ? "Saved and enabled." : "Saved.")
+            return
+        }
+
+        do {
+            try await sync.putFight(next)
+            await refreshFights()
+            toast = Toast(kind: .success,
+                          message: enabled ? "Enabled — everyone can see it now." : "Saved. Only you can see it.")
+        } catch {
+            if enabled {
+                mutate { FightRepository.save({ var f = next; f.status = .draft; return f }(), in: &$0) }
+                toast = Toast(kind: .warning,
+                              message: "Couldn't enable it. This account isn't verified as an organization yet.")
+            }
+        }
+    }
+
     /// Publish, then push. **Awaited, unlike every other sync in the app.**
     ///
     /// Publishing is the one action whose whole purpose is that somebody else sees it,
@@ -870,7 +900,24 @@ final class AppState: ObservableObject {
         } catch {
             mutate { _ = FightRepository.unpublish(fight.id, in: &$0) }
             toast = Toast(kind: .warning,
-                          message: "Couldn't publish. This account isn't verified as an organisation yet.")
+                          message: "Couldn't publish. This account isn't verified as an organization yet.")
+        }
+    }
+
+    /// Take a live event back to a draft.
+    ///
+    /// What the hi-fi's Status switch does when turned off. Distinct from cancelling:
+    /// cancelled is a promise broken in public and stays visible to say so, whereas this
+    /// is "not ready yet" — the security rules hide a draft from everyone but its host,
+    /// so the withdrawal is real rather than cosmetic.
+    func withdrawFight(_ fight: Fight) {
+        var ok = false
+        mutate { ok = FightRepository.unpublish(fight.id, in: &$0) }
+        guard ok else { return }
+        toast = Toast(kind: .info, message: "Hidden. Only you can see it now.")
+
+        if let sync, let withdrawn = hostedFights.first(where: { $0.id == fight.id }) {
+            Task { try? await sync.putFight(withdrawn); await refreshFights() }
         }
     }
 
@@ -935,7 +982,7 @@ final class AppState: ObservableObject {
             renamed.hostName = trimmed
             saveDraft(renamed)
         }
-        toast = Toast(kind: .success, message: "Organisation renamed.")
+        toast = Toast(kind: .success, message: "Organization renamed.")
     }
 
     func setUserName(_ name: String) {

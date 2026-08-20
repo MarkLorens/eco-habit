@@ -21,24 +21,30 @@ struct FightCodeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: Theme.S.x4) {
-                    header
-                    qrCard
-                    typedCode
-                    guidance
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, Theme.S.x4)
-                .padding(.vertical, Theme.S.x4)
+            // Just the code. The title, location, typed fallback and window guidance
+            // that used to sit around it were all things the organiser already knows —
+            // and this screen is held up across a table, where anything but the code is
+            // something for a camera to miss.
+            VStack(spacing: Tokens.Spacing.lg) {
+                Spacer()
+                qrCard
+                // Which event this code belongs to. An organiser running two on one
+                // day is holding up two identical squares otherwise.
+                Text(fight.title)
+                    .textStyle(Tokens.Typography.title2)
+                    .foregroundStyle(Tokens.Semantic.text)
+                    .multilineTextAlignment(.center)
+                Spacer()
             }
-            .background(Theme.C.bg.ignoresSafeArea())
-            .navigationTitle("Check-in code")
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, Tokens.Spacing.lg)
+            .background(Tokens.Palette.white.ignoresSafeArea())
+            .navigationTitle("QR Code")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
-                        .font(Theme.F.body(15, weight: .semibold))
+                        .textStyle(Tokens.Typography.body)
                 }
             }
         }
@@ -53,17 +59,6 @@ struct FightCodeView: View {
 
     // MARK: - Sections
 
-    private var header: some View {
-        VStack(spacing: Theme.S.x1) {
-            Text(fight.title)
-                .font(Theme.F.heading(20))
-                .foregroundStyle(Theme.C.text)
-                .multilineTextAlignment(.center)
-            Text(fight.locationName)
-                .font(Theme.F.body(13.5))
-                .foregroundStyle(Theme.C.neutral600)
-        }
-    }
 
     private var qrCard: some View {
         Group {
@@ -78,57 +73,20 @@ struct FightCodeView: View {
                     .scaledToFit()
             } else {
                 Text("Could not render code")
-                    .font(Theme.F.body(13))
-                    .foregroundStyle(Theme.C.neutral600)
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
             }
         }
         .frame(width: 240, height: 240)
-        .padding(Theme.S.x4)
-        .background(RoundedRectangle(cornerRadius: Theme.R.lg).fill(.white))
+        .padding(Tokens.Spacing.lg)
+        .background(RoundedRectangle(cornerRadius: 20).fill(.white))
         .overlay(
-            RoundedRectangle(cornerRadius: Theme.R.lg)
-                .stroke(Theme.C.divider, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Tokens.Semantic.statIcon.opacity(0.3), lineWidth: 1)
         )
     }
 
-    /// The same code in text, because half the room will type it rather than
-    /// queue to point a camera at somebody's phone.
-    private var typedCode: some View {
-        VStack(spacing: Theme.S.x1) {
-            Text("OR TYPE")
-                .font(Theme.F.body(11.5, weight: .semibold))
-                .foregroundStyle(Theme.C.neutral600)
 
-            Text(fight.checkInCode)
-                .font(.system(size: 38, weight: .bold, design: .monospaced))
-                .tracking(6)
-                .foregroundStyle(Theme.C.text)
-                .textSelection(.enabled)
-                .padding(.horizontal, Theme.S.x4)
-                .padding(.vertical, Theme.S.x2)
-                .background(RoundedRectangle(cornerRadius: Theme.R.md).fill(Theme.C.surface))
-        }
-    }
-
-    private var guidance: some View {
-        VStack(spacing: 6) {
-            if fight.isCheckInOpen() {
-                Label("Check-in is open", systemImage: "checkmark.circle.fill")
-                    .font(Theme.F.body(14, weight: .bold))
-                    .foregroundStyle(Theme.C.accent2_700)
-            } else {
-                Label("Opens an hour before the start", systemImage: "clock")
-                    .font(Theme.F.body(14, weight: .semibold))
-                    .foregroundStyle(Theme.C.neutral600)
-            }
-
-            Text("Show this to everyone who turns up. They scan or type it in their own app.")
-                .font(Theme.F.body(12.5))
-                .foregroundStyle(Theme.C.neutral600)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
 
     // MARK: - Rendering
 

@@ -25,6 +25,9 @@ struct CustomerFightListView: View {
     @State private var showingLovedOnly = false
     @State private var showingCreate = false
     @State private var checkingInTo: Fight?
+    @State private var editing: Fight?
+    @State private var showingCode: Fight?
+    @State private var enabling: Fight?
     @State private var path = NavigationPath()
 
     /// Distinct from pushing a `Fight`, which would mean the attendee-facing screen.
@@ -54,7 +57,26 @@ struct CustomerFightListView: View {
             .refreshable { await app.refreshFights() }
             .sheet(item: $checkingInTo) { CheckInCodeSheet(fight: $0) }
             .sheet(isPresented: $showingCreate) { EventFormView(app: app) }
+            .sheet(item: $editing) { EventFormView(editing: $0, app: app) }
+            .sheet(item: $showingCode) { FightCodeView(fight: $0) }
             .navigationDestination(for: HostRoute.self) { ManageEventView(fight: $0.fight) }
+            // Asks whether to go and change it, rather than offering to enable here.
+            // "Enable" on this alert would have published the event from a screen that
+            // never showed its contents — and a draft is usually a draft because
+            // something in it is still blank.
+            .alert("Event is disabled", isPresented: Binding(
+                get: { enabling != nil },
+                set: { if !$0 { enabling = nil } }
+            )) {
+                Button("Cancel", role: .cancel) { enabling = nil }
+                Button("Edit") {
+                    editing = enabling
+                    enabling = nil
+                }
+                .keyboardShortcut(.defaultAction)
+            } message: {
+                Text("Nobody else can see it yet. Edit to change the status?")
+            }
         }
     }
 
@@ -101,12 +123,13 @@ struct CustomerFightListView: View {
                 CustomerFightWrapper(
                     title: fight.title,
                     caption: fight.summary,
-                    category: fight.type.tint,
+                    category: fight.category.accent,
                     date: fight.cardDate,
                     location: fight.locationName,
                     picture: fight.cardPicture,
                     isLoved: app.isFavourite(fight),
                     onLove: { app.toggleFavourite(fight) },
+                    icon: fight.category.icon,
                     host: fight.hostName,
                     // Hidden once they have checked in — there is nothing left to do,
                     // and offering it again invites an attempt the server would refuse.
@@ -136,35 +159,27 @@ struct CustomerFightListView: View {
 
     /// The events this account hosts.
     ///
-    /// `OurFightListCard` rather than the expandable wrapper: a host needs publish,
-    /// edit, cancel, the check-in code and the roster, and none of that fits on a card.
-    /// Draft / Live / Cancelled goes on the date line — the first thing a host reads,
-    /// and the only slot the card has.
+    /// A Fight that is not enabled is **dimmed rather than hidden or labelled**, as in
+    /// the hi-fi: the host still needs to reach it to finish and switch it on, and
+    /// greying it says "nobody else can see this" without spending a row on a tag the
+    /// card has no slot for.
     @ViewBuilder
     private var hosted: some View {
         if app.hostedFights.isEmpty {
-            note("You haven't created a Fight yet. Use + to draft one — it stays private until you publish.")
+            note("You haven't created a Fight yet. Use + to draft one — it stays private until you enable it.")
         } else {
             ForEach(app.hostedFights) { fight in
-                OurFightListCard(
-                    title: fight.title.isEmpty ? "Untitled Fight" : fight.title,
-                    caption: fight.summary,
-                    category: fight.type.tint,
-                    date: "\(statusWord(fight)) • \(fight.cardDate)",
-                    location: fight.locationName,
-                    picture: fight.cardPicture,
-                    onExpand: { path.append(HostRoute(fight: fight)) }
+                OurFightExpandable(
+                    fight: fight,
+                    onEdit: { editing = fight },
+                    onShowCode: { showingCode = fight },
+                    // A disabled Fight does not expand. Tapping it asks the one
+                    // question worth asking about a draft — do you want it live —
+                    // rather than showing a card whose only button is unusable.
+                    onDisabledTap: { enabling = fight }
                 )
             }
             .padding(.horizontal, Tokens.Spacing.xl)
-        }
-    }
-
-    private func statusWord(_ fight: Fight) -> String {
-        switch fight.status {
-        case .draft: "Draft"
-        case .published: "Live"
-        case .cancelled: "Cancelled"
         }
     }
 
@@ -174,6 +189,84 @@ struct CustomerFightListView: View {
             .foregroundStyle(Tokens.Semantic.footnote)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, Tokens.Spacing.xxl)
+    }
+}
+
+// MARK: - The host's card
+
+/// Collapsed row, expanding in place to the detail card — the organiser's half of the
+/// hi-fi.
+///
+/// Its own view rather than a branch inside the list so the expanded/collapsed flag
+/// belongs to one row. Held here rather than in `ExpandableFightWrapper`, which keeps
+/// its inputs in `@State` and so shows the first row's data for every row once a list
+/// re-renders.
+private struct OurFightExpandable: View {
+    let fight: Fight
+    let onEdit: () -> Void
+    let onShowCode: () -> Void
+    let onDisabledTap: () -> Void
+
+    @State private var isExpanded = false
+
+    private var isLive: Bool { fight.status == .published }
+
+    var body: some View {
+        card
+            // Dimmed **in its own colour**, not greyed. Opacity scales a hue toward the
+            // white page rather than desaturating it, so a disabled Fight still reads
+            // as its category — which is the only thing distinguishing one washed-out
+            // row from another.
+            .opacity(isLive ? 1 : 0.45)
+            .overlay {
+                if !isLive {
+                    RoundedRectangle(cornerRadius: Tokens.Radius.basicCards, style: .continuous)
+                        .fill(fight.category.accent.opacity(0.12))
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var card: some View {
+        if isExpanded {
+            OurFightDetailCard(
+                title: fight.title.isEmpty ? "Untitled Fight" : fight.title,
+                caption: fight.summary,
+                category: fight.category.accent,
+                date: fight.cardDate,
+                location: fight.locationName,
+                picture: fight.cardPicture,
+                host: fight.hostName,
+                // The code is the point of the expanded card for a host. Before the
+                // event it is still worth seeing — it is theirs, and checking it looks
+                // right is not something to be locked out of.
+                actionTitle: "See QR Code",
+                onAction: onShowCode,
+                onEdit: onEdit,
+                onCollapse: { withAnimation(.snappy(duration: 0.2)) { isExpanded = false } }
+            )
+        } else {
+            OurFightListCard(
+                title: fight.title.isEmpty ? "Untitled Fight" : fight.title,
+                caption: fight.summary,
+                category: fight.category.accent,
+                date: fight.cardDate,
+                location: fight.locationName,
+                picture: fight.cardPicture,
+                icon: fight.category.icon,
+                onExpand: expand
+            )
+            // The whole row, not just the chevron. A card that looks tappable and only
+            // responds on one 30pt arrow reads as broken.
+            .contentShape(Rectangle())
+            .onTapGesture(perform: expand)
+        }
+    }
+
+    private func expand() {
+        guard isLive else { onDisabledTap(); return }
+        withAnimation(.snappy(duration: 0.2)) { isExpanded = true }
     }
 }
 
@@ -195,28 +288,40 @@ private struct CheckInCodeSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: Theme.S.x4) {
+            VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
                 Text("Ask the organiser for the code, or scan the QR they're showing.")
-                    .font(Theme.F.body(14))
-                    .foregroundStyle(Theme.C.neutral700)
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
 
                 TextField("Code", text: $code)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
-                    .font(Theme.F.heading(22))
+                    .textStyle(Tokens.Typography.title)
                     .focused($focused)
                     .padding(.vertical, 14)
                     .padding(.horizontal, 16)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Theme.C.bg)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.C.divider))
+                            .fill(Tokens.Semantic.buttonTintDefault)
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Tokens.Semantic.statIcon.opacity(0.3)))
                     )
                     .onSubmit(submit)
 
-                Button("Check In", action: submit)
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(code.trimmingCharacters(in: .whitespaces).isEmpty)
+                // The shared button styles are `Theme` — a terracotta capsule from the
+                // older palette. Drawn here to match the dark action button the cards
+                // and the Fight form use.
+                Button(action: submit) {
+                    Text("Check In")
+                        .textStyle(Tokens.Typography.body)
+                        .foregroundStyle(Tokens.Semantic.ourFightQR)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Tokens.Semantic.text)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .opacity(code.trimmingCharacters(in: .whitespaces).isEmpty ? 0.45 : 1)
+                .disabled(code.trimmingCharacters(in: .whitespaces).isEmpty)
 
                 // Both halves of the flow in one sheet. Offering "scan or type" as a
                 // dialog *before* this would mean presenting a sheet from a dismissing
@@ -225,12 +330,16 @@ private struct CheckInCodeSheet: View {
                     dismiss()
                     app.isCameraPresented = true
                 }
-                .buttonStyle(GhostButtonStyle())
+                .buttonStyle(.plain)
+                .textStyle(Tokens.Typography.body)
+                .foregroundStyle(Tokens.Semantic.footnote)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
 
                 Spacer()
             }
-            .padding(Theme.S.x4)
-            .background(Theme.C.bg.ignoresSafeArea())
+            .padding(Tokens.Spacing.lg)
+            .background(Tokens.Palette.white.ignoresSafeArea())
             .navigationTitle(fight.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

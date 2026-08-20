@@ -1,106 +1,188 @@
 import SwiftUI
 
-/// PRD §6.5.1 — create or edit a Fight.
+/// Add / Edit Our Fights — the organiser's form, built to the hi-fi.
 ///
-/// Saves as a **draft**. Publishing is a separate, explicit act from Manage, so
-/// a half-written event never reaches the public list.
+/// One screen for both, because the fields are identical and only the title differs.
+/// Rows are label-left, value-right; **Done** commits and closes.
+///
+/// **Status is a switch here, not a workflow.** Off is a draft — invisible to everyone
+/// but its host, which the security rules enforce, not just the UI. Turning it on asks
+/// first, because it is the moment the event becomes public. Off again returns it to a
+/// draft rather than cancelling: cancelling is a different promise, and the hi-fi has no
+/// control for it.
 struct EventFormView: View {
     @EnvironmentObject private var app: AppState
     @Environment(\.dismiss) private var dismiss
 
     @State private var draft: Fight
+    @State private var isEnabled: Bool
+    @State private var confirmingEnable = false
     private let isNew: Bool
 
     init(editing fight: Fight? = nil, app: AppState) {
-        _draft = State(initialValue: fight ?? app.newDraft())
+        let seed = fight ?? app.newDraft()
+        _draft = State(initialValue: seed)
+        _isEnabled = State(initialValue: seed.status == .published)
         isNew = fight == nil
     }
 
-    /// Free text, one note per line — a repeating field with add/remove buttons
-    /// is a lot of UI for something a host types once.
-    @State private var notesText = ""
-
     private var canSave: Bool {
         !draft.title.trimmingCharacters(in: .whitespaces).isEmpty
-            && !draft.locationName.trimmingCharacters(in: .whitespaces).isEmpty
-            && draft.endsAt > draft.startsAt
     }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("What") {
-                    TextField("Title", text: $draft.title)
-                    Picker("Type", selection: $draft.type) {
-                        ForEach(FightType.allCases) { type in
-                            Label(type.name, systemImage: type.symbol).tag(type)
-                        }
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
+                        heading
+                        card
                     }
-                    TextField("Short description", text: $draft.summary, axis: .vertical)
-                        .lineLimit(2...5)
+                    .padding(.horizontal, Tokens.Spacing.xl)
+                    .padding(.top, Tokens.Spacing.md)
                 }
 
-                Section("When") {
-                    DatePicker("Starts", selection: $draft.startsAt)
-                    DatePicker("Ends", selection: $draft.endsAt, in: draft.startsAt...)
-                    if draft.endsAt <= draft.startsAt {
-                        Label("The end has to come after the start.", systemImage: "exclamationmark.triangle")
-                            .font(Theme.F.body(12.5))
-                            .foregroundStyle(Theme.C.accent600)
-                    }
+                // Not `PrimaryButtonStyle` — that is a green capsule from the older
+                // `Theme` system. The hi-fi's Done is the same dark rounded rectangle
+                // as "See QR Code", which is what the rest of these screens use.
+                Button { save() } label: {
+                    Text("Done")
+                        .textStyle(Tokens.Typography.body)
+                        .foregroundStyle(Tokens.Semantic.ourFightQR)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(Tokens.Semantic.text)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-
-                Section {
-                    TextField("Location name", text: $draft.locationName)
-                    TextField("Address", text: $draft.address, axis: .vertical)
-                        .lineLimit(1...3)
-                } header: {
-                    Text("Where")
-                } footer: {
-                    // PRD §6.5.1 — free text, no autocomplete. Address lookup is a
-                    // Places API dependency and a cost centre; the map pin that
-                    // would fill in lat/lng is a v2 concern (§4.7).
-                    Text("Typed by hand. There is no address lookup in v1.")
-                }
-
-                Section {
-                    TextField("One per line", text: $notesText, axis: .vertical)
-                        .lineLimit(3...8)
-                } header: {
-                    Text("What to bring")
-                } footer: {
-                    Text("Shown as a list on the Fight detail screen.")
-                }
-
-                if isNew {
-                    Section {
-                        Text("Saves as a draft. You publish it from Manage when it's ready.")
-                            .font(Theme.F.body(12.5))
-                            .foregroundStyle(Theme.C.neutral600)
-                    }
-                }
+                .buttonStyle(.plain)
+                .opacity(canSave ? 1 : 0.45)
+                .disabled(!canSave)
+                .padding(.horizontal, Tokens.Spacing.xl)
+                .padding(.bottom, Tokens.Spacing.lg)
             }
-            .navigationTitle(isNew ? "New Fight" : "Edit Fight")
+            .background(Tokens.Palette.white.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }.disabled(!canSave)
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Tokens.Semantic.text)
+                    }
                 }
             }
-            .onAppear { notesText = draft.preparationNotes.joined(separator: "\n") }
+            .alert("Enable Event ?", isPresented: $confirmingEnable) {
+                Button("Cancel", role: .cancel) { isEnabled = false }
+                Button("Enable") { isEnabled = true }
+            } message: {
+                Text("Event will be shown to all users after clicking enable")
+            }
         }
     }
 
-    private func save() {
-        draft.preparationNotes = notesText
-            .split(separator: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.xs) {
+            Text(isNew ? "Add Our Fights" : "Edit Our Fights")
+                .textStyle(Tokens.Typography.hero)
+                .foregroundStyle(Tokens.Semantic.text)
+            Text("Take action together for a greener tomorrow")
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Semantic.footnote)
+        }
+    }
 
-        app.saveDraft(draft)
-        dismiss()
+    // MARK: - The form
+
+    private var card: some View {
+        VStack(spacing: 0) {
+            row("Title") {
+                TextField("Our Fights", text: $draft.title)
+                    .multilineTextAlignment(.trailing)
+            }
+            row("Caption") {
+                TextField("Description", text: $draft.summary, axis: .vertical)
+                    .lineLimit(1...3)
+                    .multilineTextAlignment(.trailing)
+            }
+            row("Category") {
+                Picker("", selection: $draft.category) {
+                    ForEach(HabitCategory.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .tint(Tokens.Semantic.text)
+            }
+            row("Date") {
+                // The hi-fi shows two chips, which is exactly what a compact DatePicker
+                // renders. `endsAt` has no field: it follows the start, as `newDraft`
+                // already assumes, so a host never has to reason about it.
+                DatePicker("", selection: $draft.startsAt)
+                    .labelsHidden()
+                    .onChange(of: draft.startsAt) { _, start in
+                        draft.endsAt = start.addingTimeInterval(3 * 3600)
+                    }
+            }
+            row("Location") {
+                TextField("Description", text: $draft.locationName)
+                    .multilineTextAlignment(.trailing)
+            }
+            row("Picture") {
+                // Deferred: a Fight is shared, so a photo from this phone's library
+                // would be a blank card on everybody else's. Needs Cloud Storage.
+                Text("Add Image…")
+                    .foregroundStyle(Tokens.Semantic.statIcon)
+            }
+            row("Status", showsDivider: false) {
+                Toggle("", isOn: Binding(
+                    get: { isEnabled },
+                    // Going public asks first; going back to a draft does not need to.
+                    set: { on in on ? confirmingEnable = true : (isEnabled = false) }
+                ))
+                .labelsHidden()
+                .tint(.green)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards, style: .continuous)
+                .fill(Tokens.Semantic.buttonTintDefault)
+        )
+    }
+
+    private func row<Value: View>(_ title: String,
+                                  showsDivider: Bool = true,
+                                  @ViewBuilder value: () -> Value) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title)
+                    .textStyle(Tokens.Typography.body)
+                    .foregroundStyle(Tokens.Semantic.text)
+                Spacer(minLength: Tokens.Spacing.md)
+                value()
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            if showsDivider {
+                Rectangle()
+                    .fill(Tokens.Semantic.statIcon.opacity(0.3))
+                    .frame(height: 1)
+                    .padding(.leading, 16)
+            }
+        }
+    }
+
+    // MARK: - Saving
+
+    /// One save, carrying the status the switch is showing.
+    ///
+    /// It used to write a draft and then publish it, so an event the host had marked
+    /// active existed as a draft for a moment first — and the toast said "Saved as a
+    /// draft" on the way past, which was simply wrong.
+    private func save() {
+        Task {
+            await app.saveFight(draft, enabled: isEnabled)
+            dismiss()
+        }
     }
 }

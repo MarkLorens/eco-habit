@@ -4,11 +4,14 @@ import SwiftUI
 ///
 /// A separate screen from `ProfileView` because there is almost nothing in common: an
 /// organiser has no streak, no vitality, no badges and no Earth, and showing those as
-/// permanent zeroes reads as a broken account rather than a different kind of one.
-/// What an organiser has instead is events and the people who turned up to them.
+/// permanent zeroes reads as a broken account rather than a different kind of one. What
+/// an organiser has instead is events and the people who turned up to them.
 ///
-/// Deliberately small. The last split in this app left a screen nothing rendered for
-/// days, so the less there is here to drift from the rest, the better.
+/// **Drawn in `Tokens`, not `Theme`.** Two design systems live in this app — `Theme` is
+/// the older one — and mixing them inside a screen is what made this look like it came
+/// from a different app than Our Fights, which is the only other place an organiser
+/// ever is. Same hero title, same footnote subtitle, same white ground, same rounded
+/// cards.
 struct OrganisationProfileView: View {
     @EnvironmentObject private var app: AppState
 
@@ -17,38 +20,27 @@ struct OrganisationProfileView: View {
     @State private var draftName = ""
     @State private var confirmingDelete = false
 
-    /// `nil` until counted — an unknown total and a genuine zero are different things,
-    /// and this needs the network to tell them apart.
-    @State private var checkIns: Int?
-
-    private var live: Int { app.hostedFights.filter { $0.status == .published }.count }
-    private var drafts: Int { app.hostedFights.filter { $0.status == .draft }.count }
-
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: Tokens.Spacing.xl) {
+                    header
                     identity
-                    stats
                     settings
                 }
                 .padding(.horizontal, Tokens.Spacing.xl)
-                .padding(.top, Tokens.Spacing.xl)
                 .tabContentInsets()
             }
             .background(Tokens.Palette.white.ignoresSafeArea())
             .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
-                case .privacy: PrivacySettingsView()
                 #if DEBUG
                 case .debug: TimeTravelMenu()
                 #endif
                 default: EmptyView()
                 }
             }
-            .task(id: app.hostedFights.count) { await countCheckIns() }
-            .refreshable { await countCheckIns() }
-            .alert("Organisation name", isPresented: $editingName) {
+            .alert("Organization name", isPresented: $editingName) {
                 TextField("Name", text: $draftName)
                     .textInputAutocapitalization(.words)
                 Button("Save") { app.setOrganisationName(draftName) }
@@ -60,12 +52,23 @@ struct OrganisationProfileView: View {
                 Button("Delete", role: .destructive) { Task { await app.deleteAccount() } }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Your organisation and its data are permanently deleted. Published Fights stay visible to anyone who saved them.")
+                Text("Your organization and its data are permanently deleted. Published Fights stay visible to anyone who saved them.")
             }
         }
     }
 
-    // MARK: - Identity
+    // MARK: - Header, matching Our Fights
+
+    /// Same inset as Our Fights (`xxl`) rather than the page's `xl`, so the two hero
+    /// titles line up when you switch tabs instead of shifting a few points sideways.
+    private var header: some View {
+        Text("Profile")
+            .textStyle(Tokens.Typography.hero)
+            .foregroundStyle(Tokens.Semantic.text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Tokens.Spacing.xxl - Tokens.Spacing.xl)
+            .padding(.top, Tokens.Spacing.md)
+    }
 
     private var identity: some View {
         VStack(alignment: .center, spacing: Tokens.Spacing.md) {
@@ -77,97 +80,89 @@ struct OrganisationProfileView: View {
                 .textStyle(Tokens.Typography.title2)
                 .foregroundStyle(Tokens.Semantic.text)
 
-            Text("Organisation")
+            Text("Organization")
                 .textStyle(Tokens.Typography.footnote)
                 .foregroundStyle(Tokens.Semantic.footnote)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    // MARK: - What an organiser actually has
-
-    private var stats: some View {
-        HStack(spacing: Tokens.Spacing.sm) {
-            tile("\(live)", "Live")
-            tile("\(drafts)", "Drafts")
-            tile(checkIns.map(String.init) ?? "—", "Check-ins")
-        }
-    }
-
-    private func tile(_ value: String, _ label: String) -> some View {
-        EHCard {
-            VStack(spacing: 2) {
-                Text(value)
-                    .font(Theme.F.heading(26))
-                    .foregroundStyle(Theme.C.text)
-                Text(label)
-                    .font(Theme.F.body(12, weight: .semibold))
-                    .foregroundStyle(Theme.C.neutral600)
-            }
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-    /// One read per hosted Fight. Fine for the handful an organiser runs, and the only
-    /// way to get it — attendance lives in a shared collection, not on the event.
-    private func countCheckIns() async {
-        var total = 0
-        for fight in app.hostedFights {
-            total += await app.attendees(for: fight).count
-        }
-        checkIns = total
+        .padding(.vertical, Tokens.Spacing.lg)
+        .background(
+            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards, style: .continuous)
+                .fill(Tokens.Semantic.profileBg)
+        )
     }
 
     // MARK: - Settings
 
     private var settings: some View {
-        VStack(alignment: .leading, spacing: Tokens.Spacing.sm) {
-            SectionHeading(text: "Account")
-
-            EHCard(padding: 4) {
-                VStack(spacing: 0) {
-                    Button {
-                        draftName = app.data.orgName
-                        editingName = true
-                    } label: {
-                        SettingsRow(title: "Organisation name") {
-                            Text(app.orgName)
-                                .font(Theme.F.body(13))
-                                .foregroundStyle(Theme.C.neutral600)
-                                .lineLimit(1)
-                        }
-                    }
-                    .buttonStyle(PlainPressStyle())
-
-                    NavigationLink(value: ProfileRoute.privacy) {
-                        SettingsRow(title: "Privacy") { ChevronRight() }
-                    }
-                    .buttonStyle(PlainPressStyle())
-
-                    #if DEBUG
-                    NavigationLink(value: ProfileRoute.debug) {
-                        SettingsRow(title: "Debug tools") { ChevronRight() }
-                    }
-                    .buttonStyle(PlainPressStyle())
-                    #endif
-
-                    Button { app.logOut() } label: {
-                        SettingsRow(title: "Log out", showsDivider: true) { EmptyView() }
-                    }
-                    .buttonStyle(PlainPressStyle())
-
-                    Button { confirmingDelete = true } label: {
-                        SettingsRow(title: "Delete account", showsDivider: false) { EmptyView() }
-                    }
-                    .buttonStyle(PlainPressStyle())
-                }
+        VStack(spacing: 0) {
+            row("Organization name") {
+                draftName = app.data.orgName
+                editingName = true
+            } trailing: {
+                Text(app.orgName)
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
+                    .lineLimit(1)
             }
 
-            Text("Signed in as \(app.data.email.isEmpty ? (app.userId ?? "—") : app.data.email)")
-                .font(Theme.F.body(11.5))
-                .foregroundStyle(Theme.C.neutral500)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            #if DEBUG
+            navRow("Debug tools", to: .debug)
+            #endif
+
+            row("Log out") { app.logOut() } trailing: { EmptyView() }
+            row("Delete account", showsDivider: false) { confirmingDelete = true } trailing: {
+                EmptyView()
+            }
         }
+        .background(
+            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards, style: .continuous)
+                .fill(Tokens.Semantic.buttonTintDefault)
+        )
+    }
+
+    private func navRow(_ title: String, to route: ProfileRoute) -> some View {
+        NavigationLink(value: route) {
+            rowBody(title, showsDivider: true) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Tokens.Semantic.statIcon)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func row<Trailing: View>(_ title: String,
+                                     showsDivider: Bool = true,
+                                     action: @escaping () -> Void,
+                                     @ViewBuilder trailing: () -> Trailing) -> some View {
+        Button(action: action) {
+            rowBody(title, showsDivider: showsDivider, trailing: trailing)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func rowBody<Trailing: View>(_ title: String,
+                                         showsDivider: Bool,
+                                         @ViewBuilder trailing: () -> Trailing) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title)
+                    .textStyle(Tokens.Typography.body)
+                    .foregroundStyle(Tokens.Semantic.text)
+                Spacer(minLength: Tokens.Spacing.md)
+                trailing()
+            }
+            .padding(.horizontal, Tokens.Spacing.lg)
+            .padding(.vertical, Tokens.Spacing.md)
+
+            if showsDivider {
+                Rectangle()
+                    .fill(Tokens.Semantic.statIcon.opacity(0.3))
+                    .frame(height: 1)
+                    .padding(.leading, Tokens.Spacing.lg)
+            }
+        }
+        .contentShape(Rectangle())
     }
 }

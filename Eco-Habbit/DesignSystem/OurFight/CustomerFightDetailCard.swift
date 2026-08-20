@@ -107,7 +107,7 @@ struct CustomerFightDetailCard: View {
                         Text(caption)
                             .textStyle(Tokens.Typography.footnote)
                             .foregroundStyle(Tokens.Semantic.ourFightCaption)
-                            .frame(width: 230)
+                            .frame(maxWidth: 230, alignment: .leading)
                     }
 
                     // Was `print("seeQR code")` — the button rendered and did nothing.

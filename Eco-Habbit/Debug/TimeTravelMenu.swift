@@ -70,7 +70,7 @@ struct TimeTravelMenu: View {
             }
 
             Section {
-                Toggle("Verified organisation", isOn: Binding(
+                Toggle("Verified organization", isOn: Binding(
                     get: { app.isOrganization },
                     set: { app.debugSetOrganization($0) }
                 ))

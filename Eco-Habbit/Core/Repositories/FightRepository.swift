@@ -219,6 +219,21 @@ enum FightRepository {
         state.hostedFights.append(draft)
     }
 
+    /// Store a Fight **exactly as given**, status included.
+    ///
+    /// `createDraft` forces `.draft` and `update` preserves whatever status was already
+    /// stored, because status used to move only through publish/cancel. The form's own
+    /// switch made that a detour: saving an enabled event meant writing a draft and then
+    /// immediately publishing it, so it briefly existed as something the host had not
+    /// asked for. One write, one status.
+    static func save(_ fight: Fight, in state: inout PersistedState) {
+        if let index = state.hostedFights.firstIndex(where: { $0.id == fight.id }) {
+            state.hostedFights[index] = fight
+        } else {
+            state.hostedFights.append(fight)
+        }
+    }
+
     @discardableResult
     static func update(_ fight: Fight, in state: inout PersistedState) -> Bool {
         guard let index = state.hostedFights.firstIndex(where: { $0.id == fight.id }) else { return false }
