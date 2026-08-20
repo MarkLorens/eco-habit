@@ -21,6 +21,10 @@ struct VisualSearchView: View {
     @State private var overlay: Overlay?
     @State private var pickerPhoto: UIImage?
     @State private var pickerSuggestions: [Habit] = []
+
+    /// Whether the classifier had a plausible guess, as opposed to nothing at all.
+    /// Set beside `pickerSuggestions` at every assignment so the two cannot drift.
+    @State private var sawSomething = false
     @State private var showingPicker = false
 
     /// What the reward animation should show. Set by a logged habit or by a
@@ -201,6 +205,7 @@ struct VisualSearchView: View {
                 overlay = nil
                 pickerPhoto = Self.simulatorPhoto()
                 pickerSuggestions = suggestions(from: [])
+                sawSomething = false
                 overlay = .whoops
             }
         }
@@ -226,6 +231,7 @@ struct VisualSearchView: View {
                 // Flow 2 — plausible candidates: own up, then let the user pick.
                 pickerPhoto = photo ?? Self.simulatorPhoto()
                 pickerSuggestions = suggestions(from: matches)
+                sawSomething = true
                 overlay = .whoops
 
             case .nothing, .rejected:
@@ -233,25 +239,36 @@ struct VisualSearchView: View {
                 // seeded with whatever is still available today.
                 pickerPhoto = photo ?? Self.simulatorPhoto()
                 pickerSuggestions = suggestions(from: [])
+                sawSomething = false
                 overlay = .whoops
             }
         }
     }
 
-    /// Classifier's best guesses first, topped up with other habits still
-    /// available today so the picker never shows fewer than three options.
+    /// What the camera saw first, then what the user is most likely to want.
+    ///
+    /// **The top-up used to be `MockData.habits`, which is bundle order.** That meant a
+    /// failed detection offered the first three lines of `habits.json` — reusable bottle,
+    /// shopping bag, refuse cutlery — identically, to every user, every time, out of 38.
+    /// All three are `food_*`, so photographing a bike got you three food actions.
+    ///
+    /// `suggestedHabits` is the dashboard's own recommendation: still available today,
+    /// favourite categories first. With no matches this returns pure recommendations,
+    /// which is the honest answer when the model saw nothing.
+    ///
+    /// Still padded to three rather than showing one lonely real match: `CameraActionView`
+    /// has no "something else" route, only back-to-camera, so a short list is a dead end
+    /// for anyone whose action was not recognised. Which situation the user is in is
+    /// carried by the overlay copy instead.
     private func suggestions(from matches: [HabitMatch]) -> [Habit] {
-        var out = matches
+        let detected = matches
             .compactMap { MockData.habitsById[$0.habitId] }
             .filter { app.isAvailable($0) }
 
-        if out.count < 3 {
-            let fill = MockData.habits.filter { habit in
-                app.isAvailable(habit) && !out.contains(where: { $0.id == habit.id })
-            }
-            out += fill.prefix(3 - out.count)
+        let fill = app.suggestedHabits.filter { suggestion in
+            !detected.contains { $0.id == suggestion.id }
         }
-        return Array(out.prefix(3))
+        return Array((detected + fill).prefix(3))
     }
 
     // MARK: - Logging
@@ -420,7 +437,11 @@ struct VisualSearchView: View {
         switch kind {
         case .firstTimer: return "Show us what you did!"
         case .analyzing: return "Wait a Minute…"
-        case .whoops: return "Whoops!"
+        // `.whoops` fronts both outcomes the picker serves. Claiming "we can't identify
+        // that" when the model DID have a plausible guess made the camera look blind
+        // even when it was working — and made the suggestions below look arbitrary
+        // rather than earned.
+        case .whoops: return sawSomething ? "Is this it?" : "Whoops!"
         }
     }
 
@@ -428,7 +449,10 @@ struct VisualSearchView: View {
         switch kind {
         case .firstTimer: return "Take a picture of your action and log it in seconds."
         case .analyzing: return "We're identifying your action.\nThis will only take a moment."
-        case .whoops: return "We can't identify that but you can choose what you did and we'll log it for you!"
+        case .whoops:
+            return sawSomething
+                ? "We spotted something — pick the right one and we'll log it for you!"
+                : "We can't identify that but you can choose what you did and we'll log it for you!"
         }
     }
 

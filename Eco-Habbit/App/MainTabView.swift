@@ -11,6 +11,10 @@ struct MainTabView: View {
                 switch app.selectedTab {
                 case .home: HomeView()
                 case .actions: ActivityListView()
+                // One Fights screen for everyone. An organisation gets a "My Fights"
+                // segment and a plus button inside it, rather than a separate view —
+                // a host still browses other people's events like anybody else, and
+                // two screens would be two things to keep in step.
                 case .ourFights: CustomerFightListView()
                 case .profile: ProfileView()
                 }

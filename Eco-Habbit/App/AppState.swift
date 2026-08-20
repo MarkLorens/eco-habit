@@ -713,7 +713,26 @@ final class AppState: ObservableObject {
 
     // MARK: - Host mode (PRD §6.5.1)
 
-    var isOrganization: Bool { data.isOrganization }
+    /// Whether the host surfaces are available.
+    ///
+    /// `data.isOrganization` is the **server's** answer and the only one the security
+    /// rules respect. The debug override sits beside it rather than inside it, which
+    /// fixes two things at once: the toggle used to write `data.isOrganization`, so
+    /// `pullRemoteState` — which copies that field down unconditionally — reset it to
+    /// `false` on the very next launch, and the local/server disagreement in between got
+    /// every user-document write refused.
+    var isOrganization: Bool {
+        #if DEBUG
+        if debugOrgOverride { return true }
+        #endif
+        return data.isOrganization
+    }
+
+    #if DEBUG
+    /// Local-only, survives relaunch, never pushed and never overwritten by a fetch.
+    @Published private var debugOrgOverride = UserDefaults.standard.bool(forKey: debugOrgKey)
+    fileprivate static let debugOrgKey = "EHDebugForceOrganisation"
+    #endif
     var orgName: String { data.orgName.isEmpty ? userName : data.orgName }
     var hostedFights: [Fight] { FightRepository.hostedFights(in: data) }
 
@@ -733,7 +752,12 @@ final class AppState: ObservableObject {
         return records.sorted { $0.checkedInAt < $1.checkedInAt }
     }
 
-    func isHost(of fight: Fight) -> Bool { FightRepository.isHost(of: fight, in: data) }
+    /// Reads `isOrganization` here rather than `FightRepository.isHost`, which sees only
+    /// `PersistedState` and so cannot know about the debug override — without this, a
+    /// forced organisation's own Fight offered "Scan or check in" instead of the code.
+    func isHost(of fight: Fight) -> Bool {
+        isOrganization && data.hostedFights.contains { $0.id == fight.id }
+    }
     func scans(for fight: Fight) -> [HostScan] { FightRepository.scans(for: fight.id, in: data) }
 
     /// How many local signups exist for a hosted event. Until Phase 10 the only
@@ -858,6 +882,22 @@ final class AppState: ObservableObject {
 
     func setNotifications(_ on: Bool) { mutate { $0.notificationsEnabled = on } }
 
+    /// Rename the account.
+    ///
+    /// Worth having beyond vanity: Apple hands over a name only on the **first ever**
+    /// sign-in for an Apple ID and never again, so anyone who signed in before the app
+    /// captured it — or who chose to hide it — is stuck being greeted as "there" with no
+    /// way to fix it.
+    ///
+    /// Empty is refused rather than stored: `userName` falls back to "there" when blank,
+    /// and letting someone save nothing would look like the rename silently failed.
+    func setUserName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != data.userName else { return }
+        mutate { $0.userName = trimmed }
+        toast = Toast(kind: .success, message: "Name updated.")
+    }
+
     /// Sign out of Firebase. The auth listener notices and calls `signedOut()`, which is
     /// what actually clears the session — one writer, not two.
     func logOut() {
@@ -944,10 +984,12 @@ final class AppState: ObservableObject {
     /// refused in the meantime. The real switch is the field on `/users/{uid}` in the
     /// Firebase console; this is for demoing host mode with no network.
     func debugSetOrganization(_ on: Bool, name: String = "Ombak Bersih") {
-        mutate {
-            $0.isOrganization = on
-            $0.orgName = on ? name : ""
-        }
+        // Deliberately does NOT touch `data.isOrganization`. That field belongs to the
+        // server: writing it locally made the toggle vanish on the next launch, and made
+        // every user-document push disagree with what the rules had stored.
+        debugOrgOverride = on
+        UserDefaults.standard.set(on, forKey: Self.debugOrgKey)
+        mutate { $0.orgName = on ? name : "" }
     }
     #endif
 

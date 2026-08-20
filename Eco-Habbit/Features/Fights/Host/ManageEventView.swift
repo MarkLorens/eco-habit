@@ -138,12 +138,15 @@ struct ManageEventView: View {
                     .foregroundStyle(Theme.C.neutral600)
 
             case .published:
+                // Not disabled outside the window. A host setting up an hour early, or
+                // checking their own event looks right, has every reason to open this —
+                // and the code is theirs. Attendees are still refused by `checkIn`
+                // until the window opens, which is where that rule belongs.
                 Button("Show QR code") { showingCode = true }
                     .buttonStyle(PrimaryButtonStyle())
-                    .disabled(!current.isCheckInOpen())
                 Text(current.isCheckInOpen()
                      ? "Hold this up at the venue. Attendees scan it with their own camera, or type the code."
-                     : "Check-in opens an hour before the start.")
+                     : "Check-in opens an hour before the start — attendees can't log it before then.")
                     .font(Theme.F.body(12))
                     .foregroundStyle(Theme.C.neutral600)
                     .fixedSize(horizontal: false, vertical: true)

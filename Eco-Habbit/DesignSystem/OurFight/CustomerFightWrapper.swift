@@ -20,6 +20,11 @@ struct CustomerFightWrapper: View {
     let isLoved: Bool
     let onLove: () -> Void
 
+    // Defaulted so existing callers and the preview below are unaffected.
+    var host: String = "Eco Tourism Bali"
+    var actionTitle: String? = "Scan or check in"
+    var onAction: () -> Void = {}
+
     @State private var isExpanded = false
 
     var body: some View {
@@ -32,6 +37,9 @@ struct CustomerFightWrapper: View {
                 location: location,
                 picture: picture,
                 isLoved: isLoved,
+                host: host,
+                actionTitle: actionTitle,
+                onAction: onAction,
                 onLove: onLove,
                 onCollapse: {
                     withAnimation(.snappy(duration: 0.2)) {
