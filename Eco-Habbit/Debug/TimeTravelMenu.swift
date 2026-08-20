@@ -40,6 +40,19 @@ struct TimeTravelMenu: View {
                 Button("Retry sync") { app.retrySyncIfNeeded() }
             }
 
+            Section("Evidence photos") {
+                NavigationLink {
+                    EvidenceBrowserView()
+                } label: {
+                    LabeledContent("Saved photos", value: "\(app.savedEvidence.count)")
+                }
+                LabeledContent("On disk", value: ByteCountFormatter.string(
+                    fromByteCount: Int64(app.savedEvidenceBytes), countStyle: .file))
+                Text("Kept on this device only, named after the log they belong to ({habitId}_{date}). Not uploaded — that decision has a billing plan attached.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Current state") {
                 LabeledContent("Last scored", value: app.data.lastEvaluatedDate ?? "never")
                 LabeledContent("Vitality", value: "\(app.vitality) · \(app.stage.name)")

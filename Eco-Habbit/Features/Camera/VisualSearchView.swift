@@ -278,6 +278,14 @@ struct VisualSearchView: View {
         // the evidence badges count.
         let result = app.logAndToast(habit, source: .visualSearch)
 
+        // Keep the frame that earned it. After the log, not before — the file is named
+        // after the log's own id, so there is nothing to name it until it exists.
+        // Saved even at the daily cap and on the early return below: the action happened
+        // and the picture is the evidence, whether or not it paid points.
+        if result.succeeded, let photo = camera.capturedImage {
+            app.saveEvidence(photo, for: habit.id)
+        }
+
         // `atDailyCap` gets the same treatment as a refusal *for the overlay
         // only* — the log itself has already landed and still counts. The
         // overlay counts up to `points`, so at the cap it would run the whole

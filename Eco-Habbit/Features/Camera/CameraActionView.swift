@@ -95,7 +95,12 @@ struct CameraActionView: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         Task {
             try? await Task.sleep(for: .seconds(0.35))
-            app.logAndToast(habit, source: .visualSearch)
+            // The picker path keeps its photo too. What the classifier made of the
+            // frame does not change what the frame shows, and this is the path a
+            // failed detection takes — the case where a picture is worth most.
+            if app.logAndToast(habit, source: .visualSearch).succeeded {
+                app.saveEvidence(photo, for: habit.id)
+            }
             onDone()
         }
     }

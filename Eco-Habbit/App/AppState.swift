@@ -552,12 +552,40 @@ final class AppState: ObservableObject {
     /// Same-day undo (PRD §3.4).
     @discardableResult
     func revertTodaysLog(habitId: String) -> Bool {
+        // Read the log BEFORE unlogging — afterwards there is nothing to derive the
+        // photo's name from, and it would sit on disk belonging to nothing.
+        let evidenceId = log(for: habitId)?.remoteId
         var ok = false
         mutate {
             ok = HabitRepository.unlog(habitId, on: today, today: today, habits: MockData.habits, in: &$0)
         }
+        if ok, let evidenceId {
+            EvidenceStore.delete(forLogId: evidenceId, userId: storageId)
+        }
         return ok
     }
+
+    // MARK: - Evidence photos (local only)
+
+    /// Keep the photo that produced a log.
+    ///
+    /// Called after the log lands, because the filename is the log's own `remoteId` —
+    /// there is nothing to name the file after until it exists. Silent on failure by
+    /// design: a photo that cannot be written must never cost somebody their points.
+    func saveEvidence(_ image: UIImage, for habitId: String) {
+        guard let log = log(for: habitId) else { return }
+        EvidenceStore.save(image, forLogId: log.remoteId, userId: storageId)
+    }
+
+    func evidence(for log: HabitLog) -> UIImage? {
+        EvidenceStore.image(forLogId: log.remoteId, userId: storageId)
+    }
+
+    var savedEvidence: [EvidenceStore.Saved] { EvidenceStore.all(userId: storageId) }
+    var savedEvidenceBytes: Int { EvidenceStore.totalBytes(userId: storageId) }
+
+    func deleteEvidence(id: String) { EvidenceStore.delete(forLogId: id, userId: storageId) }
+    func purgeEvidence() { EvidenceStore.purge(userId: storageId) }
 
     // MARK: - Fights (PRD §4)
 
@@ -910,6 +938,9 @@ final class AppState: ObservableObject {
 
     func resetEverything() {
         PersistenceStore.wipe(userId: storageId)
+        // Photos are keyed on {habitId}_{localDate}, so leaving them would attach an old
+        // picture to the first log of that habit after the reset.
+        EvidenceStore.purge(userId: storageId)
         data = PersistedState()
         selectedTab = .home
         evaluateIfNeeded()
@@ -955,6 +986,7 @@ final class AppState: ObservableObject {
             try await sync?.deleteAccount(userId: userId)
             try await AppleSignInService.deleteCurrentUser()
             PersistenceStore.wipe(userId: userId)
+            EvidenceStore.purge(userId: userId)
             signedOut()
             toast = Toast(kind: .info, message: "Account deleted.")
         } catch {
