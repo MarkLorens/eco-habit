@@ -75,7 +75,7 @@ struct CustomerFightListView: View {
     }
 }
 
-#Preview {
-    CustomerFightListView()
-        .environmentObject(AppState.preview)
-}
+//#Preview {
+//    CustomerFightListView()
+//        .environmentObject(AppState.preview)
+//}

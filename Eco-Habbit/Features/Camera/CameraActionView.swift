@@ -128,15 +128,15 @@ struct CameraActionView: View {
     }
 }
 
-#Preview {
-    CameraActionView(
-        photo: UIGraphicsImageRenderer(size: CGSize(width: 960, height: 720)).image { context in
-            UIColor(white: 0.35, alpha: 1).setFill()
-            context.fill(CGRect(x: 0, y: 0, width: 960, height: 720))
-        },
-        suggestions: Array(MockData.habits.prefix(3)),
-        onBack: {},
-        onDone: {}
-    )
-    .environmentObject(AppState.preview)
-}
+//#Preview {
+//    CameraActionView(
+//        photo: UIGraphicsImageRenderer(size: CGSize(width: 960, height: 720)).image { context in
+//            UIColor(white: 0.35, alpha: 1).setFill()
+//            context.fill(CGRect(x: 0, y: 0, width: 960, height: 720))
+//        },
+//        suggestions: Array(MockData.habits.prefix(3)),
+//        onBack: {},
+//        onDone: {}
+//    )
+//    .environmentObject(AppState.preview)
+//}
