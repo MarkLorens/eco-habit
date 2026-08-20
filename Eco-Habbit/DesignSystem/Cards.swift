@@ -92,3 +92,46 @@ struct Cards: View {
         .padding(Tokens.Spacing.md)
     }
 }
+
+struct CategoryCard: View {
+    let category: HabitCategory
+    var isSelected: Bool = false
+    var height: CGFloat = 150
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Spacing.sm) {
+            Text(category.title)
+                .textStyle(Tokens.Typography.body)
+                .foregroundStyle(Tokens.Semantic.text)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Image(category.icon)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        }
+        .padding(Tokens.Spacing.lg)
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
+        .background(
+            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards, style: .continuous)
+                .fill(category.tint)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards, style: .continuous)
+                .strokeBorder(isSelected ? category.background : .clear, lineWidth: 2)
+        )
+        .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
+        .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
+    }
+}
+
+#Preview("Category grid") {
+    LazyVGrid(
+        columns: [GridItem(.flexible(), spacing: Tokens.Spacing.md), GridItem(.flexible())],
+        spacing: Tokens.Spacing.xl
+    ) {
+        ForEach(HabitCategory.allCases) { CategoryCard(category: $0) }
+    }
+    .padding(40)
+}
