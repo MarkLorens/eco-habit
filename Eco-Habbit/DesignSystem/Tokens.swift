@@ -61,6 +61,7 @@ extension Tokens{
             static let statIcon = Color(hex: 0xA0A6A3)
             static let ourFightCaption = Color(hex: 0x2F3A32)
             static let ourFightQR = Color(hex: 0xFFFFFF)
+            static let bgProgressEmpty = Color(hex: 0xB8BDCC)
         }
 }
 
@@ -101,6 +102,7 @@ extension Tokens {
     enum Typography {
         static let icon = TextStyle(.system(size: 30, weight: .bold, design: .rounded))
         static let hero = TextStyle(.system(size: 28, weight: .heavy, design: .rounded))
+        static let hero2 = TextStyle(.system(size: 24, weight: .bold, design: .rounded))
         static let title = TextStyle(.system(size: 20, weight: .bold, design: .rounded))
         static let title2 = TextStyle(.system(size: 20, weight: .heavy, design: .rounded))
         static let body = TextStyle(.system(size: 16, weight: .semibold, design: .rounded))

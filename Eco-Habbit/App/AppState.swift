@@ -91,6 +91,10 @@ final class AppState: ObservableObject {
          sync: UserStateSyncing? = nil) {
         self.userId = userId
         self.sync = sync
+        // No sync injected means there is nothing to reconcile with, so this session is
+        // resolved from the outset. Left at `.pending` it would never clear, and
+        // anything gated on reconciliation — the onboarding route — would hang.
+        self.syncStatus = sync == nil ? .localOnly : .pending
         let stored = PersistenceStore.load(userId: userId ?? PersistenceStore.signedOutUserId)
         self.hasLocalCopy = stored != nil
         self.data = data ?? stored ?? PersistedState()
@@ -293,6 +297,25 @@ final class AppState: ObservableObject {
     /// reads it any more: a persisted boolean and a live Firebase session are two
     /// sources of truth, and they drift the moment a token expires.
     var isLoggedIn: Bool { userId != nil }
+
+    var hasCompletedOnboarding: Bool { data.hasCompletedOnboarding }
+
+    /// True once we know whether this account has been here before — the remote copy
+    /// landed, or we established there is none to wait for. Routing on
+    /// `hasCompletedOnboarding` before this is what would flash the questions at a
+    /// returning user on a new device, whose `data` is still blank.
+    var onboardingResolved: Bool { syncStatus != .pending }
+
+    /// End of the onboarding flow. Takes the answers with it so the questions are not
+    /// asked and then discarded.
+    func completeOnboarding(favourites: Set<HabitCategory>) {
+        mutate {
+            $0.hasCompletedOnboarding = true
+            // Only overwrite when something was chosen — skipping the question should
+            // not wipe favourites an existing account already had.
+            if !favourites.isEmpty { $0.favouriteCategories = favourites }
+        }
+    }
     var userName: String { data.userName.isEmpty ? "there" : data.userName }
     var firstName: String { userName.split(separator: " ").first.map(String.init) ?? userName }
     var notificationsEnabled: Bool { data.notificationsEnabled }

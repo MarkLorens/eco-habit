@@ -12,6 +12,11 @@ struct PersistedState: Codable {
     var userName = ""
     var email = ""
 
+    /// Set once, when the account finishes the onboarding questions. Lives here rather
+    /// than in UserDefaults so it travels with the account: signing in on a second
+    /// device should not ask the same questions again.
+    var hasCompletedOnboarding = false
+
     /// Opt-in preference set from Settings — sorts favoured categories to the top of the
     /// Habits tab and biases the dashboard's suggestions. Empty is a valid state.
     var favouriteCategories: Set<HabitCategory> = []
@@ -128,6 +133,7 @@ struct PersistedState: Codable {
         isLoggedIn          = try v(.isLoggedIn, false)
         userName            = try v(.userName, "")
         email               = try v(.email, "")
+        hasCompletedOnboarding = try v(.hasCompletedOnboarding, false)
         favouriteCategories = try v(.favouriteCategories, [])
         notificationsEnabled = try v(.notificationsEnabled, true)
 
