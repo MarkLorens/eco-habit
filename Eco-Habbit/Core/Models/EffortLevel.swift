@@ -55,7 +55,7 @@ nonisolated enum EffortLevel: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-extension FrictionLevel {
+nonisolated extension FrictionLevel {
 
     /// 1…4, ascending with effort.
     ///

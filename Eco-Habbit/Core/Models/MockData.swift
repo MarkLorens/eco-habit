@@ -1,6 +1,6 @@
 import Foundation
 
-enum MockData {
+nonisolated enum MockData {
 
     /// The catalogue is bundled content, not user input — if it fails to load the app is
     /// broken, so this traps rather than returning `[]`. A `try?` here previously turned

@@ -163,7 +163,7 @@ extension Tokens {
     
     // Since we're using our own asset and not SF Symbols.
     // Okay, camera is from SF Symbols. Shut up
-    enum Icons {
+    nonisolated enum Icons {
         // MARK: - Tab View Icons
         static let globeTabview = "globe-tabview"
         static let leafTabview = "leaf-tabview"

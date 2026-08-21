@@ -49,7 +49,10 @@ struct RecommendationService {
 
         let lastLogged = mostRecentLogDates(in: state)
 
-        // chain defeats the type-checker's time budget and fails the build outright.
+        // Written out rather than chained. A `map` producing an inferred tuple, straight
+        // into `sorted`, straight into another `map` gives the type-checker a large
+        // enough search space that it exceeds its per-expression time budget and fails
+        // the build — which is not a slow build, it is a hard error.
         var scored: [(habit: Habit, score: Double)] = []
         scored.reserveCapacity(available.count)
         for habit in available {

@@ -11,7 +11,7 @@ import Foundation
 /// `VitalityStage` was `Identifiable`; `EarthStage` is not, and the sheet's
 /// `ForEach` needs it. Declared here rather than on the model so the model keeps
 /// knowing nothing about being displayed.
-extension EarthStage: @retroactive Identifiable {
+extension EarthStage: Identifiable {
     public var id: Int { rawValue }
 }
 
