@@ -40,14 +40,15 @@ struct TimeTravelMenu: View {
                 Button("Retry sync") { app.retrySyncIfNeeded() }
             }
 
-            Section("Host mode") {
-                Toggle("Organisation", isOn: Binding(
-                    get: { app.isOrganization },
-                    set: { app.debugSetOrganization($0) }
-                ))
-                Text(app.isLoggedIn
-                     ? "Shows the Hosting segment so the host screens are reachable. Publishing still needs isOrganization set on /users/{uid} in the Firebase console — the rules read the server's value, not this one, and this flag is reset from the server on the next launch."
-                     : "Shows the Hosting segment. Signed out, nothing syncs, so this is the only switch there is.")
+            Section("Evidence photos") {
+                NavigationLink {
+                    EvidenceBrowserView()
+                } label: {
+                    LabeledContent("Saved photos", value: "\(app.savedEvidence.count)")
+                }
+                LabeledContent("On disk", value: ByteCountFormatter.string(
+                    fromByteCount: Int64(app.savedEvidenceBytes), countStyle: .file))
+                Text("Kept on this device only, named after the log they belong to ({habitId}_{date}). Not uploaded — that decision has a billing plan attached.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -69,17 +70,21 @@ struct TimeTravelMenu: View {
             }
 
             Section {
-                Toggle("Verified organisation", isOn: Binding(
+                Toggle("Verified organization", isOn: Binding(
                     get: { app.isOrganization },
                     set: { app.debugSetOrganization($0) }
                 ))
+                // The two sources, separately, because "I set it and nothing happened"
+                // is impossible to diagnose when they are collapsed into one row.
+                LabeledContent("Server says", value: app.data.isOrganization ? "yes" : "no")
+                LabeledContent("Host screens", value: app.isOrganization ? "shown" : "hidden")
                 if app.isOrganization {
                     LabeledContent("Hosting", value: "\(app.hostedFights.count) events")
                 }
             } header: {
                 Text("Host mode")
             } footer: {
-                Text("PRD §4.3: verification is a person flipping a flag. This is the flag. It lives here rather than in Settings because it must never be user-writable.")
+                Text("PRD §4.3: verification is a person flipping a flag. This is the flag. It lives here rather than in Settings because it must never be user-writable.\n\nThe toggle is LOCAL — it unlocks the host screens and survives relaunch, but the security rules read \"Server says\", so publishing a Fight needs isOrganization set to true on /users/{uid} in the Firebase console, then a relaunch.")
             }
         }
         .navigationTitle("Time Travel")

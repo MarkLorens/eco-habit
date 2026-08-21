@@ -21,6 +21,11 @@ struct CustomerFightDetailCard: View {
     private let picture: String
     private let isLoved: Bool
 
+    // Additive and defaulted, so the existing call and the preview below keep working.
+    private let host: String
+    private let actionTitle: String?
+    private let onAction: () -> Void
+
     init(title: String,
          caption: String,
          category: Color,
@@ -28,6 +33,9 @@ struct CustomerFightDetailCard: View {
          location: String,
          picture: String,
          isLoved: Bool,
+         host: String = "Eco Tourism Bali",
+         actionTitle: String? = "Scan or check in",
+         onAction: @escaping () -> Void = {},
          onLove: @escaping () -> Void,
          onCollapse: @escaping () -> Void
     ) {
@@ -38,6 +46,9 @@ struct CustomerFightDetailCard: View {
         self.location = location
         self.picture = picture
         self.isLoved = isLoved
+        self.host = host
+        self.actionTitle = actionTitle
+        self.onAction = onAction
         self.onLove = onLove
         self.onCollapse = onCollapse
     }
@@ -89,28 +100,32 @@ struct CustomerFightDetailCard: View {
                     }
 
                     VStack(alignment: .leading, spacing: Tokens.Spacing.lg){
-                        Text("Organized by Eco Tourism Bali")
+                        Text("Organized by \(host)")
                             .textStyle(Tokens.Typography.footnote)
                             .foregroundStyle(Tokens.Semantic.footnote)
 
                         Text(caption)
                             .textStyle(Tokens.Typography.footnote)
                             .foregroundStyle(Tokens.Semantic.ourFightCaption)
-                            .frame(width: 230)
+                            .frame(maxWidth: 230, alignment: .leading)
                     }
 
-                    Button {
-                        print("seeQR code")
-                    } label: {
-                        Text("See QR Code")
-                            .textStyle(Tokens.Typography.body)
-                            .foregroundStyle(Tokens.Semantic.ourFightQR)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 40)
-                            .background(Color(hex: 0x2F3A32))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    // Was `print("seeQR code")` — the button rendered and did nothing.
+                    // An attendee never *shows* a code; the organiser does. This is the
+                    // check-in entry point, so it says so. `nil` hides it once there is
+                    // nothing left to do.
+                    if let actionTitle {
+                        Button(action: onAction) {
+                            Text(actionTitle)
+                                .textStyle(Tokens.Typography.body)
+                                .foregroundStyle(Tokens.Semantic.ourFightQR)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 40)
+                                .background(Color(hex: 0x2F3A32))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .padding(.bottom, Tokens.Spacing.xl)
                     }
-                    .padding(.bottom, Tokens.Spacing.xl)
                 }
             }
             .padding(.horizontal, Tokens.Spacing.xl)

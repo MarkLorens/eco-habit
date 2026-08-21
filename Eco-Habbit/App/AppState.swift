@@ -621,12 +621,40 @@ final class AppState: ObservableObject {
     /// Same-day undo (PRD §3.4).
     @discardableResult
     func revertTodaysLog(habitId: String) -> Bool {
+        // Read the log BEFORE unlogging — afterwards there is nothing to derive the
+        // photo's name from, and it would sit on disk belonging to nothing.
+        let evidenceId = log(for: habitId)?.remoteId
         var ok = false
         mutate {
             ok = HabitRepository.unlog(habitId, on: today, today: today, habits: MockData.habits, in: &$0)
         }
+        if ok, let evidenceId {
+            EvidenceStore.delete(forLogId: evidenceId, userId: storageId)
+        }
         return ok
     }
+
+    // MARK: - Evidence photos (local only)
+
+    /// Keep the photo that produced a log.
+    ///
+    /// Called after the log lands, because the filename is the log's own `remoteId` —
+    /// there is nothing to name the file after until it exists. Silent on failure by
+    /// design: a photo that cannot be written must never cost somebody their points.
+    func saveEvidence(_ image: UIImage, for habitId: String) {
+        guard let log = log(for: habitId) else { return }
+        EvidenceStore.save(image, forLogId: log.remoteId, userId: storageId)
+    }
+
+    func evidence(for log: HabitLog) -> UIImage? {
+        EvidenceStore.image(forLogId: log.remoteId, userId: storageId)
+    }
+
+    var savedEvidence: [EvidenceStore.Saved] { EvidenceStore.all(userId: storageId) }
+    var savedEvidenceBytes: Int { EvidenceStore.totalBytes(userId: storageId) }
+
+    func deleteEvidence(id: String) { EvidenceStore.delete(forLogId: id, userId: storageId) }
+    func purgeEvidence() { EvidenceStore.purge(userId: storageId) }
 
     // MARK: - Fights (PRD §4)
 
@@ -782,7 +810,26 @@ final class AppState: ObservableObject {
 
     // MARK: - Host mode (PRD §6.5.1)
 
-    var isOrganization: Bool { data.isOrganization }
+    /// Whether the host surfaces are available.
+    ///
+    /// `data.isOrganization` is the **server's** answer and the only one the security
+    /// rules respect. The debug override sits beside it rather than inside it, which
+    /// fixes two things at once: the toggle used to write `data.isOrganization`, so
+    /// `pullRemoteState` — which copies that field down unconditionally — reset it to
+    /// `false` on the very next launch, and the local/server disagreement in between got
+    /// every user-document write refused.
+    var isOrganization: Bool {
+        #if DEBUG
+        if debugOrgOverride { return true }
+        #endif
+        return data.isOrganization
+    }
+
+    #if DEBUG
+    /// Local-only, survives relaunch, never pushed and never overwritten by a fetch.
+    @Published private var debugOrgOverride = UserDefaults.standard.bool(forKey: debugOrgKey)
+    fileprivate static let debugOrgKey = "EHDebugForceOrganisation"
+    #endif
     var orgName: String { data.orgName.isEmpty ? userName : data.orgName }
     var hostedFights: [Fight] { FightRepository.hostedFights(in: data) }
 
@@ -802,7 +849,12 @@ final class AppState: ObservableObject {
         return records.sorted { $0.checkedInAt < $1.checkedInAt }
     }
 
-    func isHost(of fight: Fight) -> Bool { FightRepository.isHost(of: fight, in: data) }
+    /// Reads `isOrganization` here rather than `FightRepository.isHost`, which sees only
+    /// `PersistedState` and so cannot know about the debug override — without this, a
+    /// forced organisation's own Fight offered "Scan or check in" instead of the code.
+    func isHost(of fight: Fight) -> Bool {
+        isOrganization && data.hostedFights.contains { $0.id == fight.id }
+    }
     func scans(for fight: Fight) -> [HostScan] { FightRepository.scans(for: fight.id, in: data) }
 
     /// How many local signups exist for a hosted event. Until Phase 10 the only
@@ -812,11 +864,11 @@ final class AppState: ObservableObject {
         FightRepository.isSignedUp(fight.id, in: data) ? 1 : 0
     }
 
-    func newDraft(type: FightType = .beachCleanup) -> Fight {
+    func newDraft(category: HabitCategory = .actions) -> Fight {
         let start = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
         return Fight(
             id: "host-\(UUID().uuidString.prefix(8))",
-            title: "", summary: "", type: type,
+            title: "", summary: "", category: category,
             // The real uid, not a placeholder: the rules require
             // `hostId == request.auth.uid`, so "local-host" would be refused on publish.
             hostName: orgName, hostId: userId ?? "local-host",
@@ -856,6 +908,36 @@ final class AppState: ObservableObject {
         toast = Toast(kind: .success, message: "Saved — everyone sees the change.")
     }
 
+    /// Save a Fight with the status its switch is showing, and sync accordingly.
+    ///
+    /// One write rather than draft-then-publish. Awaited, because if the server refuses
+    /// — an unverified organisation is the likely reason — the host has to be told
+    /// rather than left believing an invisible event is live. On refusal it stays a
+    /// draft locally, so what is on screen matches what other people can see.
+    func saveFight(_ fight: Fight, enabled: Bool) async {
+        var next = fight
+        next.status = enabled ? .published : .draft
+        mutate { FightRepository.save(next, in: &$0) }
+
+        guard let sync else {
+            toast = Toast(kind: .success, message: enabled ? "Saved and enabled." : "Saved.")
+            return
+        }
+
+        do {
+            try await sync.putFight(next)
+            await refreshFights()
+            toast = Toast(kind: .success,
+                          message: enabled ? "Enabled — everyone can see it now." : "Saved. Only you can see it.")
+        } catch {
+            if enabled {
+                mutate { FightRepository.save({ var f = next; f.status = .draft; return f }(), in: &$0) }
+                toast = Toast(kind: .warning,
+                              message: "Couldn't enable it. This account isn't verified as an organization yet.")
+            }
+        }
+    }
+
     /// Publish, then push. **Awaited, unlike every other sync in the app.**
     ///
     /// Publishing is the one action whose whole purpose is that somebody else sees it,
@@ -887,7 +969,24 @@ final class AppState: ObservableObject {
         } catch {
             mutate { _ = FightRepository.unpublish(fight.id, in: &$0) }
             toast = Toast(kind: .warning,
-                          message: "Couldn't publish. This account isn't verified as an organisation yet.")
+                          message: "Couldn't publish. This account isn't verified as an organization yet.")
+        }
+    }
+
+    /// Take a live event back to a draft.
+    ///
+    /// What the hi-fi's Status switch does when turned off. Distinct from cancelling:
+    /// cancelled is a promise broken in public and stays visible to say so, whereas this
+    /// is "not ready yet" — the security rules hide a draft from everyone but its host,
+    /// so the withdrawal is real rather than cosmetic.
+    func withdrawFight(_ fight: Fight) {
+        var ok = false
+        mutate { ok = FightRepository.unpublish(fight.id, in: &$0) }
+        guard ok else { return }
+        toast = Toast(kind: .info, message: "Hidden. Only you can see it now.")
+
+        if let sync, let withdrawn = hostedFights.first(where: { $0.id == fight.id }) {
+            Task { try? await sync.putFight(withdrawn); await refreshFights() }
         }
     }
 
@@ -929,6 +1028,41 @@ final class AppState: ObservableObject {
 
     func setNotifications(_ on: Bool) { mutate { $0.notificationsEnabled = on } }
 
+    /// Rename the account.
+    ///
+    /// Worth having beyond vanity: Apple hands over a name only on the **first ever**
+    /// sign-in for an Apple ID and never again, so anyone who signed in before the app
+    /// captured it — or who chose to hide it — is stuck being greeted as "there" with no
+    /// way to fix it.
+    ///
+    /// Empty is refused rather than stored: `userName` falls back to "there" when blank,
+    /// and letting someone save nothing would look like the rename silently failed.
+    /// Rename the organisation.
+    ///
+    /// Propagates to every Fight this account already hosts, published ones included:
+    /// `hostName` is a snapshot taken at creation, so without this a rename would leave
+    /// old events crediting a name that no longer exists. Each edit is pushed, so the
+    /// change reaches anyone browsing.
+    func setOrganisationName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != data.orgName else { return }
+        mutate { $0.orgName = trimmed }
+
+        for fight in hostedFights where fight.hostName != trimmed {
+            var renamed = fight
+            renamed.hostName = trimmed
+            saveDraft(renamed)
+        }
+        toast = Toast(kind: .success, message: "Organization renamed.")
+    }
+
+    func setUserName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != data.userName else { return }
+        mutate { $0.userName = trimmed }
+        toast = Toast(kind: .success, message: "Name updated.")
+    }
+
     /// Sign out of Firebase. The auth listener notices and calls `signedOut()`, which is
     /// what actually clears the session — one writer, not two.
     func logOut() {
@@ -944,6 +1078,9 @@ final class AppState: ObservableObject {
 
     func resetEverything() {
         PersistenceStore.wipe(userId: storageId)
+        // Photos are keyed on {habitId}_{localDate}, so leaving them would attach an old
+        // picture to the first log of that habit after the reset.
+        EvidenceStore.purge(userId: storageId)
         data = PersistedState()
         selectedTab = .home
         evaluateIfNeeded()
@@ -989,6 +1126,7 @@ final class AppState: ObservableObject {
             try await sync?.deleteAccount(userId: userId)
             try await AppleSignInService.deleteCurrentUser()
             PersistenceStore.wipe(userId: userId)
+            EvidenceStore.purge(userId: userId)
             signedOut()
             toast = Toast(kind: .info, message: "Account deleted.")
         } catch {
@@ -1018,10 +1156,12 @@ final class AppState: ObservableObject {
     /// refused in the meantime. The real switch is the field on `/users/{uid}` in the
     /// Firebase console; this is for demoing host mode with no network.
     func debugSetOrganization(_ on: Bool, name: String = "Ombak Bersih") {
-        mutate {
-            $0.isOrganization = on
-            $0.orgName = on ? name : ""
-        }
+        // Deliberately does NOT touch `data.isOrganization`. That field belongs to the
+        // server: writing it locally made the toggle vanish on the next launch, and made
+        // every user-document push disagree with what the rules had stored.
+        debugOrgOverride = on
+        UserDefaults.standard.set(on, forKey: Self.debugOrgKey)
+        mutate { $0.orgName = on ? name : "" }
     }
     #endif
 

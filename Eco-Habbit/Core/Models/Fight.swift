@@ -40,8 +40,16 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
     /// (PRD §6.5.1) — editing is permitted, deletion is not.
     var title: String
     var summary: String
-    var type: FightType
-    let hostName: String
+    /// One taxonomy with the habits, per the hi-fi: the pill on a card, the spine
+    /// colour and the form picker are all this. The old `FightType` (beach cleanup,
+    /// mangrove planting…) was a second vocabulary nothing on screen ever showed.
+    var category: HabitCategory
+    /// Display only, and **not** a snapshot — unlike `EarnedBadge.name`, which freezes
+    /// because the catalogue entry behind it can vanish. `hostId` is what actually owns
+    /// this Fight; the name is what people read, so an organiser renaming itself should
+    /// see the change on events it already published rather than a name it no longer
+    /// goes by. `AppState.setOrganisationName` rewrites and re-pushes them.
+    var hostName: String
     let hostId: String
     var locationName: String
     var address: String
@@ -148,7 +156,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
     init(id: String,
          title: String,
          summary: String = "",
-         type: FightType,
+         category: HabitCategory,
          hostName: String = "",
          hostId: String = "",
          locationName: String = "",
@@ -166,7 +174,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
         self.id = id
         self.title = title
         self.summary = summary
-        self.type = type
+        self.category = category
         self.hostName = hostName
         self.hostId = hostId
         self.locationName = locationName
@@ -188,7 +196,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
     // MARK: - Decoding
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, summary, type, hostName, hostId, locationName, address
+        case id, title, summary, category, hostName, hostId, locationName, address
         case latitude, longitude, startsAt, endsAt, preparationNotes, status, isDemo
         case tier, checkInCode, rewardBadgeId
     }
@@ -203,7 +211,9 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
         id = try c.decode(String.self, forKey: .id)
         title = try c.decode(String.self, forKey: .title)
         summary = try c.decodeIfPresent(String.self, forKey: .summary) ?? ""
-        type = try c.decode(FightType.self, forKey: .type)
+        // Defaulted, not required: a document written before the swap has no
+        // `category`, and a throw here takes the whole Fights list down.
+        category = try c.decodeIfPresent(HabitCategory.self, forKey: .category) ?? .actions
         hostName = try c.decodeIfPresent(String.self, forKey: .hostName) ?? ""
         hostId = try c.decodeIfPresent(String.self, forKey: .hostId) ?? ""
         locationName = try c.decodeIfPresent(String.self, forKey: .locationName) ?? ""
@@ -228,60 +238,6 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
     }
 }
 
-/// PRD §4.2 — Fights have their own taxonomy, deliberately not mapped onto habit
-/// categories. A mangrove planting isn't "Water" or "Food", and forcing the mapping
-/// would distort both lists.
-nonisolated enum FightType: String, Codable, CaseIterable, Identifiable, Hashable {
-    case beachCleanup
-    case riverCleanup
-    case mangrovePlanting
-    case treePlanting
-    case reefRestoration
-    case wasteDrive
-    case workshop
-    case wildlifeProtection
-
-    var id: String { rawValue }
-
-    var name: String {
-        switch self {
-        case .beachCleanup: return "Beach Cleanup"
-        case .riverCleanup: return "River Cleanup"
-        case .mangrovePlanting: return "Mangrove Planting"
-        case .treePlanting: return "Tree Planting"
-        case .reefRestoration: return "Reef Restoration"
-        case .wasteDrive: return "Waste Drive"
-        case .workshop: return "Workshop"
-        case .wildlifeProtection: return "Wildlife Protection"
-        }
-    }
-
-    var shortName: String {
-        switch self {
-        case .beachCleanup: return "Beach"
-        case .riverCleanup: return "River"
-        case .mangrovePlanting: return "Mangrove"
-        case .treePlanting: return "Trees"
-        case .reefRestoration: return "Reef"
-        case .wasteDrive: return "Waste"
-        case .workshop: return "Workshop"
-        case .wildlifeProtection: return "Wildlife"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .beachCleanup: return "beach.umbrella"
-        case .riverCleanup: return "water.waves"
-        case .mangrovePlanting: return "tree"
-        case .treePlanting: return "leaf"
-        case .reefRestoration: return "fish"
-        case .wasteDrive: return "arrow.3.trianglepath"
-        case .workshop: return "hammer"
-        case .wildlifeProtection: return "pawprint"
-        }
-    }
-}
 
 /// A user's signup for one Fight. PRD §4.5: the check-in token is generated at signup
 /// and lives on the attendee's phone.

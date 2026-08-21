@@ -62,4 +62,33 @@ check("low confidence -> unsure",
 check("above floor, below auto-log -> unsure",
       v(frame([("direct_a", 0.25)], distractor: ("x", 0.05), confidence: 0.90)), "unsure(1)")
 
+// --- only the runners-up that CLEARED THE FLOOR are offered ----------------------
+//
+// `rank` returns the top three unfiltered by design, and `verdict` only ever checked
+// `top` against the floor — so an unsure verdict handed the picker all three, including
+// cosines near zero, shown to the user as things the camera had seen.
+check("runner-up below the floor is dropped",
+      v(frame([("direct_a", 0.50), ("direct_b", 0.10)], distractor: ("x", 0.05), confidence: 0.20)),
+      "unsure(1)")
+check("only the matches above the floor survive",
+      v(frame([("direct_a", 0.50), ("direct_b", 0.48), ("direct_c", 0.02)],
+              distractor: ("x", 0.05), confidence: 0.90)),
+      "unsure(2)")
+check("all three above the floor are all kept",
+      v(frame([("direct_a", 0.50), ("direct_b", 0.48), ("direct_c", 0.40)],
+              distractor: ("x", 0.05), confidence: 0.90)),
+      "unsure(3)")
+// A match exactly on the floor is in — the gate above it is `>=`, and disagreeing here
+// would make the boundary behave differently in the picker than in the verdict.
+check("a match exactly on the floor is kept",
+      v(frame([("direct_a", 0.50), ("direct_b", 0.15)], distractor: ("x", 0.05), confidence: 0.20)),
+      "unsure(2)")
+
+// The other verdicts are untouched by the filter.
+check("still nothing when the top is below the floor",
+      v(frame([("direct_a", 0.14), ("direct_b", 0.13)])), "nothing")
+check("still rejected when a distractor wins",
+      v(frame([("direct_a", 0.40), ("direct_b", 0.02)], distractor: ("bottle", 0.45))),
+      "rejected(bottle)")
+
 print(fails == 0 ? "\nALL PASS" : "\n\(fails) FAILED")

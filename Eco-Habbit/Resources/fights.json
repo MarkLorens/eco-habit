@@ -2,8 +2,8 @@
   {
     "id": "f1",
     "title": "Berawa Beach Sunrise Cleanup",
-    "summary": "Two hours on the sand before the heat arrives. Bags, gloves and sorting bins provided — bring water and a hat.",
-    "type": "beachCleanup",
+    "summary": "Two hours on the sand before the heat arrives. Bags, gloves and sorting bins provided \u2014 bring water and a hat.",
+    "category": "waste",
     "hostName": "Ombak Bersih",
     "hostId": "org-ombak",
     "locationName": "Berawa Beach, north entrance",
@@ -13,7 +13,7 @@
     "startOffsetHours": -1,
     "durationHours": 10,
     "preparationNotes": [
-      "Closed shoes — there is glass in the tideline",
+      "Closed shoes \u2014 there is glass in the tideline",
       "Reusable water bottle, refill station on site",
       "Sun cover; there is no shade on the beach"
     ],
@@ -21,9 +21,9 @@
   },
   {
     "id": "f2",
-    "title": "Mangrove Planting — Benoa Bay",
+    "title": "Mangrove Planting \u2014 Benoa Bay",
     "summary": "Planting propagules along the restored channel edge. Muddy, slow, genuinely effective work.",
-    "type": "mangrovePlanting",
+    "category": "actions",
     "hostName": "Akar Laut",
     "hostId": "org-akarlaut",
     "locationName": "Mangrove Information Centre",
@@ -43,7 +43,7 @@
     "id": "f3",
     "title": "Tukad Badung River Clearing",
     "summary": "Clearing plastic from the river margin before the rains push it out to sea.",
-    "type": "riverCleanup",
+    "category": "water",
     "hostName": "Ombak Bersih",
     "hostId": "org-ombak",
     "locationName": "Tukad Badung, west bank",
@@ -60,9 +60,9 @@
   },
   {
     "id": "f4",
-    "title": "Coral Fragment Planting — Nusa Dua",
+    "title": "Coral Fragment Planting \u2014 Nusa Dua",
     "summary": "Attaching nursery-grown fragments to the restoration frames. Open-water certification required.",
-    "type": "reefRestoration",
+    "category": "water",
     "hostName": "Karang Hidup",
     "hostId": "org-karang",
     "locationName": "Nusa Dua house reef",
@@ -74,7 +74,7 @@
     "preparationNotes": [
       "Open Water certification card required at check-in",
       "Tanks and weights provided; bring your own mask if you prefer",
-      "No gloves — hands only, to protect the fragments"
+      "No gloves \u2014 hands only, to protect the fragments"
     ],
     "isDemo": true
   },
@@ -82,7 +82,7 @@
     "id": "f5",
     "title": "Composting Workshop for Households",
     "summary": "Build a working bokashi bucket you take home. Covers what to feed it and how not to make it smell.",
-    "type": "workshop",
+    "category": "actions",
     "hostName": "Akar Laut",
     "hostId": "org-akarlaut",
     "locationName": "Ubud Community Hall",
@@ -93,15 +93,15 @@
     "durationHours": 2,
     "preparationNotes": [
       "Materials included in the session",
-      "You will leave carrying a 15-litre bucket — plan your transport"
+      "You will leave carrying a 15-litre bucket \u2014 plan your transport"
     ],
     "isDemo": true
   },
   {
     "id": "f6",
-    "title": "Turtle Hatchling Release — Kuta",
+    "title": "Turtle Hatchling Release \u2014 Kuta",
     "summary": "Evening release of the season's last hatchlings, with a short briefing on nest protection.",
-    "type": "wildlifeProtection",
+    "category": "actions",
     "hostName": "Karang Hidup",
     "hostId": "org-karang",
     "locationName": "Kuta Beach conservation post",
@@ -111,7 +111,7 @@
     "startOffsetHours": 198,
     "durationHours": 2,
     "preparationNotes": [
-      "No flash photography — it disorients the hatchlings",
+      "No flash photography \u2014 it disorients the hatchlings",
       "Arrive 15 minutes early for the briefing"
     ],
     "isDemo": true
@@ -120,7 +120,7 @@
     "id": "f7",
     "title": "Neighbourhood Waste Sorting Drive",
     "summary": "Sorting a week of collected household waste into organic, recyclable and residual streams.",
-    "type": "wasteDrive",
+    "category": "waste",
     "hostName": "Ombak Bersih",
     "hostId": "org-ombak",
     "locationName": "Banjar Padangsambian",

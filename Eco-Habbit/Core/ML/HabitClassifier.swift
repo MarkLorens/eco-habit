@@ -335,6 +335,15 @@ extension HabitClassifier {
 
         guard top.similarity >= minSimilarity else { return .nothing }
 
+        // Only the runners-up that actually cleared the floor are worth offering.
+        //
+        // `rank` returns the top `maxResults` unfiltered by design, and only `top` was
+        // checked above — so this used to hand the picker all three, including cosines
+        // near zero, presented to the user as things the camera had seen. On a frame
+        // where one habit genuinely matched, positions two and three were noise wearing
+        // the same clothes. `top` has cleared the floor already, so this is never empty.
+        let plausible = frame.habits.filter { $0.similarity >= minSimilarity }
+
         let clearOfRunnerUp = frame.habits.count == 1
             || (top.similarity - frame.habits[1].similarity) >= decisiveMargin
 
@@ -352,7 +361,7 @@ extension HabitClassifier {
            clearOfDistractors {
             return .confident(top)
         }
-        return .unsure(frame.habits)
+        return .unsure(plausible)
     }
 
     /// Convenience over the app's catalogue.

@@ -105,7 +105,7 @@ struct FightListView: View {
             OurFightDetailCard(
                 title: fight.title,
                 caption: fight.summary,
-                category: fight.type.tint,
+                category: fight.category.accent,
                 date: fight.cardDate,
                 location: fight.locationName,
                 picture: fight.cardPicture,
@@ -122,7 +122,7 @@ struct FightListView: View {
             OurFightListCard(
                 title: fight.title,
                 caption: fight.summary,
-                category: fight.type.tint,
+                category: fight.category.accent,
                 date: fight.cardDate,
                 location: fight.locationName,
                 picture: fight.cardPicture,
@@ -298,14 +298,14 @@ struct FightCard: View {
         EHCard {
             VStack(alignment: .leading, spacing: Theme.S.x2) {
                 HStack(spacing: Theme.S.x2) {
-                    Image(systemName: fight.type.symbol)
+                    Image(fight.category.icon)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Theme.C.accent2_700)
                         .frame(width: 34, height: 34)
                         .background(Circle().fill(Theme.C.accent2_100))
 
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(fight.type.name)
+                        Text(fight.category.title)
                             .font(Theme.F.body(11.5, weight: .semibold))
                             .foregroundStyle(Theme.C.neutral600)
                         Text(fight.hostName)

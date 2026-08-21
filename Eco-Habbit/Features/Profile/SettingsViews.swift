@@ -21,36 +21,36 @@ struct FavouriteCategoriesView: View {
                             CategoryIconView(
                                 glyph: category.icon,
                                 size: 22,
-                                color: isOn ? Theme.C.accent600 : Theme.C.neutral600
+                                color: isOn ? Tokens.Palette.orange : Tokens.Semantic.footnote
                             )
                             .frame(width: 44, height: 44)
                             .background(
                                 RoundedRectangle(cornerRadius: 12)
-                                    .fill(isOn ? Theme.C.accent100 : Theme.C.neutral100)
+                                    .fill(isOn ? Tokens.Palette.greenFaint : Tokens.Semantic.buttonTintDefault)
                             )
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(category.title)
-                                    .font(Theme.F.body(15, weight: .bold))
-                                    .foregroundStyle(Theme.C.text)
+                                    .textStyle(Tokens.Typography.body)
+                                    .foregroundStyle(Tokens.Semantic.text)
                                 Text(category.caption)
-                                    .font(Theme.F.body(12.5))
-                                    .foregroundStyle(Theme.C.neutral600)
+                                    .textStyle(Tokens.Typography.footnote)
+                                    .foregroundStyle(Tokens.Semantic.footnote)
                             }
 
                             Spacer()
 
                             Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
                                 .font(.system(size: 20))
-                                .foregroundStyle(isOn ? Theme.C.accent500 : Theme.C.neutral300)
+                                .foregroundStyle(isOn ? Tokens.Palette.green : Tokens.Semantic.statIcon)
                         }
                         .padding(12)
                         .background(
-                            RoundedRectangle(cornerRadius: Theme.R.card)
-                                .fill(Theme.C.surface)
+                            RoundedRectangle(cornerRadius: Tokens.Radius.basicCards)
+                                .fill(Tokens.Semantic.buttonTintDefault)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: Theme.R.card)
-                                        .stroke(isOn ? Theme.C.accent500 : Theme.C.neutral200, lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: Tokens.Radius.basicCards)
+                                        .stroke(isOn ? Tokens.Palette.green : Tokens.Semantic.statIcon.opacity(0.3), lineWidth: 1)
                                 )
                         )
                     }
@@ -58,8 +58,8 @@ struct FavouriteCategoriesView: View {
                 }
 
                 Text("\(selection.count) of 3 selected")
-                    .font(Theme.F.body(13))
-                    .foregroundStyle(Theme.C.neutral600)
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
                     .padding(.top, 6)
 
                 Button("Save") {
@@ -119,7 +119,7 @@ struct NotificationSettingsView: View {
         SettingsRow(title: title, showsDivider: showsDivider) {
             Toggle("", isOn: isOn)
                 .labelsHidden()
-                .tint(Theme.C.accent500)
+                .tint(Tokens.Palette.green)
         }
     }
 }
@@ -130,37 +130,51 @@ struct PrivacySettingsView: View {
     var body: some View {
         SettingsScaffold(
             title: "Privacy",
-            subtitle: "Everything you log lives on this device. Nothing is uploaded anywhere."
+            subtitle: "What is kept, where it is kept, and what leaves this device."
         ) {
             VStack(spacing: 14) {
                 EHCard(padding: 16) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("Stored on this device", systemImage: "internaldrive")
-                            .font(Theme.F.body(14, weight: .bold))
-                            .foregroundStyle(Theme.C.text)
-                        Text("  \(app.totalActionsLogged) logged actions")
+                        Label("On this device", systemImage: "internaldrive")
+                            .textStyle(Tokens.Typography.body)
+                            .foregroundStyle(Tokens.Semantic.text)
+                        Text("\(app.totalActionsLogged) logged actions, and \(app.savedEvidence.count) photos taken through the camera.")
                     }
-                    .font(Theme.F.body(13))
-                    .foregroundStyle(Theme.C.neutral700)
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
+                }
+
+                // This card used to say "No photos, ever — nothing is written to disk",
+                // which stopped being true the moment camera logs started keeping their
+                // frame. A privacy screen that is out of date is worse than none.
+                EHCard(padding: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Photos stay here", systemImage: "photo.on.rectangle")
+                            .textStyle(Tokens.Typography.body)
+                            .foregroundStyle(Tokens.Semantic.text)
+                        Text("A photo you log with is saved on this device only, and never uploaded. Deleting the action deletes its photo, and \u{201C}Reset local data\u{201D} removes every one.")
+                    }
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
                 }
 
                 EHCard(padding: 16) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label("No photos, ever", systemImage: "camera.metering.none")
-                            .font(Theme.F.body(14, weight: .bold))
-                            .foregroundStyle(Theme.C.text)
-                        Text("The camera is a search tool. Frames are read in memory and discarded — nothing is written to disk, the photo library, or the network.")
+                        Label("Synced to your account", systemImage: "icloud")
+                            .textStyle(Tokens.Typography.body)
+                            .foregroundStyle(Tokens.Semantic.text)
+                        Text("Signed in, your points, streak, action history and badges are backed up so they survive a reinstall. Only you can read them. Delete your account to remove them.")
                     }
-                    .font(Theme.F.body(13))
-                    .foregroundStyle(Theme.C.neutral700)
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
                 }
 
                 // Camera access is requested by CameraService the first time the camera
                 // opens, and revoked from iOS Settings. A mirror toggle here would only
                 // ever be a lie about what the system actually permits.
                 Text("Camera access is asked for when you first open the camera, and lives in iOS Settings.")
-                    .font(Theme.F.body(12))
-                    .foregroundStyle(Theme.C.neutral600)
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
             }
@@ -182,8 +196,8 @@ struct ActivityHistoryView: View {
             if app.history.isEmpty {
                 EHCard(padding: 18) {
                     Text("Log your first action and it shows up here.")
-                        .font(Theme.F.body(13.5))
-                        .foregroundStyle(Theme.C.neutral700)
+                        .textStyle(Tokens.Typography.footnote)
+                        .foregroundStyle(Tokens.Semantic.footnote)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
@@ -191,9 +205,9 @@ struct ActivityHistoryView: View {
                     ForEach(groupedHistory, id: \.day) { group in
                         VStack(alignment: .leading, spacing: 8) {
                             Text(Self.dayLabel(group.day))
-                                .font(Theme.F.body(12, weight: .bold))
+                                .textStyle(Tokens.Typography.footnote)
                                 .tracking(0.5)
-                                .foregroundStyle(Theme.C.neutral600)
+                                .foregroundStyle(Tokens.Semantic.footnote)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.top, 16)
 
@@ -203,7 +217,7 @@ struct ActivityHistoryView: View {
                                         HistoryRow(entry: entry)
                                         if index < group.entries.count - 1 {
                                             Rectangle()
-                                                .fill(Theme.C.neutral200)
+                                                .fill(Tokens.Semantic.statIcon.opacity(0.3))
                                                 .frame(height: 1)
                                                 .padding(.horizontal, 12)
                                         }
@@ -237,14 +251,14 @@ private struct HistoryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CategoryIconView(glyph: entry.category.icon, size: 18, color: Theme.C.accent2_700)
+            CategoryIconView(glyph: entry.category.icon, size: 18, color: Tokens.Palette.greenDark)
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(Theme.C.accent2_100))
+                .background(Circle().fill(Tokens.Palette.greenFaint))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.title)
-                    .font(Theme.F.body(14, weight: .semibold))
-                    .foregroundStyle(Theme.C.text)
+                    .textStyle(Tokens.Typography.body)
+                    .foregroundStyle(Tokens.Semantic.text)
                     .multilineTextAlignment(.leading)
 
                 HStack(spacing: 6) {
@@ -253,8 +267,8 @@ private struct HistoryRow: View {
                         Label("Camera", systemImage: "camera.fill")
                     }
                 }
-                .font(Theme.F.body(11.5))
-                .foregroundStyle(Theme.C.neutral600)
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Semantic.footnote)
             }
 
             Spacer()
@@ -279,14 +293,14 @@ struct SettingsScaffold<Content: View>: View {
                 HStack(spacing: 10) {
                     CircleIconButton(systemName: "chevron.left") { dismiss() }
                     Text(title)
-                        .font(Theme.F.heading(20))
-                        .foregroundStyle(Theme.C.text)
+                        .textStyle(Tokens.Typography.title)
+                        .foregroundStyle(Tokens.Semantic.text)
                     Spacer()
                 }
 
                 Text(subtitle)
-                    .font(Theme.F.body(13.5))
-                    .foregroundStyle(Theme.C.neutral700)
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 10)
 
@@ -297,7 +311,7 @@ struct SettingsScaffold<Content: View>: View {
             .padding(.top, 8)
             .tabContentInsets()
         }
-        .background(Theme.C.bg)
+        .background(Tokens.Palette.white)
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
     }
