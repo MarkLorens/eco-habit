@@ -308,12 +308,15 @@ final class AppState: ObservableObject {
 
     /// End of the onboarding flow. Takes the answers with it so the questions are not
     /// asked and then discarded.
-    func completeOnboarding(favourites: Set<HabitCategory>) {
+    func completeOnboarding(_ answers: OnboardingAnswers) {
         mutate {
             $0.hasCompletedOnboarding = true
-            // Only overwrite when something was chosen — skipping the question should
-            // not wipe favourites an existing account already had.
-            if !favourites.isEmpty { $0.favouriteCategories = favourites }
+            // Only overwrite when something was chosen — skipping a question should
+            // not wipe an answer an existing account already had.
+            if !answers.favouriteCategories.isEmpty {
+                $0.favouriteCategories = answers.favouriteCategories
+            }
+            if let effort = answers.effort { $0.preferredEffort = effort }
         }
     }
     var userName: String { data.userName.isEmpty ? "there" : data.userName }
@@ -446,12 +449,18 @@ final class AppState: ObservableObject {
         rows(in: category).filter(\.isCompletedToday).count
     }
 
-    /// Up to three things worth doing today: still available, favourites first.
-    var suggestedHabits: [Habit] {
-        let pending = MockData.habits.filter { isAvailable($0) }
-        let favourites = pending.filter { data.favouriteCategories.contains($0.category) }
-        let rest = pending.filter { !data.favouriteCategories.contains($0.category) }
-        return Array((favourites + rest).prefix(3))
+    /// What the dashboard deck offers today, best fit first.
+    ///
+    /// Replaces a favourites-first `prefix(3)` that nothing ever called. The scoring —
+    /// category, effort, recency, novelty, per-category cap — lives in
+    /// `RecommendationService`, which is pure and takes the catalogue as an argument so
+    /// it can be checked without a bundle.
+    ///
+    /// Recomputed per access rather than cached: it is a sort over 38 items, and the
+    /// inputs (today's logs) change the moment a card is checked off, which is exactly
+    /// when the deck should notice.
+    var recommendedHabits: [Habit] {
+        recommendationService.recommend(from: MockData.habits, state: data, today: today)
     }
 
     // MARK: - History and badges (all derived — nothing summable is stored)
@@ -498,6 +507,7 @@ final class AppState: ObservableObject {
     }
 
     private let badgeService = BadgeEvaluationService()
+    private let recommendationService = RecommendationService()
     
     var pendingBadge: Badge? {
         MockData.badges.first{ isUnlocked($0) && !data.announcedBadgeIds.contains($0.id) }

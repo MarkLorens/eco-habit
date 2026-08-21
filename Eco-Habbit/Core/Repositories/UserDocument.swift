@@ -32,7 +32,19 @@ struct UserDocument: Codable, Equatable {
 
     var userName: String
     var email: String
+    /// Whether this ACCOUNT has answered the onboarding questions — not this device.
+    ///
+    /// Its absence was a real bug: signing in on a second phone found `false`, re-asked
+    /// every question, and overwrote the answers already on the server. `RootView` waits
+    /// on `onboardingResolved` specifically so the decision is made against the server's
+    /// copy, and there was no server copy to make it against.
+    var hasCompletedOnboarding: Bool
     var favouriteCategories: [String]
+    /// `EffortLevel.rawValue`, or `nil` if the question was never answered. Stored as a
+    /// string for the same reason `Set` becomes `[String]` — Firestore has no enum type,
+    /// and an unrecognised value from a future build should read as "no answer" rather
+    /// than failing the whole document.
+    var preferredEffort: String?
     var notificationsEnabled: Bool
 
     var currentPoints: Int
@@ -82,7 +94,9 @@ struct UserDocument: Codable, Equatable {
 
         userName             = try v(.userName, "")
         email                = try v(.email, "")
+        hasCompletedOnboarding = try v(.hasCompletedOnboarding, false)
         favouriteCategories  = try v(.favouriteCategories, [])
+        preferredEffort      = try c.decodeIfPresent(String.self, forKey: .preferredEffort)
         notificationsEnabled = try v(.notificationsEnabled, true)
 
         currentPoints        = try v(.currentPoints, 0)
@@ -113,7 +127,9 @@ struct UserDocument: Codable, Equatable {
     init(_ state: PersistedState) {
         userName = state.userName
         email = state.email
+        hasCompletedOnboarding = state.hasCompletedOnboarding
         favouriteCategories = state.favouriteCategories.map(\.rawValue).sorted()
+        preferredEffort = state.preferredEffort?.rawValue
         notificationsEnabled = state.notificationsEnabled
 
         currentPoints = state.currentPoints
@@ -154,7 +170,11 @@ struct UserDocument: Codable, Equatable {
     func apply(to state: inout PersistedState) {
         state.userName = userName
         state.email = email
+        state.hasCompletedOnboarding = hasCompletedOnboarding
         state.favouriteCategories = Set(favouriteCategories.compactMap(HabitCategory.init(rawValue:)))
+        // `flatMap`, so a value this build does not recognise becomes "no answer"
+        // rather than a crash or a wrong default.
+        state.preferredEffort = preferredEffort.flatMap(EffortLevel.init(rawValue:))
         state.notificationsEnabled = notificationsEnabled
 
         state.currentPoints = currentPoints

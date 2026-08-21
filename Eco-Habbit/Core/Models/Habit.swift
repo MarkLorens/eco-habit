@@ -26,6 +26,14 @@ struct Habit: Identifiable, Codable, Hashable {
     let basePoints: Int
     let evidenceStrength: EvidenceStrength
 
+    /// One line of "why this matters", for the dashboard's recommendation card.
+    ///
+    /// Optional and **absent from `habits.json` today** — writing 38 lines of
+    /// user-facing copy is a content decision, not a code one. `detailOrCaption`
+    /// falls back to the category's own line so the card is never blank, and filling
+    /// the field in for a habit is then a one-key edit with no code change.
+    let detail: String?
+
     /// Minimum gap before this may be logged again. `nil` = loggable daily.
     let cooldownDays: Int?
 
@@ -42,12 +50,22 @@ struct Habit: Identifiable, Codable, Hashable {
     /// must agree are one field too many.
     var isCameraDetectable: Bool { evidenceStrength != .notDetectable }
 
+    /// What a card shows under the title. The catalogue's own line when it has one,
+    /// the category's otherwise.
+    var detailOrCaption: String {
+        // The category caption is authored as two lines for the Practices grid, and the
+        // break is doing the work of punctuation — "Safe energy / Power a better future".
+        // Joined with a space it reads as one broken sentence, so it becomes a dash.
+        detail ?? category.caption.replacingOccurrences(of: "\n", with: " — ")
+    }
+
     init(
         id: String,
         name: String,
         category: HabitCategory,
         frictionLevel: FrictionLevel,
         evidenceStrength: EvidenceStrength,
+        detail: String? = nil,
         cooldownDays: Int? = nil,
         basePoints: Int? = nil,
         hasEvidence: Bool = false,
@@ -58,6 +76,7 @@ struct Habit: Identifiable, Codable, Hashable {
         self.category = category
         self.frictionLevel = frictionLevel
         self.evidenceStrength = evidenceStrength
+        self.detail = detail
         self.cooldownDays = cooldownDays
         self.basePoints = basePoints ?? frictionLevel.basePoints
         self.hasEvidence = hasEvidence
@@ -68,7 +87,7 @@ struct Habit: Identifiable, Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, category, frictionLevel, basePoints
-        case evidenceStrength, cooldownDays, hasEvidence, lastCompletedDate
+        case evidenceStrength, detail, cooldownDays, hasEvidence, lastCompletedDate
     }
 
     /// Hand-written so the bundled catalogue can carry **definition only**.
@@ -85,6 +104,7 @@ struct Habit: Identifiable, Codable, Hashable {
         category = try c.decode(HabitCategory.self, forKey: .category)
         frictionLevel = try c.decode(FrictionLevel.self, forKey: .frictionLevel)
         evidenceStrength = try c.decode(EvidenceStrength.self, forKey: .evidenceStrength)
+        detail = try c.decodeIfPresent(String.self, forKey: .detail)
         cooldownDays = try c.decodeIfPresent(Int.self, forKey: .cooldownDays)
         basePoints = try c.decodeIfPresent(Int.self, forKey: .basePoints)
             ?? frictionLevel.basePoints

@@ -9,7 +9,7 @@ import SwiftUI
 
 struct OnboardingQuestions: View {
     /// Called once the last question is answered, with the answers worth keeping.
-    var onFinished: (Set<HabitCategory>) -> Void = { _ in }
+    var onFinished: (OnboardingAnswers) -> Void = { _ in }
 
     /// Which question is on screen. Kept here rather than in `OnboardingFlow` so the
     /// answers below survive stepping between questions — lifting the step up without
@@ -23,7 +23,9 @@ struct OnboardingQuestions: View {
     /// Many answers: the copy asks for 2-3.
     @State private var selectedCategories: Set<HabitCategory> = []
     
-    @State private var selectedLevel: String?
+    /// Question three. Typed rather than a display string, so the recommender reads an
+    /// answer instead of re-parsing English.
+    @State private var selectedLevel: EffortLevel?
 
     private let reasons = [
         "Save money",
@@ -32,11 +34,6 @@ struct OnboardingQuestions: View {
         "Something else",
     ]
     
-    private let level = [
-        "Easy",
-        "Moderate",
-        "Challenging"
-    ]
     
     var body: some View{
         ZStack(alignment: .top) {
@@ -46,22 +43,55 @@ struct OnboardingQuestions: View {
         .padding(.top, 42)
         .padding(.horizontal, 40)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .bottomTrailing) {
-            Button{
-                advance()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .textStyle(Tokens.Typography.hero)
-                    .frame(width:60, height: 60)
-                    .background(Circle().fill(Tokens.Semantic.text))
-                    .foregroundStyle(Tokens.Palette.white)
-            }
-            .padding(.trailing, Tokens.Spacing.xl)
-            .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
-            .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
+        .overlay(alignment: .bottomTrailing) { advanceButton }
+    }
+
+    /// The only way forward, so it is disabled rather than hidden — a control that
+    /// vanishes reads as a broken screen, whereas a greyed one says "not yet".
+    ///
+    /// There is no skip anywhere in this flow, which is exactly why this has to be
+    /// right: with the gate on, an unanswered question is genuinely a dead end, and
+    /// `canAdvance` is the single place that decides what counts as answered.
+    private var advanceButton: some View {
+        Button{
+            advance()
+        } label: {
+            Image(systemName: "chevron.right")
+                .textStyle(Tokens.Typography.hero)
+                .frame(width:60, height: 60)
+                .background(Circle().fill(canAdvance ? Tokens.Semantic.text
+                                                     : Tokens.Semantic.statIcon))
+                .foregroundStyle(Tokens.Palette.white)
+        }
+        .disabled(!canAdvance)
+        .animation(.easeOut(duration: 0.2), value: canAdvance)
+        .padding(.trailing, Tokens.Spacing.xl)
+        .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
+        .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
+        .accessibilityLabel(step < lastStep ? "Next question" : "Finish")
+        .accessibilityHint(canAdvance ? "" : advanceBlockedReason)
+    }
+
+    /// Whether the question on screen has been answered.
+    private var canAdvance: Bool {
+        switch step {
+        case 1:  return selectedReason != nil
+        // Two, not one: the question's own subtitle says "Select 2-3", and enabling at
+        // one would have the button contradict the instruction directly above it.
+        // Matches `FavouriteCategoriesView`, which gates the same choice the same way.
+        case 2:  return selectedCategories.count >= 2
+        default: return selectedLevel != nil
         }
     }
-    
+
+    private var advanceBlockedReason: String {
+        switch step {
+        case 1:  return "Choose a reason to continue"
+        case 2:  return "Choose at least two categories to continue"
+        default: return "Choose an effort level to continue"
+        }
+    }
+
     @ViewBuilder
     private var currentQuestion: some View {
         switch step {
@@ -72,10 +102,15 @@ struct OnboardingQuestions: View {
     }
 
     private func advance() {
+        // Belt and braces. The button is disabled, but nothing stops a future caller
+        // (a swipe gesture, a keyboard shortcut) from reaching this and skipping a
+        // question the flow has no way to come back to.
+        guard canAdvance else { return }
         if step < lastStep {
             withAnimation(OnboardingFlow.stepAnimation) { step += 1 }
         } else {
-            onFinished(selectedCategories)
+            onFinished(OnboardingAnswers(favouriteCategories: selectedCategories,
+                                        effort: selectedLevel))
         }
     }
 
@@ -142,18 +177,22 @@ struct OnboardingQuestions: View {
             )
             
             VStack(spacing: Tokens.Spacing.xl){
-                ForEach(level, id: \.self) { levels in
+                ForEach(EffortLevel.allCases) { level in
                     Button {
-                        withAnimation(.easeOut(duration: 0.15)) { selectedLevel = levels }
+                        withAnimation(.easeOut(duration: 0.15)) { selectedLevel = level }
                     } label: {
                         QuestionCards(
-                            description: levels,
+                            description: level.displayName,
                             icon: "energy-icon",
-                            isSelected: selectedReason == levels
+                            // Was `selectedReason == levels` — compared against question
+                            // ONE's answer, so picking an effort level highlighted
+                            // nothing. Tap handling and VoiceOver were already correct,
+                            // which is why it read as a rendering glitch.
+                            isSelected: selectedLevel == level
                         )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityAddTraits(selectedLevel == levels ? .isSelected : [])
+                    .accessibilityAddTraits(selectedLevel == level ? .isSelected : [])
                 }
             }
         }
