@@ -22,12 +22,20 @@ struct OnboardingQuestions: View {
     @State private var selectedReason: String?
     /// Many answers: the copy asks for 2-3.
     @State private var selectedCategories: Set<HabitCategory> = []
+    
+    @State private var selectedLevel: String?
 
     private let reasons = [
         "Save money",
         "Live healthier",
         "Help the environment",
         "Something else",
+    ]
+    
+    private let level = [
+        "Easy",
+        "Moderate",
+        "Challenging"
     ]
     
     var body: some View{
@@ -130,9 +138,24 @@ struct OnboardingQuestions: View {
             ProgressBar(progress: 2.0 / 3.0)
 
             HeaderTitle(
-                title: "Final Question?",
-                subtitle: "Test"
+                title: "What level of effort are you comfortable with?"
             )
+            
+            VStack(spacing: Tokens.Spacing.xl){
+                ForEach(level, id: \.self) { levels in
+                    Button {
+                        withAnimation(.easeOut(duration: 0.15)) { selectedLevel = levels }
+                    } label: {
+                        QuestionCards(
+                            description: levels,
+                            icon: "energy-icon",
+                            isSelected: selectedReason == levels
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selectedLevel == levels ? .isSelected : [])
+                }
+            }
         }
     }
 
