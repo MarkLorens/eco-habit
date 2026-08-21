@@ -69,7 +69,6 @@ struct AppTabBar: View {
     var body: some View{
         HStack(spacing: 0){
             ForEach(leadingTabs) { tabButton($0) }
-            if showsCapture { captureButton }
             ForEach(trailingTabs) { tabButton($0) }
         }
         .padding(.vertical, Tokens.Spacing.sm)

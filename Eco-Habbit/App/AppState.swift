@@ -485,6 +485,18 @@ final class AppState: ObservableObject {
         rows(in: category).filter(\.isCompletedToday).count
     }
 
+    /// Up to three things worth doing today: still available, favourites first.
+    ///
+    /// Used by the camera when detection misses. The alternative there was
+    /// `MockData.habits`, which is bundle order — so a failed detection offered the
+    /// first three lines of `habits.json` to every user, every time, out of 38.
+    var suggestedHabits: [Habit] {
+        let pending = MockData.habits.filter { isAvailable($0) }
+        let favourites = pending.filter { data.favouriteCategories.contains($0.category) }
+        let rest = pending.filter { !data.favouriteCategories.contains($0.category) }
+        return Array((favourites + rest).prefix(3))
+    }
+
     /// What the dashboard deck offers today, best fit first.
     ///
     /// Replaces a favourites-first `prefix(3)` that nothing ever called. The scoring —
