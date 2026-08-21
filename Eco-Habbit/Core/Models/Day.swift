@@ -6,7 +6,7 @@ import Foundation
 /// so a user who logs in Bali and reopens in Dublin keeps their history. That makes the
 /// string the unit of work, not `Date` — and zero-padded `YYYY-MM-DD` sorts correctly
 /// with plain `<`, which is what the evaluation loop relies on.
-enum Day {
+nonisolated enum Day {
 
     /// Arithmetic runs in UTC so `string → date → string` is pure calendar maths with no
     /// DST or offset surprises. This calendar never sees the user's timezone.

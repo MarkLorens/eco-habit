@@ -7,14 +7,20 @@ struct ActivityListView: View {
         NavigationStack(path: $app.actionsPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    VStack(alignment: .leading, spacing: Tokens.Spacing.sm){
-                        Text("Daily Practices")
-                            .textStyle(Tokens.Typography.hero)
-                            .foregroundStyle(Tokens.Semantic.text)
-                        
-                        Text("Choose a category to see suggested actions")
-                            .textStyle(Tokens.Typography.footnote)
-                            .foregroundStyle(Tokens.Semantic.footnote)
+                    HStack{
+                        VStack(alignment: .leading, spacing: Tokens.Spacing.sm){
+                            Text("Daily Practices")
+                                .textStyle(Tokens.Typography.hero)
+                                .foregroundStyle(Tokens.Semantic.text)
+                            
+                            Text("Choose a category to see suggested actions")
+                                .textStyle(Tokens.Typography.footnote)
+                                .foregroundStyle(Tokens.Semantic.footnote)
+                        }
+                        Spacer()
+                        NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .camera){
+                            app.isCameraPresented = true
+                        }
                     }
                     .padding(.horizontal, Tokens.Spacing.xxl)
                     LazyVGrid(

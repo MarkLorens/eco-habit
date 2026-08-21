@@ -6,7 +6,7 @@ import Foundation
 /// in the past and the exhibit demo shows an empty screen. Offsets mean the seeded events
 /// are always upcoming, and `f1` — offset −1h, 10h long — always has an **open check-in
 /// window**, which is exactly what PRD §12.1 asks for.
-struct FightSeed: Codable {
+nonisolated struct FightSeed: Codable {
     let id: String
     let title: String
     let summary: String

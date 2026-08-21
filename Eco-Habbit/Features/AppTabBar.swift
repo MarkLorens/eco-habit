@@ -20,7 +20,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     
     var title: String {
         switch self {
-        case .home: return "Home"
+        case .home: return "My Earth"
         case .actions: return "Practices"
         case .ourFights: return "Our Fights"
 //        case .camera: return "Camera"
@@ -30,10 +30,10 @@ enum AppTab: String, CaseIterable, Identifiable {
     
     var icon: String {
         switch self {
-        case .home: return "house.fill"
+        case .home: return "globe.americas.fill"
         case .actions: return "leaf.fill"
 //        case .camera: return "camera.fill"
-        case .ourFights: return "trophy.fill"
+        case .ourFights: return "shield.fill"
         case .profile: return "person.fill"
         }
     }
@@ -41,7 +41,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 
 struct AppTabBar: View {
     @Binding var selection: AppTab
-    var onCapture: () -> Void = {}
+//    var onCapture: () -> Void = {}
     @Namespace private var pill
     
     // Separate first two and last two because Camera button isn't actually a tab item
@@ -53,7 +53,6 @@ struct AppTabBar: View {
     var body: some View{
         HStack(spacing: 0){
             ForEach(leadingTabs) { tabButton($0) }
-            captureButton
             ForEach(trailingTabs) { tabButton($0) }
         }
         .padding(.vertical, Tokens.Spacing.sm)
@@ -99,25 +98,6 @@ struct AppTabBar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-    
-    // MARK: - This is the camera
-    private var captureButton: some View {
-        Button(action: onCapture){
-            Image(systemName: "camera.fill")
-                .textStyle(Tokens.Typography.icon)
-                .foregroundStyle(Tokens.Semantic.tabviewBackground)
-                .background {
-                    Circle()
-                        .fill(Tokens.Palette.white)
-                        .frame(width: 60, height: 60)
-                        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y:4)
-                }
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
-        .accessibilityLabel("Capture")
     }
 }
 

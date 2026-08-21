@@ -17,8 +17,7 @@ struct MainTabView: View {
             }
             if app.selectedTab != .actions || app.actionsPath.isEmpty {
                 AppTabBar(
-                    selection: $app.selectedTab,
-                    onCapture: { app.isCameraPresented = true }
+                    selection: $app.selectedTab
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }

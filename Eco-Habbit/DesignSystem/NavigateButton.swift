@@ -15,6 +15,7 @@ enum ButtonAction {
     case share
     case love
     case plus
+    case camera
     
     var action: String {
         switch self {
@@ -26,6 +27,7 @@ enum ButtonAction {
         case .share: "square.and.arrow.up"
         case .love: "heart.fill"
         case .plus: "plus"
+        case .camera: "camera.viewfinder"
         }
     }
 }

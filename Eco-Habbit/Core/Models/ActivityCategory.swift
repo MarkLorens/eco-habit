@@ -32,7 +32,7 @@ enum HabitCategory: String, Codable, CaseIterable, Identifiable, Hashable {
         }
     }
     
-    var icon: String {
+    nonisolated var icon: String {
         switch self {
         case .energy: return Tokens.Icons.energyIcon
         case .waste: return Tokens.Icons.wasteIcon
@@ -43,7 +43,7 @@ enum HabitCategory: String, Codable, CaseIterable, Identifiable, Hashable {
         }
     }
     
-    var iconDetail: String {
+    nonisolated var iconDetail: String {
         switch self {
         case .energy: return Tokens.Icons.energyDetail
         case .waste: return Tokens.Icons.wasteDetail

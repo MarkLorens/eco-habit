@@ -16,6 +16,9 @@ struct CategoryDetailView: View {
     private let sheetTail: CGFloat = 56
     
     @State private var searchText = ""
+    /// The search bar's leaf toggle: show only what has been checked off today.
+    @State private var showingCompletedOnly = false
+
     // Sorting done activity.
     var filteredActivity: [HabitRow] {
         let rows = app.rows(in: category)
@@ -23,14 +26,25 @@ struct CategoryDetailView: View {
         let matching = searchText.isEmpty
             ? rows
             : rows.filter { $0.habit.name.localizedCaseInsensitiveContains(searchText) }
+
+        // Stacks with search rather than replacing it — filtering to "done" and then
+        // searching within that is a reasonable thing to want, and treating them as
+        // exclusive would silently drop whatever the user typed.
+        guard !showingCompletedOnly else { return matching.filter(\.isCompletedToday) }
+
         return matching.filter { !$0.isCompletedToday } + matching.filter(\.isCompletedToday)
+    }
+
+    /// How many are checked off, for the empty state and the toggle's hint.
+    private var completedCount: Int {
+        app.rows(in: category).filter(\.isCompletedToday).count
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: Tokens.Spacing.sm) {
                 if filteredActivity.isEmpty {
-                    noMatches
+                    emptyState
                         .frame(minHeight: 400, alignment: .center)
                 } else {
                     ForEach(filteredActivity) { row in
@@ -49,7 +63,7 @@ struct CategoryDetailView: View {
             .padding(.top, headerHeight)
         }
         .safeAreaInset(edge: .bottom){
-            AppSearchBar(text: $searchText)
+            AppSearchBar(text: $searchText, completedFilter: $showingCompletedOnly)
                 .padding(.horizontal, Tokens.Spacing.md)
                 .padding(.vertical, Tokens.Spacing.md)
         }
@@ -109,6 +123,38 @@ struct CategoryDetailView: View {
                 .frame(width: 130 * category.iconScale, height: 130 * category.iconScale)
         }
         .padding([.horizontal], Tokens.Spacing.sm)
+    }
+
+    /// Empty means different things depending on which filter emptied it, and
+    /// "we can't find ..." is actively wrong when the search box is blank and the
+    /// user has simply not checked anything off yet.
+    @ViewBuilder
+    private var emptyState: some View {
+        if showingCompletedOnly && completedCount == 0 {
+            nothingCompleted
+        } else {
+            noMatches
+        }
+    }
+
+    private var nothingCompleted: some View {
+        VStack(spacing: Tokens.Spacing.sm) {
+            Image(systemName: "leaf")
+                .textStyle(Tokens.Typography.icon)
+                .foregroundStyle(Tokens.Semantic.footnote)
+
+            Text("Nothing checked off yet")
+                .textStyle(Tokens.Typography.title)
+                .foregroundStyle(Tokens.Semantic.text)
+                .multilineTextAlignment(.center)
+
+            Text("Log a \(category.title) action and it shows up here. Tap the leaf again to see all \(app.rows(in: category).count).")
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Semantic.footnote)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, Tokens.Spacing.xl)
     }
 
     // For empty search

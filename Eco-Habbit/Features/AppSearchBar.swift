@@ -10,17 +10,21 @@ import SwiftUI
 struct AppSearchBar: View{
     @Binding var text: String
     var prompt: String = "Search"
-    
+
+    /// Supply this and the leaf becomes a "show only what I have checked off" toggle.
+    ///
+    /// Optional rather than a plain `@Binding` because the leaf predates any filter and
+    /// a future search bar may have nothing to filter. `nil` keeps it decorative, which
+    /// is exactly what the standalone preview below wants — and it means adding the
+    /// filter did not change any other call site.
+    var completedFilter: Binding<Bool>? = nil
+
     @FocusState private var isFocused: Bool
     @StateObject private var dictation = DictationService()
 
     var body: some View{
         HStack{
-            Image(systemName: "leaf.fill")
-                .textStyle(Tokens.Typography.title)
-                .foregroundStyle(Tokens.Semantic.text)
-                .padding(Tokens.Spacing.md)
-                .glassed(in: .circle, fallback: Tokens.Semantic.buttonTintDefault)
+            leaf
             HStack (spacing: Tokens.Spacing.sm){
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(Tokens.Semantic.footnote)
@@ -84,6 +88,51 @@ struct AppSearchBar: View{
                 .accessibilityLabel("Clear search")
                 .glassed(in: .circle, fallback: Tokens.Semantic.buttonTintDefault)
             }
+        }
+    }
+}
+
+private extension AppSearchBar {
+
+    /// A toggle when there is something to toggle, the original decoration otherwise.
+    @ViewBuilder
+    var leaf: some View {
+        if let completedFilter {
+            Button {
+                isFocused = false
+                withAnimation(.snappy(duration: 0.2)) {
+                    completedFilter.wrappedValue.toggle()
+                }
+            } label: {
+                leafGlyph(active: completedFilter.wrappedValue)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(completedFilter.wrappedValue
+                                ? "Showing only completed actions"
+                                : "Show only completed actions")
+            .accessibilityAddTraits(completedFilter.wrappedValue ? .isSelected : [])
+        } else {
+            leafGlyph(active: false)
+        }
+    }
+
+    /// Filled and solid when on. The glass treatment is the *resting* look, so leaving
+    /// it applied in both states makes an active filter almost impossible to see.
+    @ViewBuilder
+    func leafGlyph(active: Bool) -> some View {
+        let glyph = Image(systemName: "leaf.fill")
+            .textStyle(Tokens.Typography.title)
+            .foregroundStyle(active ? Tokens.Palette.white : Tokens.Semantic.text)
+            .padding(Tokens.Spacing.md)
+
+        if active {
+            glyph
+                .background(Circle().fill(Tokens.Palette.greenDark))
+                .contentShape(Circle())
+        } else {
+            glyph
+                .glassed(in: .circle, fallback: Tokens.Semantic.buttonTintDefault)
+                .contentShape(Circle())
         }
     }
 }

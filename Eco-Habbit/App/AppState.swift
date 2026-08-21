@@ -878,7 +878,9 @@ final class AppState: ObservableObject {
 
         if case .accepted = result,
            FightRepository.signup(for: fight.id, in: data)?.checkInToken == raw {
-            checkIn(to: fight)
+            // The attendee-side result is deliberately ignored: this is the host's
+            // scan, and `checkIn` has already raised whatever toast it needed to.
+            _ = checkIn(to: fight)
         }
         return result
     }
