@@ -86,9 +86,27 @@ struct HomeView: View {
             .offset(x: side * art.nudgeX, y: side * art.nudgeY)
             .frame(width: side, height: side)
             .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.snappy(duration: 0.35)) { isGlobeFocused.toggle() }
-        }	
+            .onTapGesture {
+                withAnimation(.snappy(duration: 0.35)) { isGlobeFocused.toggle() }
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 30)
+                    .onEnded { value in
+                        let verticalMovement = value.translation.height
+
+                        if verticalMovement < -30 {
+                            // Swiped up
+                            withAnimation(.snappy(duration: 0.35)) {
+                                isGlobeFocused = true
+                            }
+                        } else if verticalMovement > 30 {
+                            // Swiped down
+                            withAnimation(.snappy(duration: 0.35)) {
+                                isGlobeFocused = false
+                            }
+                        }
+                    }
+            )
         .accessibilityElement()
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Your Earth, stage \(app.globeStage + 1) of \(GlobeView.lastStage + 1)")

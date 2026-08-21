@@ -23,6 +23,7 @@ struct ActivityListView: View {
                         }
                     }
                     .padding(.horizontal, Tokens.Spacing.xxl)
+                    .padding(.top, Tokens.Spacing.lg)
                     LazyVGrid(
                         columns: [GridItem(.flexible(), spacing: Tokens.Spacing.md), GridItem(.flexible())],
                         spacing: Tokens.Spacing.xl
