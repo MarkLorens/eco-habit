@@ -34,7 +34,7 @@ nonisolated enum EventTier: String, Codable, CaseIterable {
 /// attendee's personal QR — needs a cross-user write with no server to authorise it.
 /// One shared code means the attendee's own device credits the attendee, which is a
 /// write it is already allowed to make.
-struct Fight: Identifiable, Codable, Hashable {
+nonisolated struct Fight: Identifiable, Codable, Hashable {
     let id: String
     /// `var` from here down because a host edits a published event in place
     /// (PRD §6.5.1) — editing is permitted, deletion is not.
@@ -241,7 +241,7 @@ struct Fight: Identifiable, Codable, Hashable {
 
 /// A user's signup for one Fight. PRD §4.5: the check-in token is generated at signup
 /// and lives on the attendee's phone.
-struct FightSignup: Codable, Hashable, Identifiable {
+nonisolated struct FightSignup: Codable, Hashable, Identifiable {
     var id: String { fightId }
     let fightId: String
     let signedUpAt: Date
@@ -255,7 +255,7 @@ struct FightSignup: Codable, Hashable, Identifiable {
 /// Proof of attendance. In Phase 10 this becomes `/attendance/{eventId}_{userId}` and the
 /// composite ID gives uniqueness for free (PRD §9.3); locally the same guarantee comes
 /// from `FightRepository` refusing a second write.
-struct FightAttendance: Codable, Hashable, Identifiable {
+nonisolated struct FightAttendance: Codable, Hashable, Identifiable {
     var id: String { fightId }
     let fightId: String
     let checkedInAt: Date
@@ -302,7 +302,7 @@ struct FightAttendance: Codable, Hashable, Identifiable {
 /// Phase 10 these cannot be the same thing: awarding Vitality to another user is
 /// a cross-user write, and there is no server to authorise it. The host records
 /// who they scanned; the attendee's device credits itself.
-struct HostScan: Codable, Hashable, Identifiable {
+nonisolated struct HostScan: Codable, Hashable, Identifiable {
     var id: String { token }
     let fightId: String
     let token: String

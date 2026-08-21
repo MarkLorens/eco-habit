@@ -18,7 +18,7 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Theme.C.bg.ignoresSafeArea()
+            Tokens.Palette.white
 
             Group {
                 switch activeTab {

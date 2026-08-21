@@ -91,9 +91,14 @@ final class AppState: ObservableObject {
          sync: UserStateSyncing? = nil) {
         self.userId = userId
         self.sync = sync
+        // No sync injected means there is nothing to reconcile with, so this session is
+        // resolved from the outset. Left at `.pending` it would never clear, and
+        // anything gated on reconciliation — the onboarding route — would hang.
+        self.syncStatus = sync == nil ? .localOnly : .pending
         let stored = PersistenceStore.load(userId: userId ?? PersistenceStore.signedOutUserId)
         self.hasLocalCopy = stored != nil
         self.data = data ?? stored ?? PersistedState()
+        if isBrowsingLocally { syncStatus = .localOnly }
         evaluateIfNeeded()
         backfillGlobeStageAnnouncement()
     }
@@ -109,6 +114,7 @@ final class AppState: ObservableObject {
         // and on a reinstall `data` is blank — see `remoteResolved`.
         remoteResolved = false
         syncStatus = .pending
+        endLocalSession()
 
         userId = uid
         let stored = PersistenceStore.load(userId: uid)
@@ -293,6 +299,62 @@ final class AppState: ObservableObject {
     /// reads it any more: a persisted boolean and a live Firebase session are two
     /// sources of truth, and they drift the moment a token expires.
     var isLoggedIn: Bool { userId != nil }
+
+    // MARK: - Using the app without an account
+
+    /// Whether somebody chose to skip sign-in.
+    ///
+    /// **Not the same as being signed in**, deliberately. `userId` stays `nil`, so
+    /// `storageId` resolves to `PersistenceStore.signedOutUserId` and everything is kept
+    /// under the reserved `local` account — one read/write path, no Firebase, and no
+    /// chance of a skipped session writing over a real one.
+    ///
+    /// Persisted because the alternative is meeting the sign-in wall on every launch,
+    /// which is the thing this exists to avoid.
+    @Published private(set) var isBrowsingLocally = UserDefaults.standard.bool(forKey: localModeKey)
+
+    private static let localModeKey = "EHBrowsingLocally"
+
+    /// Enter the app without an account. Points, streak, camera and Fights all work;
+    /// nothing syncs, and nothing survives deleting the app.
+    func continueWithoutAccount() {
+        isBrowsingLocally = true
+        UserDefaults.standard.set(true, forKey: Self.localModeKey)
+        data = PersistenceStore.load(userId: PersistenceStore.signedOutUserId) ?? PersistedState()
+        syncStatus = .localOnly
+        evaluateIfNeeded()
+        backfillGlobeStageAnnouncement()
+        selectedTab = .home
+    }
+
+    /// Back to the sign-in screen. Local data stays on disk under `local`, so choosing
+    /// to skip again finds it exactly as it was.
+    func endLocalSession() {
+        isBrowsingLocally = false
+        UserDefaults.standard.set(false, forKey: Self.localModeKey)
+    }
+
+    var hasCompletedOnboarding: Bool { data.hasCompletedOnboarding }
+
+    /// True once we know whether this account has been here before — the remote copy
+    /// landed, or we established there is none to wait for. Routing on
+    /// `hasCompletedOnboarding` before this is what would flash the questions at a
+    /// returning user on a new device, whose `data` is still blank.
+    var onboardingResolved: Bool { syncStatus != .pending }
+
+    /// End of the onboarding flow. Takes the answers with it so the questions are not
+    /// asked and then discarded.
+    func completeOnboarding(_ answers: OnboardingAnswers) {
+        mutate {
+            $0.hasCompletedOnboarding = true
+            // Only overwrite when something was chosen — skipping a question should
+            // not wipe an answer an existing account already had.
+            if !answers.favouriteCategories.isEmpty {
+                $0.favouriteCategories = answers.favouriteCategories
+            }
+            if let effort = answers.effort { $0.preferredEffort = effort }
+        }
+    }
     var userName: String { data.userName.isEmpty ? "there" : data.userName }
     var firstName: String { userName.split(separator: " ").first.map(String.init) ?? userName }
     var notificationsEnabled: Bool { data.notificationsEnabled }
@@ -423,12 +485,18 @@ final class AppState: ObservableObject {
         rows(in: category).filter(\.isCompletedToday).count
     }
 
-    /// Up to three things worth doing today: still available, favourites first.
-    var suggestedHabits: [Habit] {
-        let pending = MockData.habits.filter { isAvailable($0) }
-        let favourites = pending.filter { data.favouriteCategories.contains($0.category) }
-        let rest = pending.filter { !data.favouriteCategories.contains($0.category) }
-        return Array((favourites + rest).prefix(3))
+    /// What the dashboard deck offers today, best fit first.
+    ///
+    /// Replaces a favourites-first `prefix(3)` that nothing ever called. The scoring —
+    /// category, effort, recency, novelty, per-category cap — lives in
+    /// `RecommendationService`, which is pure and takes the catalogue as an argument so
+    /// it can be checked without a bundle.
+    ///
+    /// Recomputed per access rather than cached: it is a sort over 38 items, and the
+    /// inputs (today's logs) change the moment a card is checked off, which is exactly
+    /// when the deck should notice.
+    var recommendedHabits: [Habit] {
+        recommendationService.recommend(from: MockData.habits, state: data, today: today)
     }
 
     // MARK: - History and badges (all derived — nothing summable is stored)
@@ -475,6 +543,7 @@ final class AppState: ObservableObject {
     }
 
     private let badgeService = BadgeEvaluationService()
+    private let recommendationService = RecommendationService()
     
     var pendingBadge: Badge? {
         MockData.badges.first{ isUnlocked($0) && !data.announcedBadgeIds.contains($0.id) }
@@ -944,7 +1013,9 @@ final class AppState: ObservableObject {
 
         if case .accepted = result,
            FightRepository.signup(for: fight.id, in: data)?.checkInToken == raw {
-            checkIn(to: fight)
+            // The attendee-side result is deliberately ignored: this is the host's
+            // scan, and `checkIn` has already raised whatever toast it needed to.
+            _ = checkIn(to: fight)
         }
         return result
     }
@@ -999,6 +1070,9 @@ final class AppState: ObservableObject {
         // Belt and braces for the DEBUG launch-argument path, which never had a
         // Firebase session for the listener to react to.
         if userId != nil { signedOut() }
+        // A skipped session has no Firebase session for the listener to end, so without
+        // this "Log out" would leave the app exactly where it was.
+        endLocalSession()
         selectedTab = .home
     }
 

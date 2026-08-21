@@ -35,7 +35,7 @@ nonisolated enum BadgeType: String, Codable, CaseIterable {
 /// what the profile grid and the detail sheet render and are unchanged. What was
 /// a `Requirement` enum carrying its own numbers is now a `type` plus a numeric
 /// `threshold`, which is what lets one function evaluate every badge.
-struct Badge: Identifiable, Codable, Hashable {
+nonisolated struct Badge: Identifiable, Codable, Hashable {
     let id: String
     let name: String
     let tier: String

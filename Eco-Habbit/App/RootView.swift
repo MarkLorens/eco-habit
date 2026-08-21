@@ -20,7 +20,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Theme.C.bg.ignoresSafeArea()
+            Tokens.Palette.white.ignoresSafeArea()
 
             Group {
                 if !sessionResolved {
@@ -29,15 +29,27 @@ struct RootView: View {
                     // until the listener below fires. Rendering the sign-in screen in
                     // the meantime would flash it at every returning user.
                     Color.clear
-                } else if app.isLoggedIn {
-                    MainTabView()
-                        .transition(.opacity)
-                } else {
+                } else if !app.isLoggedIn && !app.isBrowsingLocally {
                     SignInView()
+                        .transition(.opacity)
+                } else if !app.onboardingResolved {
+                    // Same reasoning one level down: signed in, but this device may not
+                    // know yet that the account has already answered. Deciding now would
+                    // re-ask a returning user on a new phone.
+                    Color.clear
+                } else if !app.hasCompletedOnboarding {
+                    OnboardingFlow { answers in
+                        app.completeOnboarding(answers)
+                    }
+                    .transition(.opacity)
+                } else {
+                    MainTabView()
                         .transition(.opacity)
                 }
             }
             .animation(.easeInOut(duration: 0.35), value: app.isLoggedIn)
+            .animation(.easeInOut(duration: 0.35), value: app.isBrowsingLocally)
+            .animation(.easeInOut(duration: 0.35), value: app.hasCompletedOnboarding)
         }
         .task {
             guard !isDemoLaunch else { sessionResolved = true; return }

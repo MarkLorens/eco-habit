@@ -74,7 +74,10 @@ final class CameraService: NSObject, ObservableObject {
         }
 
         processor.onResult = { [weak self] image, frame, result in
-            Task { @MainActor in
+            // `[weak self]` again on the Task, not just on the outer closure: without
+            // it the Task reads the outer closure's captured `self` variable from
+            // concurrently-executing code, which is an error in Swift 6.
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.setFrameDelivery(false)
                 self.capturedImage = image

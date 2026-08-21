@@ -11,7 +11,18 @@ import AuthenticationServices
 /// writer of session state. Calling `signedIn` here as well would give two writers and
 /// a race between them.
 struct SignInView: View {
+    @EnvironmentObject private var app: AppState
     @State private var errorMessage: String?
+
+    @State private var askingPassword = false
+    @State private var password = ""
+
+    /// **A speed bump, not a secret.** It sits in the binary in plain text and anyone
+    /// with the `strings` command can read it out. It exists to stop a curious visitor
+    /// wandering past the sign-in screen, which is all it needs to do — nothing behind
+    /// it can touch another account, because a skipped session has no `userId` and
+    /// writes only to the reserved `local` store.
+    private static let skipPassword = "mangrove"
 
     var body: some View {
         VStack(spacing: 24) {
@@ -31,6 +42,20 @@ struct SignInView: View {
             .clipShape(Capsule())
             .padding(.horizontal, 40)
 
+            // Ships in Release too, not just DEBUG. TestFlight builds *are* Release, so
+            // a debug-only escape hatch is invisible to the one person who cannot build
+            // the app themselves.
+            //
+            // Behind a password because it now *does* ship: without one, anybody handed
+            // a build walks past sign-in, and the accounts stop meaning anything.
+            Button("Continue without an account") {
+                password = ""
+                askingPassword = true
+            }
+            .font(Theme.F.body(14, weight: .semibold))
+            .foregroundStyle(Theme.C.neutral600)
+            .padding(.top, -8)
+
             if let errorMessage {
                 Text(errorMessage)
                     .font(Theme.F.body(13))
@@ -42,6 +67,28 @@ struct SignInView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.C.bg)
+        .alert("Team access", isPresented: $askingPassword) {
+            SecureField("Password", text: $password)
+            Button("Cancel", role: .cancel) { password = "" }
+            Button("Continue") { unlock() }
+                .keyboardShortcut(.defaultAction)
+        } message: {
+            Text("Skipping sign-in is for the team. Nothing you do is saved to an account.")
+        }
+    }
+
+    private func unlock() {
+        // Trimmed and case-folded: this gets typed on a phone, and rejecting
+        // "Mangrove " teaches nobody anything.
+        let entered = password.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        password = ""
+
+        guard entered == Self.skipPassword else {
+            errorMessage = "That password isn't right."
+            return
+        }
+        errorMessage = nil
+        app.continueWithoutAccount()
     }
 
     private func handle(_ result: Result<ASAuthorization, Error>) async {

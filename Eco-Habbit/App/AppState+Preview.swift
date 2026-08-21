@@ -35,9 +35,19 @@ extension AppState {
             let defaults = UserDefaults.standard
             guard defaults.bool(forKey: "EHDemo") else { return nil }
 
-            let state = AppState.preview
+            let stage = defaults.string(forKey: "EHStage")
 
-            if defaults.string(forKey: "EHStage") == "login" { state.logOut() }
+            // `-EHStage onboarding` starts the demo account before the questions.
+            // Seeded state is onboarded by default, so this is the only way to reach
+            // the flow without a real first-time sign-in.
+            var seed = PersistedState.preview
+            if stage == "onboarding" { seed.hasCompletedOnboarding = false }
+            // `previewUserId` matters: `isLoggedIn` derives from `userId`, so building
+            // this without one drops the demo straight onto the sign-in screen.
+            let state = AppState(userId: previewUserId, data: seed)
+            MockData.badges.filter(state.isUnlocked).forEach(state.acknowledgeBadge)
+
+            if stage == "login" { state.logOut() }
 
             switch defaults.string(forKey: "EHTab") {
             case "activity", "actions": state.selectedTab = .actions
@@ -89,6 +99,10 @@ extension PersistedState {
     static var preview: PersistedState {
         var state = PersistedState()
         state.isLoggedIn = true
+        // Seeded accounts are past onboarding — otherwise every demo launch and every
+        // preview of the app shell opens on the questions instead of the screen under
+        // test. Flip this to false to work on the flow itself.
+        state.hasCompletedOnboarding = true
         state.userName = MockData.demoName
         state.email = MockData.demoEmail
         state.favouriteCategories = [.waste, .energy, .water]

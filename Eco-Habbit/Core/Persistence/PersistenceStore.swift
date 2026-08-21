@@ -12,9 +12,23 @@ struct PersistedState: Codable {
     var userName = ""
     var email = ""
 
+    /// Set once, when the account finishes the onboarding questions. Lives here rather
+    /// than in UserDefaults so it travels with the account: signing in on a second
+    /// device should not ask the same questions again.
+    var hasCompletedOnboarding = false
+
     /// Opt-in preference set from Settings — sorts favoured categories to the top of the
     /// Habits tab and biases the dashboard's suggestions. Empty is a valid state.
     var favouriteCategories: Set<HabitCategory> = []
+
+    /// Onboarding question three — how much effort they want suggestions to ask of them.
+    /// Read by `RecommendationService` to weight the friction bands.
+    ///
+    /// Optional, and `nil` means **not answered**, which is a different thing from
+    /// `.easy`: accounts created before this field existed have no answer, and defaulting
+    /// them to the low end would quietly bias every deck toward F1. The service scores
+    /// `nil` as no signal instead.
+    var preferredEffort: EffortLevel?
 
     var notificationsEnabled = true
 
@@ -128,7 +142,11 @@ struct PersistedState: Codable {
         isLoggedIn          = try v(.isLoggedIn, false)
         userName            = try v(.userName, "")
         email               = try v(.email, "")
+        hasCompletedOnboarding = try v(.hasCompletedOnboarding, false)
         favouriteCategories = try v(.favouriteCategories, [])
+        // Optional for the reason documented on the property: absent means the question
+        // was never asked, not that the answer was "easy".
+        preferredEffort     = try c.decodeIfPresent(EffortLevel.self, forKey: .preferredEffort)
         notificationsEnabled = try v(.notificationsEnabled, true)
 
         currentPoints       = try v(.currentPoints, 0)
