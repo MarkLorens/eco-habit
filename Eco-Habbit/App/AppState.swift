@@ -98,6 +98,7 @@ final class AppState: ObservableObject {
         let stored = PersistenceStore.load(userId: userId ?? PersistenceStore.signedOutUserId)
         self.hasLocalCopy = stored != nil
         self.data = data ?? stored ?? PersistedState()
+        if isBrowsingLocally { syncStatus = .localOnly }
         evaluateIfNeeded()
         backfillGlobeStageAnnouncement()
     }
@@ -113,6 +114,7 @@ final class AppState: ObservableObject {
         // and on a reinstall `data` is blank — see `remoteResolved`.
         remoteResolved = false
         syncStatus = .pending
+        endLocalSession()
 
         userId = uid
         let stored = PersistenceStore.load(userId: uid)
@@ -297,6 +299,40 @@ final class AppState: ObservableObject {
     /// reads it any more: a persisted boolean and a live Firebase session are two
     /// sources of truth, and they drift the moment a token expires.
     var isLoggedIn: Bool { userId != nil }
+
+    // MARK: - Using the app without an account
+
+    /// Whether somebody chose to skip sign-in.
+    ///
+    /// **Not the same as being signed in**, deliberately. `userId` stays `nil`, so
+    /// `storageId` resolves to `PersistenceStore.signedOutUserId` and everything is kept
+    /// under the reserved `local` account — one read/write path, no Firebase, and no
+    /// chance of a skipped session writing over a real one.
+    ///
+    /// Persisted because the alternative is meeting the sign-in wall on every launch,
+    /// which is the thing this exists to avoid.
+    @Published private(set) var isBrowsingLocally = UserDefaults.standard.bool(forKey: localModeKey)
+
+    private static let localModeKey = "EHBrowsingLocally"
+
+    /// Enter the app without an account. Points, streak, camera and Fights all work;
+    /// nothing syncs, and nothing survives deleting the app.
+    func continueWithoutAccount() {
+        isBrowsingLocally = true
+        UserDefaults.standard.set(true, forKey: Self.localModeKey)
+        data = PersistenceStore.load(userId: PersistenceStore.signedOutUserId) ?? PersistedState()
+        syncStatus = .localOnly
+        evaluateIfNeeded()
+        backfillGlobeStageAnnouncement()
+        selectedTab = .home
+    }
+
+    /// Back to the sign-in screen. Local data stays on disk under `local`, so choosing
+    /// to skip again finds it exactly as it was.
+    func endLocalSession() {
+        isBrowsingLocally = false
+        UserDefaults.standard.set(false, forKey: Self.localModeKey)
+    }
 
     var hasCompletedOnboarding: Bool { data.hasCompletedOnboarding }
 
@@ -900,6 +936,9 @@ final class AppState: ObservableObject {
         // Belt and braces for the DEBUG launch-argument path, which never had a
         // Firebase session for the listener to react to.
         if userId != nil { signedOut() }
+        // A skipped session has no Firebase session for the listener to end, so without
+        // this "Log out" would leave the app exactly where it was.
+        endLocalSession()
         selectedTab = .home
     }
 
