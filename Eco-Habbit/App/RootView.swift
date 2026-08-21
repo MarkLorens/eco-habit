@@ -38,8 +38,8 @@ struct RootView: View {
                     // re-ask a returning user on a new phone.
                     Color.clear
                 } else if !app.hasCompletedOnboarding {
-                    OnboardingFlow { favourites in
-                        app.completeOnboarding(favourites: favourites)
+                    OnboardingFlow { answers in
+                        app.completeOnboarding(answers)
                     }
                     .transition(.opacity)
                 } else {

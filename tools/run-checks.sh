@@ -19,6 +19,7 @@ MODELS="Eco-Habbit/Core/Models"
 SERVICES="Eco-Habbit/Core/Services"
 COMMON="$MODELS/Day.swift $MODELS/EarthStage.swift $MODELS/ActivityCategory.swift \
         $MODELS/FrictionLevel.swift $MODELS/EvidenceStrength.swift \
+        $MODELS/EffortLevel.swift \
         $MODELS/Habit.swift $MODELS/Badge.swift $MODELS/EarnedBadge.swift \
         $MODELS/Fight.swift $MODELS/FightSeed.swift $MODELS/MockData.swift \
         Eco-Habbit/Core/Configuration/PointsConfiguration.swift \
