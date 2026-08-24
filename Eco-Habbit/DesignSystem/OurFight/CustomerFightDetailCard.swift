@@ -19,6 +19,8 @@ struct CustomerFightDetailCard: View {
     private let date: String
     private let location: String
     private let picture: String
+    /// The organiser's own photo. `nil` falls back to `picture`, the bundled art.
+    private let photo: UIImage?
     private let isLoved: Bool
 
     // Additive and defaulted, so the existing call and the preview below keep working.
@@ -35,6 +37,7 @@ struct CustomerFightDetailCard: View {
          date: String,
          location: String,
          picture: String,
+         photo: UIImage? = nil,
          isLoved: Bool,
          host: String = "Eco Tourism Bali",
          actionTitle: String? = "Scan or check in",
@@ -50,6 +53,7 @@ struct CustomerFightDetailCard: View {
         self.date = date
         self.location = location
         self.picture = picture
+        self.photo = photo
         self.isLoved = isLoved
         self.host = host
         self.actionTitle = actionTitle
@@ -64,10 +68,14 @@ struct CustomerFightDetailCard: View {
 
     var body: some View{
         VStack(spacing: 0){
-            Image(picture)
+            // Fill the banner keeping the aspect ratio, then cut what hangs over.
+            // Without `scaledToFill` a portrait photo was squeezed into 170pt.
+            Image(uiImage: photo ?? UIImage(named: picture) ?? UIImage())
                 .resizable()
+                .scaledToFill()
                 .frame(maxWidth: .infinity)
                 .frame(height: 170)
+                .clipped()
 
             VStack{
 

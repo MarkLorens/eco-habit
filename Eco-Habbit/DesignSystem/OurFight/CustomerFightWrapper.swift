@@ -17,6 +17,7 @@ struct CustomerFightWrapper: View {
     let date: String
     let location: String
     let picture: String
+    var photo: UIImage? = nil
     let isLoved: Bool
     let onLove: () -> Void
 
@@ -40,6 +41,7 @@ struct CustomerFightWrapper: View {
                 date: date,
                 location: location,
                 picture: picture,
+                photo: photo,
                 isLoved: isLoved,
                 host: host,
                 actionTitle: actionTitle,
@@ -61,6 +63,7 @@ struct CustomerFightWrapper: View {
                 date: date,
                 location: location,
                 picture: picture,
+                photo: photo,
                 icon: icon,
                 onExpand: expand
             )

@@ -66,6 +66,19 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
     /// costs a hidden button rather than a crash.
     var link: String?
 
+    /// The organiser's photo, base64 JPEG, carried **inside this document**.
+    ///
+    /// Images normally belong in Cloud Storage, and at any scale they still do. At this
+    /// one they do not: a thumbnail is ~30 KB, a Firestore document may be 1 MiB, and
+    /// putting it here means the photo syncs by the same mechanism as the title — no
+    /// second service, no billing plan, no upload that can half-succeed, and it works
+    /// offline through Firestore's own cache.
+    ///
+    /// `FightImage.encode` enforces the size; nothing should ever set this directly.
+    /// A `String` rather than `Data` so `Fight` stays Foundation-only — `tools/` compiles
+    /// this file without UIKit.
+    var imageData: String?
+
     var preparationNotes: [String] = []
     var status: Status = .published
     /// Exhibit seed data is labelled so it can never be mistaken for a real event (§8).
@@ -187,6 +200,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
          endsAt: Date,
          preparationNotes: [String] = [],
          link: String? = nil,
+         imageData: String? = nil,
          status: Status = .published,
          isDemo: Bool = false,
          tier: EventTier = .standard,
@@ -206,6 +220,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
         self.endsAt = endsAt
         self.preparationNotes = preparationNotes
         self.link = link
+        self.imageData = imageData
         self.status = status
         self.isDemo = isDemo
         self.tier = tier
@@ -220,7 +235,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case id, title, summary, category, hostName, hostId, locationName, address
         case latitude, longitude, startsAt, endsAt, preparationNotes, status, isDemo
-        case tier, checkInCode, rewardBadgeId, link
+        case tier, checkInCode, rewardBadgeId, link, imageData
     }
 
     /// Hand-written for the same reason `PersistedState`'s is: synthesized
@@ -246,6 +261,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
         endsAt = try c.decode(Date.self, forKey: .endsAt)
         preparationNotes = try c.decodeIfPresent([String].self, forKey: .preparationNotes) ?? []
         link = try c.decodeIfPresent(String.self, forKey: .link)
+        imageData = try c.decodeIfPresent(String.self, forKey: .imageData)
         status = try c.decodeIfPresent(Status.self, forKey: .status) ?? .published
         isDemo = try c.decodeIfPresent(Bool.self, forKey: .isDemo) ?? false
         tier = try c.decodeIfPresent(EventTier.self, forKey: .tier) ?? .standard

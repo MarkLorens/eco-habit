@@ -15,6 +15,8 @@ struct OurFightListCard: View {
     private let date: String
     private let location: String
     private let picture: String
+    /// The organiser's own photo. `nil` falls back to `picture`, the bundled art.
+    private let photo: UIImage?
     
     /// The badge over the photo. Was hardcoded to the waste glyph, so every Fight wore
     /// the same one whatever its category — and next to a spine that *was* category
@@ -28,6 +30,7 @@ struct OurFightListCard: View {
          date: String,
          location: String,
          picture: String,
+         photo: UIImage? = nil,
          icon: String = Tokens.Icons.wasteIcon,
          onExpand: @escaping () -> Void
     ) {
@@ -38,6 +41,7 @@ struct OurFightListCard: View {
         self.date = date
         self.location = location
         self.picture = picture
+        self.photo = photo
         self.icon = icon
         self.onExpand = onExpand
     }
@@ -50,8 +54,13 @@ struct OurFightListCard: View {
             
             HStack(alignment: .center, spacing: Tokens.Spacing.lg){
                 ZStack{
-                    Image(picture)
+                        // `.resizable()` alone stretches both axes independently, so a
+                        // portrait photo came out squashed. Fill the box keeping the
+                        // aspect ratio and let the overflow be cut — `clipShape` below
+                        // already does the cutting.
+                    Image(uiImage: photo ?? UIImage(named: picture) ?? UIImage())
                         .resizable()
+                        .scaledToFill()
                         .frame(width: 110, height: 85)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     

@@ -134,6 +134,7 @@ struct CustomerFightListView: View {
                     date: fight.cardDate,
                     location: fight.locationName,
                     picture: fight.cardPicture,
+                    photo: fight.photo,
                     isLoved: app.isFavourite(fight),
                     onLove: { app.toggleFavourite(fight) },
                     icon: fight.category.icon,
@@ -286,6 +287,7 @@ private struct OurFightExpandable: View {
                 date: fight.cardDate,
                 location: fight.locationName,
                 picture: fight.cardPicture,
+                    photo: fight.photo,
                 host: fight.hostName,
                 // The code is the point of the expanded card for a host. Before the
                 // event it is still worth seeing — it is theirs, and checking it looks
@@ -303,6 +305,7 @@ private struct OurFightExpandable: View {
                 date: fight.cardDate,
                 location: fight.locationName,
                 picture: fight.cardPicture,
+                    photo: fight.photo,
                 icon: fight.category.icon,
                 onExpand: expand
             )
