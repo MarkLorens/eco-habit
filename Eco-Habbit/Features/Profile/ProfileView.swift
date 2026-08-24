@@ -14,6 +14,8 @@ struct ProfileView: View {
     @State private var badgeDetail: Badge?
     @State private var showingBadges = false
     @State private var confirmingDelete = false
+    @State private var editingName = false
+    @State private var draftName = ""
 
     /// Bound so the avatar's long-press menu can push. `settings` — the list that used
     /// to hold every route — is commented out of `body`, which left Debug tools with no
@@ -120,6 +122,15 @@ struct ProfileView: View {
                             Label("Debug tools", systemImage: "hammer")
                         }
                         #endif
+                        Button {
+                            // Seeded from the raw stored value, not `app.userName`,
+                            // which reads "there" when empty — offering that as the
+                            // current name would be a lie you then have to delete.
+                            draftName = app.data.userName
+                            editingName = true
+                        } label: {
+                            Label("Edit name", systemImage: "pencil")
+                        }
                         Button { app.logOut() } label: {
                             Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
                         }
@@ -135,6 +146,14 @@ struct ProfileView: View {
                 .foregroundStyle(Tokens.Semantic.text)
         }
         .frame(maxWidth: .infinity)
+        .alert("Your name", isPresented: $editingName) {
+            TextField("Name", text: $draftName)
+                .textInputAutocapitalization(.words)
+            Button("Save") { app.setUserName(draftName) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This is the name shown on your profile and on any Fight you host.")
+        }
         .alert("Delete account?", isPresented: $confirmingDelete) {
             Button("Delete", role: .destructive) { Task { await app.deleteAccount() } }
             Button("Cancel", role: .cancel) {}

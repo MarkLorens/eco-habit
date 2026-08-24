@@ -10,7 +10,7 @@ nonisolated struct FightSeed: Codable {
     let id: String
     let title: String
     let summary: String
-    let type: FightType
+    let category: HabitCategory
     let hostName: String
     let hostId: String
     let locationName: String
@@ -29,7 +29,7 @@ nonisolated struct FightSeed: Codable {
             id: id,
             title: title,
             summary: summary,
-            type: type,
+            category: category,
             hostName: hostName,
             hostId: hostId,
             locationName: locationName,

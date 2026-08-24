@@ -37,7 +37,7 @@ struct OurFightListView: View {
                         ExpandableFightWrapper(
                             title: fight.title,
                             caption: fight.summary,
-                            category: fight.type.tint,
+                            category: fight.category.accent,
                             date: fight.cardDate,
                             location: fight.locationName,
                             picture: fight.cardPicture,

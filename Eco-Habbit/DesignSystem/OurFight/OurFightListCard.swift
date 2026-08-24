@@ -16,21 +16,29 @@ struct OurFightListCard: View {
     private let location: String
     private let picture: String
     
+    /// The badge over the photo. Was hardcoded to the waste glyph, so every Fight wore
+    /// the same one whatever its category — and next to a spine that *was* category
+    /// coloured, which made the pairing look arbitrary. Defaulted, so nothing that
+    /// already calls this changes.
+    private let icon: String
+
     init(title: String,
          caption: String,
          category: Color,
          date: String,
          location: String,
          picture: String,
+         icon: String = Tokens.Icons.wasteIcon,
          onExpand: @escaping () -> Void
     ) {
-        
+
         self.title = title
         self.caption = caption
         self.category = category
         self.date = date
         self.location = location
         self.picture = picture
+        self.icon = icon
         self.onExpand = onExpand
     }
     
@@ -47,7 +55,7 @@ struct OurFightListCard: View {
                         .frame(width: 110, height: 85)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     
-                    AvatarIcon(type: .avatarSmall, icon: Tokens.Icons.wasteIcon)
+                    AvatarIcon(type: .avatarSmall, icon: icon)
                         .offset(x: 48, y: 30)
                 }
                 

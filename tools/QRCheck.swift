@@ -9,7 +9,7 @@ let now = Date(timeIntervalSince1970: 1_800_000_000)
 func fight(_ id: String = "f1", code: String = "BERAWA", startsIn h: Double = 0,
            status: Fight.Status = .published, tier: EventTier = .standard) -> Fight {
     let s = now.addingTimeInterval(h*3600)
-    return Fight(id: id, title: "Cleanup", type: .beachCleanup,
+    return Fight(id: id, title: "Cleanup", category: .waste,
                  startsAt: s, endsAt: s.addingTimeInterval(3*3600),
                  status: status, tier: tier, checkInCode: code)
 }

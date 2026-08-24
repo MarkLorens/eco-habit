@@ -29,7 +29,7 @@ struct RootView: View {
                     // until the listener below fires. Rendering the sign-in screen in
                     // the meantime would flash it at every returning user.
                     Color.clear
-                } else if !app.isLoggedIn {
+                } else if !app.isLoggedIn && !app.isBrowsingLocally {
                     SignInView()
                         .transition(.opacity)
                 } else if !app.onboardingResolved {
@@ -48,6 +48,7 @@ struct RootView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.35), value: app.isLoggedIn)
+            .animation(.easeInOut(duration: 0.35), value: app.isBrowsingLocally)
             .animation(.easeInOut(duration: 0.35), value: app.hasCompletedOnboarding)
         }
         .task {

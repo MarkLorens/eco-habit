@@ -20,6 +20,13 @@ struct CustomerFightWrapper: View {
     let isLoved: Bool
     let onLove: () -> Void
 
+    // Defaulted so existing callers and the preview below are unaffected.
+    /// The badge over the photo — the category's own glyph, not a fixed one.
+    var icon: String = Tokens.Icons.wasteIcon
+    var host: String = "Eco Tourism Bali"
+    var actionTitle: String? = "Scan or check in"
+    var onAction: () -> Void = {}
+
     @State private var isExpanded = false
 
     var body: some View {
@@ -32,6 +39,9 @@ struct CustomerFightWrapper: View {
                 location: location,
                 picture: picture,
                 isLoved: isLoved,
+                host: host,
+                actionTitle: actionTitle,
+                onAction: onAction,
                 onLove: onLove,
                 onCollapse: {
                     withAnimation(.snappy(duration: 0.2)) {
@@ -47,13 +57,17 @@ struct CustomerFightWrapper: View {
                 date: date,
                 location: location,
                 picture: picture,
-                onExpand: {
-                    withAnimation(.snappy(duration: 0.2)) {
-                        isExpanded = true
-                    }
-                }
+                icon: icon,
+                onExpand: expand
             )
+            // The whole row, not just the chevron.
+            .contentShape(Rectangle())
+            .onTapGesture(perform: expand)
         }
+    }
+
+    private func expand() {
+        withAnimation(.snappy(duration: 0.2)) { isExpanded = true }
     }
 }
 
