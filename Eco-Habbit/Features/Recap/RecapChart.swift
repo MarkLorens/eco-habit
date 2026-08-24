@@ -15,29 +15,31 @@ struct RecapChart: View{
         var id: HabitCategory { category }
         let category: HabitCategory
         let value: Double
-        let points: Int
+        let count: Int
     }
 
-    /// Points earned per category over the period being recapped. A category that is
-    /// absent, or worth nothing, leaves no slice.
-    let points: [HabitCategory: Int]
+    /// Activities logged per category over the period being recapped. A category
+    /// that is absent, or has nothing logged, leaves no slice.
+    let activities: [HabitCategory: Int]
+
+    /// The slice pulled out. Bound so the screen around the chart can caption itself
+    /// with whatever the reader is looking at; `nil` is the resting state.
+    @Binding var selected: HabitCategory?
 
     /// Built from `allCases`, so a category added to the enum shows up here without
     /// anyone having to remember this file.
     private var data: [CategoryData] {
-        let total = HabitCategory.allCases.reduce(0) { $0 + (points[$1] ?? 0) }
+        let total = HabitCategory.allCases.reduce(0) { $0 + (activities[$1] ?? 0) }
         guard total > 0 else { return [] }
         return HabitCategory.allCases.compactMap { category in
-            let earned = points[category] ?? 0
-            guard earned > 0 else { return nil }
+            let logged = activities[category] ?? 0
+            guard logged > 0 else { return nil }
             return CategoryData(category: category,
-                                value: Double(earned) / Double(total) * 100,
-                                points: earned)
+                                value: Double(logged) / Double(total) * 100,
+                                count: logged)
         }
     }
 
-    /// Which slice is pulled out. `nil` shows the resting state.
-    @State private var selected: HabitCategory?
     /// What `selected` was before the current transition — the shape being animated
     /// *away from*. Switching slices moves two of them at once, so the "from" state
     /// has to be remembered rather than inferred.
@@ -173,6 +175,10 @@ private struct DonutPlot: View, Animatable {
         // and `r` is half the chart. A mascot slightly under that fills the slice
         // without spilling over either edge.
         let restingIcon = side * (1 - restingInner) / 2 * 0.86
+        // The selected slice's band is wider than the resting one, and the tally has
+        // to live inside it: "Activities" set at full size is wider than the band and
+        // spills over the rim.
+        let labelWidth = side * (1 - selectedInner) / 2 * 0.9
 
         Chart(data) { item in
             let amount = selectedness(item.category)
@@ -197,18 +203,20 @@ private struct DonutPlot: View, Animatable {
                 // different size — and re-lays out the plot around it. The fixed frame
                 // keeps the annotation's footprint constant for the same reason.
                 ZStack {
-                    // The selected slice carries its points instead of its mascot: the
+                    // The selected slice carries its tally instead of its mascot: the
                     // number is the reason to tap, and the icon is already identified
                     // by the colour it just turned.
                     VStack(spacing: 0) {
-                        Text("\(item.points)")
+                        Text("\(item.count)")
                             .textStyle(Tokens.Typography.title2)
-                        Text("Points")
+                        Text("Activities")
                             .textStyle(Tokens.Typography.body)
                     }
                     .foregroundStyle(Tokens.Palette.white)
                     .multilineTextAlignment(.center)
-                    .fixedSize()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .frame(width: labelWidth)
                     .opacity(amount)
 
                     // No percentage — the mascot fills the band on its own.
@@ -267,7 +275,18 @@ private extension Color {
     }
 }
 
-#Preview {
-    RecapChart(points: [.energy: 220, .actions: 165, .waste: 110, .water: 55])
-        .padding(40)
+#if DEBUG
+private struct RecapChartPreview: View {
+    @State private var selected: HabitCategory? = .waste
+
+    var body: some View {
+        RecapChart(activities: [.energy: 220, .actions: 165, .waste: 110, .water: 55],
+                   selected: $selected)
+            .padding(40)
+    }
 }
+
+#Preview {
+    RecapChartPreview()
+}
+#endif

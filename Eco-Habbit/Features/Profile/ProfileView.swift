@@ -82,6 +82,7 @@ struct ProfileView: View {
                 case .notifications: NotificationSettingsView()
                 case .privacy: PrivacySettingsView()
                 case .history: ActivityHistoryView()
+                case .recap(let period): RecapView(period: period)
                 #if DEBUG
                 case .debug: TimeTravelMenu()
                 #endif
@@ -234,6 +235,11 @@ struct ProfileView: View {
         #endif
     }
     
+    /// Read from `app.today` rather than `Date()`, so the debug time-travel menu
+    /// moves the recap cards along with everything else.
+    private var thisMonth: RecapPeriod { .month(of: app.today) }
+    private var thisYear: RecapPeriod { .year(of: app.today) }
+
     private var recap: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
             HStack{
@@ -243,9 +249,21 @@ struct ProfileView: View {
             }
             ScrollView(.horizontal, showsIndicators: false){
                 HStack(spacing: Tokens.Spacing.lg){
-                    RecapCards(caption: "Your July Recap", icon: Tokens.Icons.actionIcon, background: Tokens.Palette.limeCard)
-                    RecapCards(caption: "All Time", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard)
-                    RecapCards(caption: "2026", icon: Tokens.Icons.wasteIcon, background: Tokens.Palette.purpleCard)
+                    // Captions come from the period rather than being written out:
+                    // a card headed "July" that opens August's numbers is worse than
+                    // no card, and the month rolls over on its own.
+                    NavigationLink(value: ProfileRoute.recap(thisMonth)) {
+                        RecapCards(caption: "Your \(thisMonth.shortTitle) Recap", icon: Tokens.Icons.actionIcon, background: Tokens.Palette.limeCard)
+                    }
+                    .buttonStyle(PlainPressStyle())
+                    NavigationLink(value: ProfileRoute.recap(.allTime)) {
+                        RecapCards(caption: RecapPeriod.allTime.title, icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard)
+                    }
+                    .buttonStyle(PlainPressStyle())
+                    NavigationLink(value: ProfileRoute.recap(thisYear)) {
+                        RecapCards(caption: thisYear.title, icon: Tokens.Icons.wasteIcon, background: Tokens.Palette.purpleCard)
+                    }
+                    .buttonStyle(PlainPressStyle())
                 }
             }
         }
@@ -330,15 +348,22 @@ private struct RecapCards: View {
     }
     
     var body: some View {
-        HStack(spacing: Tokens.Spacing.xxl){
+        HStack(spacing: Tokens.Spacing.md){
             Text(caption)
+                // The mascot is `resizable`, so without a size of its own it takes
+                // whatever the row will give it and leaves the caption a column
+                // narrower than one word — "August" came out as "Augus / t".
+                .minimumScaleFactor(0.8)
                 .textStyle(Tokens.Typography.body)
                 .foregroundStyle(Tokens.Semantic.text)
             Image(icon)
                 .resizable()
                 .scaledToFit()
+                .frame(width: 44, height: 44)
         }
-        .frame(maxWidth: 127, maxHeight: 148, alignment: .bottom)
+        // `height`, not `maxHeight`: the card used to be held open by the mascot
+        // stretching to fill it, and the mascot now has a size of its own.
+        .frame(maxWidth: 150, minHeight: 148, maxHeight: 148, alignment: .bottom)
         .padding([.horizontal], Tokens.Spacing.md)
         .padding([.vertical], Tokens.Spacing.lg)
         .background{
@@ -373,6 +398,7 @@ private struct SignOutFooter: ViewModifier {
 
 enum ProfileRoute: Hashable {
     case favourites, notifications, privacy, history
+    case recap(RecapPeriod)
     #if DEBUG
     case debug
     #endif

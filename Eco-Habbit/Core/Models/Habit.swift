@@ -240,3 +240,12 @@ struct HabitRow: Identifiable, Hashable {
     var id: String { habit.id }
     var isCompletedToday: Bool { log != nil }
 }
+
+/// How often one habit was logged, for the recap's per-category top list. Counts
+/// logs rather than points: the recap is a tally of what was actually done.
+struct ActivityTally: Identifiable, Hashable {
+    let habit: Habit
+    let count: Int
+
+    var id: String { habit.id }
+}
