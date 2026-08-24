@@ -699,6 +699,27 @@ final class AppState: ObservableObject {
     var savedEvidence: [EvidenceStore.Saved] { EvidenceStore.all(userId: storageId) }
     var savedEvidenceBytes: Int { EvidenceStore.totalBytes(userId: storageId) }
 
+    /// The account photos are filed under.
+    ///
+    /// Exposed because loading one is deliberately *not* an `AppState` call: the whole
+    /// point of `EvidenceStore` being `nonisolated` is that a view can decode off the
+    /// main actor, and it needs the id to do that without hopping back here.
+    var evidenceAccountId: String { storageId }
+
+    /// The logs in `period` that kept a photo on this device, oldest first.
+    ///
+    /// Far fewer than `logs(in:)` returns, and not a fixed fraction of it: a photo only
+    /// exists where the log came through the camera **and** this is the device that took
+    /// it. Logs merge both ways from Firestore and photos never do, so on a second
+    /// device or after a reinstall this is legitimately empty against a full history.
+    func photographedLogs(in period: RecapPeriod) -> [HabitLog] {
+        let saved = EvidenceStore.savedLogIds(userId: storageId)
+        guard !saved.isEmpty else { return [] }
+        return logs(in: period)
+            .filter { saved.contains($0.remoteId) }
+            .sorted { $0.localDate < $1.localDate }
+    }
+
     func deleteEvidence(id: String) { EvidenceStore.delete(forLogId: id, userId: storageId) }
     func purgeEvidence() { EvidenceStore.purge(userId: storageId) }
 
