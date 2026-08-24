@@ -226,7 +226,8 @@ struct ProfileView: View {
                 HStack(spacing: Tokens.Spacing.lg){
                     RecapCards(caption: "Your July Recap", icon: Tokens.Icons.actionIcon, background: Tokens.Palette.limeCard)
                     RecapCards(caption: "All Time", icon: Tokens.Icons.energyIcon, background: Tokens.Palette.yellowCard)
-                    RecapCards(caption: "2026", icon: Tokens.Icons.wasteIcon, background: Tokens.Palette.purpleCard)                }
+                    RecapCards(caption: "2026", icon: Tokens.Icons.wasteIcon, background: Tokens.Palette.purpleCard)
+                }
             }
         }
         .padding(.top, Tokens.Spacing.xxl)

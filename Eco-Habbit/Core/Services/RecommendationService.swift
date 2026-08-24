@@ -1,20 +1,5 @@
 import Foundation
 
-/// Picks the actions the dashboard offers today.
-///
-/// Pure, and takes the catalogue as an argument rather than reaching for `MockData`,
-/// so `tools/run-checks.sh` can score it against a fixture without a bundle.
-///
-/// **It ranks, it does not filter.** Every available habit gets a score and the best
-/// few win. The one exception is availability: something already logged today, or
-/// inside its cooldown, cannot be offered because it cannot be logged.
-///
-/// The reason for ranking rather than filtering is the shape of the catalogue. 38
-/// habits spread over 24 category × friction cells leaves holes — mobility has nothing
-/// at F1 or F4, energy nothing above F2 — so a filter on the onboarding answers
-/// returns an empty deck for combinations users will genuinely pick. A soft score
-/// always fills five cards; a bad match just means the fifth card is a weaker fit than
-/// the first.
 struct RecommendationService {
 
     /// Deliberately injectable. These numbers are a product judgement, not a fact, and
@@ -37,7 +22,6 @@ struct RecommendationService {
 
     var weights = Weights()
 
-    /// Best-first, at most `limit`, only things that can actually be logged today.
     func recommend(from catalogue: [Habit],
                    state: PersistedState,
                    today: String = Day.today(),
@@ -48,19 +32,11 @@ struct RecommendationService {
         guard !available.isEmpty else { return [] }
 
         let lastLogged = mostRecentLogDates(in: state)
-
-        // Written out rather than chained. A `map` producing an inferred tuple, straight
-        // into `sorted`, straight into another `map` gives the type-checker a large
-        // enough search space that it exceeds its per-expression time budget and fails
-        // the build — which is not a slow build, it is a hard error.
         var scored: [(habit: Habit, score: Double)] = []
         scored.reserveCapacity(available.count)
         for habit in available {
             scored.append((habit, score(habit, state: state, lastLogged: lastLogged, now: now)))
         }
-
-        // `id` breaks ties, so the deck does not reshuffle itself between two renders of
-        // the same unchanged state.
         scored.sort { left, right in
             left.score == right.score ? left.habit.id < right.habit.id : left.score > right.score
         }
