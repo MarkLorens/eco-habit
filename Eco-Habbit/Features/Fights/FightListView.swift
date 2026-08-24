@@ -109,6 +109,7 @@ struct FightListView: View {
                 date: fight.cardDate,
                 location: fight.locationName,
                 picture: fight.cardPicture,
+                    photo: fight.photo,
                 host: fight.hostName,
                 actionTitle: actionTitle(for: fight),
                 isFavourite: app.isFavourite(fight),
@@ -126,6 +127,7 @@ struct FightListView: View {
                 date: fight.cardDate,
                 location: fight.locationName,
                 picture: fight.cardPicture,
+                    photo: fight.photo,
                 onExpand: { withAnimation(.snappy(duration: 0.2)) { expandedFightId = fight.id } }
             )
         }

@@ -21,6 +21,7 @@ import SwiftUI
 
 struct CustomerFightListView: View {
     @EnvironmentObject private var app: AppState
+    @Environment(\.openURL) private var openURL
 
     @State private var showingLovedOnly = false
     @State private var showingCreate = false
@@ -51,6 +52,12 @@ struct CustomerFightListView: View {
                 .tabContentInsets()
             }
             .background(Tokens.Palette.white)
+            // Check-in moved here when the card's button became "More info". An
+            // organiser shows the code rather than scanning one, so this is the
+            // attendee's screen only.
+            .overlay(alignment: .bottomTrailing) {
+                if !isHosting { scanButton }
+            }
             // Published Fights come from the shared collection, so an organiser at the
             // next table shows up by the time somebody looks.
             .task { await app.refreshFights() }
@@ -127,6 +134,7 @@ struct CustomerFightListView: View {
                     date: fight.cardDate,
                     location: fight.locationName,
                     picture: fight.cardPicture,
+                    photo: fight.photo,
                     isLoved: app.isFavourite(fight),
                     onLove: { app.toggleFavourite(fight) },
                     icon: fight.category.icon,
@@ -135,6 +143,8 @@ struct CustomerFightListView: View {
                     // and offering it again invites an attempt the server would refuse.
                     // A host of this event gets the code instead.
                     actionTitle: actionTitle(for: fight),
+                    actionBackground: fight.category.accent,
+                    actionForeground: fight.category.accentForeground,
                     onAction: { act(on: fight) }
                 )
             }
@@ -142,16 +152,27 @@ struct CustomerFightListView: View {
         }
     }
 
+    /// **"More info", not check-in.** A card is where somebody decides whether to go,
+    /// and what they want then is the organiser's page — Instagram, a WhatsApp group, a
+    /// signup form. Checking in happens at the venue, from the scan button.
+    ///
+    /// Shown even with no link. Hiding it meant the button vanished from every Fight,
+    /// because `link` is new and nothing has one yet — and a card that sometimes has a
+    /// button and sometimes does not reads as broken rather than as informative.
     private func actionTitle(for fight: Fight) -> String? {
-        if app.isHost(of: fight) { return "Show QR Code" }
-        return app.hasAttended(fight) ? nil : "Scan or check in"
+        app.isHost(of: fight) ? "Show QR Code" : "More info"
     }
 
     private func act(on fight: Fight) {
         if app.isHost(of: fight) {
             path.append(HostRoute(fight: fight))   // manage it, code included
+        } else if let url = fight.infoURL {
+            openURL(url)
         } else {
-            checkingInTo = fight
+            // Says what happened rather than nothing. The organiser has not linked
+            // anywhere, so the card is genuinely everything there is to read.
+            app.toast = Toast(kind: .info,
+                              message: "That's everything the organiser shared about this one.")
         }
     }
 
@@ -181,6 +202,35 @@ struct CustomerFightListView: View {
             }
             .padding(.horizontal, Tokens.Spacing.xl)
         }
+    }
+
+    /// Scan a Fight's QR to check in.
+    ///
+    /// Sits above the tab bar rather than in it: the tab bar's camera opens the same
+    /// screen, but somebody standing at a venue is looking at this list, and a control
+    /// they have to leave the list to find is one they will ask a volunteer about.
+    private var scanButton: some View {
+        Button {
+            app.isCameraPresented = true
+        } label: {
+            Image(systemName: "qrcode.viewfinder")
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(Tokens.Palette.white)
+                .frame(width: 60, height: 60)
+                .background(Circle().fill(Tokens.Semantic.text))
+                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+        // Typing the code is the fallback for when a camera will not cooperate — bad
+        // light, a cracked lens, a denied permission prompt — which a booth is exactly
+        // where you find out. It lost its entry point when the card's button became
+        // "More info", so it lives here.
+        .onLongPressGesture { checkingInTo = app.browsableFights.first }
+        .accessibilityLabel("Scan a check-in code")
+        .accessibilityHint("Long press to type a code instead")
+        .padding(.trailing, Tokens.Spacing.xl)
+        // Clears the floating tab bar, which `tabContentInsets` allows 110pt for.
+        .padding(.bottom, 124)
     }
 
     private func note(_ text: String) -> some View {
@@ -237,6 +287,7 @@ private struct OurFightExpandable: View {
                 date: fight.cardDate,
                 location: fight.locationName,
                 picture: fight.cardPicture,
+                    photo: fight.photo,
                 host: fight.hostName,
                 // The code is the point of the expanded card for a host. Before the
                 // event it is still worth seeing — it is theirs, and checking it looks
@@ -254,6 +305,7 @@ private struct OurFightExpandable: View {
                 date: fight.cardDate,
                 location: fight.locationName,
                 picture: fight.cardPicture,
+                    photo: fight.photo,
                 icon: fight.category.icon,
                 onExpand: expand
             )

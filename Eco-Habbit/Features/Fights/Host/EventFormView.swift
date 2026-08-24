@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// Add / Edit Our Fights — the organiser's form, built to the hi-fi.
 ///
@@ -17,6 +18,9 @@ struct EventFormView: View {
     @State private var draft: Fight
     @State private var isEnabled: Bool
     @State private var confirmingEnable = false
+    @State private var pickedPhoto: PhotosPickerItem?
+    /// Set when a chosen photo will not fit the document even at lowest quality.
+    @State private var photoError = false
     private let isNew: Bool
 
     init(editing fight: Fight? = nil, app: AppState) {
@@ -70,6 +74,25 @@ struct EventFormView: View {
                             .foregroundStyle(Tokens.Semantic.text)
                     }
                 }
+            }
+            // Downscaled and re-encoded here rather than at save: an organiser should
+            // find out immediately that a photo will not fit, not after tapping Done.
+            .onChange(of: pickedPhoto) { _, item in
+                guard let item else { return }
+                Task {
+                    guard let data = try? await item.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else { return }
+                    if let encoded = FightImage.encode(image) {
+                        draft.imageData = encoded
+                    } else {
+                        photoError = true
+                    }
+                }
+            }
+            .alert("That image is too large", isPresented: $photoError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("A Fight's photo travels inside the event itself, so it has to stay small. Try a different one.")
             }
             .alert("Enable Event ?", isPresented: $confirmingEnable) {
                 Button("Cancel", role: .cancel) { isEnabled = false }
@@ -125,12 +148,35 @@ struct EventFormView: View {
                 TextField("Description", text: $draft.locationName)
                     .multilineTextAlignment(.trailing)
             }
-            row("Picture") {
-                // Deferred: a Fight is shared, so a photo from this phone's library
-                // would be a blank card on everybody else's. Needs Cloud Storage.
-                Text("Add Image…")
-                    .foregroundStyle(Tokens.Semantic.statIcon)
+            row("Link") {
+                // What "More info" on the card opens. Free text — `Fight.infoURL`
+                // adds the scheme and refuses anything without a host, so a typo
+                // costs a hidden button rather than a dead one.
+                TextField("instagram.com/…", text: Binding(
+                    get: { draft.link ?? "" },
+                    set: { draft.link = $0.isEmpty ? nil : $0 }
+                ))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .multilineTextAlignment(.trailing)
             }
+            row("Picture") {
+                PhotosPicker(selection: $pickedPhoto, matching: .images) {
+                    HStack(spacing: Tokens.Spacing.sm) {
+                        if let image = FightImage.decode(draft.imageData) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 44, height: 34)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                        Text(draft.imageData == nil ? "Add Image…" : "Change")
+                            .foregroundStyle(Tokens.Semantic.statIcon)
+                    }
+                }
+            }
+
             row("Status", showsDivider: false) {
                 Toggle("", isOn: Binding(
                     get: { isEnabled },

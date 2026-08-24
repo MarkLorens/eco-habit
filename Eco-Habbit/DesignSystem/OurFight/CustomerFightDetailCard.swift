@@ -19,12 +19,17 @@ struct CustomerFightDetailCard: View {
     private let date: String
     private let location: String
     private let picture: String
+    /// The organiser's own photo. `nil` falls back to `picture`, the bundled art.
+    private let photo: UIImage?
     private let isLoved: Bool
 
     // Additive and defaulted, so the existing call and the preview below keep working.
     private let host: String
     private let actionTitle: String?
     private let onAction: () -> Void
+    /// Defaults keep the original dark button for any caller that does not care.
+    private let actionBackground: Color
+    private let actionForeground: Color
 
     init(title: String,
          caption: String,
@@ -32,9 +37,12 @@ struct CustomerFightDetailCard: View {
          date: String,
          location: String,
          picture: String,
+         photo: UIImage? = nil,
          isLoved: Bool,
          host: String = "Eco Tourism Bali",
          actionTitle: String? = "Scan or check in",
+         actionBackground: Color = Color(hex: 0x2F3A32),
+         actionForeground: Color = Tokens.Semantic.ourFightQR,
          onAction: @escaping () -> Void = {},
          onLove: @escaping () -> Void,
          onCollapse: @escaping () -> Void
@@ -45,9 +53,12 @@ struct CustomerFightDetailCard: View {
         self.date = date
         self.location = location
         self.picture = picture
+        self.photo = photo
         self.isLoved = isLoved
         self.host = host
         self.actionTitle = actionTitle
+        self.actionBackground = actionBackground
+        self.actionForeground = actionForeground
         self.onAction = onAction
         self.onLove = onLove
         self.onCollapse = onCollapse
@@ -57,10 +68,14 @@ struct CustomerFightDetailCard: View {
 
     var body: some View{
         VStack(spacing: 0){
-            Image(picture)
+            // Fill the banner keeping the aspect ratio, then cut what hangs over.
+            // Without `scaledToFill` a portrait photo was squeezed into 170pt.
+            Image(uiImage: photo ?? UIImage(named: picture) ?? UIImage())
                 .resizable()
+                .scaledToFill()
                 .frame(maxWidth: .infinity)
                 .frame(height: 170)
+                .clipped()
 
             VStack{
 
@@ -118,10 +133,10 @@ struct CustomerFightDetailCard: View {
                         Button(action: onAction) {
                             Text(actionTitle)
                                 .textStyle(Tokens.Typography.body)
-                                .foregroundStyle(Tokens.Semantic.ourFightQR)
+                                .foregroundStyle(actionForeground)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 40)
-                                .background(Color(hex: 0x2F3A32))
+                                .background(actionBackground)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .padding(.bottom, Tokens.Spacing.xl)

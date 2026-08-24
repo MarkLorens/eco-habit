@@ -32,3 +32,18 @@ extension HabitCategory {
         }
     }
 }
+
+extension HabitCategory {
+
+    /// Text that stays legible on `accent`.
+    ///
+    /// Blue and orange are dark enough to need white; lime, yellow, lilac and the pale
+    /// green need the usual dark text. Stated per case rather than computed from
+    /// luminance so a designer can disagree with it in one place.
+    var accentForeground: Color {
+        switch self {
+        case .water, .consumption: Tokens.Palette.white
+        default:                   Tokens.Semantic.text
+        }
+    }
+}

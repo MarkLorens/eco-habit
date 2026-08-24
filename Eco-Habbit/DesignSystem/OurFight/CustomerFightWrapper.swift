@@ -17,6 +17,7 @@ struct CustomerFightWrapper: View {
     let date: String
     let location: String
     let picture: String
+    var photo: UIImage? = nil
     let isLoved: Bool
     let onLove: () -> Void
 
@@ -25,6 +26,8 @@ struct CustomerFightWrapper: View {
     var icon: String = Tokens.Icons.wasteIcon
     var host: String = "Eco Tourism Bali"
     var actionTitle: String? = "Scan or check in"
+    var actionBackground: Color = Color(hex: 0x2F3A32)
+    var actionForeground: Color = Tokens.Semantic.ourFightQR
     var onAction: () -> Void = {}
 
     @State private var isExpanded = false
@@ -38,9 +41,12 @@ struct CustomerFightWrapper: View {
                 date: date,
                 location: location,
                 picture: picture,
+                photo: photo,
                 isLoved: isLoved,
                 host: host,
                 actionTitle: actionTitle,
+                actionBackground: actionBackground,
+                actionForeground: actionForeground,
                 onAction: onAction,
                 onLove: onLove,
                 onCollapse: {
@@ -57,6 +63,7 @@ struct CustomerFightWrapper: View {
                 date: date,
                 location: location,
                 picture: picture,
+                photo: photo,
                 icon: icon,
                 onExpand: expand
             )
