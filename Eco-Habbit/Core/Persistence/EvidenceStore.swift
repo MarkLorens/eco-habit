@@ -1,3 +1,4 @@
+import ImageIO
 import UIKit
 
 /// Photos taken through the camera, on this device only.
@@ -20,12 +21,20 @@ import UIKit
 /// Deliberately **not** synced. Firestore documents cap at 1 MB, images belong in Cloud
 /// Storage, and that is a decision with a billing plan attached. Keeping the bytes local
 /// and the key derivable means uploading later is additive — the name is already right.
-enum EvidenceStore {
+nonisolated enum EvidenceStore {
 
-    /// Longest edge. The source is the 480×270 analysis frame today, so this is
+    /// Longest edge. The source is the 960×540 analysis frame today, so this is
     /// headroom for a real still capture rather than an upscale.
     private static let maxDimension: CGFloat = 1024
     private static let quality: CGFloat = 0.7
+
+    /// Decoded thumbnails, keyed by account, log and size.
+    ///
+    /// `NSCache` is documented as thread-safe, which is the whole reason this can be a
+    /// shared global on a `nonisolated` namespace. Emptied wholesale on any write —
+    /// re-logging overwrites `{habitId}_{localDate}` in place, so a surviving entry
+    /// under the same key would show yesterday's picture for today's log.
+    private nonisolated(unsafe) static let thumbnails = NSCache<NSString, UIImage>()
 
     private static var root: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -49,6 +58,7 @@ enum EvidenceStore {
         do {
             try FileManager.default.createDirectory(at: folder(userId), withIntermediateDirectories: true)
             try data.write(to: destination, options: .atomic)
+            thumbnails.removeAllObjects()
             return destination
         } catch {
             // A failed write must never interrupt logging — the points are the point.
@@ -58,18 +68,75 @@ enum EvidenceStore {
 
     static func delete(forLogId id: String, userId: String) {
         try? FileManager.default.removeItem(at: url(forLogId: id, userId: userId))
+        thumbnails.removeAllObjects()
     }
 
     /// Everything for one account. Used by "reset local data" and account deletion,
     /// where leaving the photos behind would resurrect them under a fresh log.
     static func purge(userId: String) {
         try? FileManager.default.removeItem(at: folder(userId))
+        thumbnails.removeAllObjects()
     }
 
     // MARK: - Reading
 
+    /// Full size. One at a time — `UIImage(contentsOfFile:)` deliberately does *not*
+    /// use the shared image cache, so this re-reads and re-decodes on every call.
     static func image(forLogId id: String, userId: String) -> UIImage? {
         UIImage(contentsOfFile: url(forLogId: id, userId: userId).path)
+    }
+
+    /// A copy decoded straight to display size, for anywhere more than one photo is on
+    /// screen at once.
+    ///
+    /// The full frame is 960×540 — about 2 MB of backing store once decoded — and
+    /// `image(forLogId:)` pays that on every call with nothing cached in between. A wall
+    /// of them re-decodes the lot on every pass. ImageIO never builds the full bitmap:
+    /// it decodes to the size asked for, and `kCGImageSourceCreateThumbnailWithTransform`
+    /// applies the EXIF orientation on the way, so the result is `.up` and needs no
+    /// correcting downstream.
+    ///
+    /// `maxPixel` is **pixels, not points** — pass `points * displayScale`. Reading
+    /// `UIScreen.main` here would drag the whole store back onto the main actor, which
+    /// is the one thing this is for.
+    static func thumbnail(forLogId id: String, userId: String, maxPixel: Int) -> UIImage? {
+        let key = "\(userId)/\(id)@\(maxPixel)" as NSString
+        if let cached = thumbnails.object(forKey: key) { return cached }
+
+        let file = url(forLogId: id, userId: userId) as CFURL
+        guard let source = CGImageSourceCreateWithURL(file, nil) else { return nil }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+
+        let image = UIImage(cgImage: cgImage)
+        thumbnails.setObject(image, forKey: key)
+        return image
+    }
+
+    /// The same, off the main thread — which is what `nonisolated` on this namespace
+    /// buys. Decoding a wall of photos inside a view body is the thing to avoid.
+    static func loadThumbnail(forLogId id: String, userId: String, maxPixel: Int) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) {
+            thumbnail(forLogId: id, userId: userId, maxPixel: maxPixel)
+        }.value
+    }
+
+    /// Which logs have a photo, in one directory read.
+    ///
+    /// The alternative — `fileExists` per log — is one syscall per log in the account,
+    /// and the caller always wants the whole set anyway.
+    static func savedLogIds(userId: String) -> Set<String> {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: folder(userId), includingPropertiesForKeys: nil)) ?? []
+        return Set(files.filter { $0.pathExtension == "jpg" }
+                        .map { $0.deletingPathExtension().lastPathComponent })
     }
 
     struct Saved: Identifiable {

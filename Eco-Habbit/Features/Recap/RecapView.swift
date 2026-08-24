@@ -28,6 +28,8 @@ struct RecapView: View {
     /// Resolved on appear, since it depends on the account's own history.
     @State private var focus: HabitCategory?
 
+    @State private var showsCollage = false
+
     private var counts: [HabitCategory: Int] { app.actionCounts(in: period) }
     private var total: Int { app.totalActions(in: period) }
 
@@ -77,6 +79,12 @@ struct RecapView: View {
         // Not `busiest` directly: a later log must not move the reader's selection
         // out from under them, so this only fills in the opening choice.
         .onAppear { if focus == nil { focus = busiest } }
+        // Passed explicitly rather than relied on being inherited — a cover builds its
+        // own hierarchy, and a missing `EnvironmentObject` is a crash, not a warning.
+        .fullScreenCover(isPresented: $showsCollage) {
+            RecapCollageView(period: period, summary: summary)
+                .environmentObject(app)
+        }
     }
 
     private var header: some View {
@@ -84,7 +92,10 @@ struct RecapView: View {
             NavigateButton(background: Tokens.Semantic.buttonTintDefault,
                            buttonAction: .back) { dismiss() }
             Spacer()
-            ShareLink(item: summary) {
+            // Share opens the photo wall rather than a share sheet: the sheet is still
+            // there, one screen further in, and it now has something worth handing over
+            // — a picture of the month instead of a sentence about it.
+            Button { showsCollage = true } label: {
                 NavigateBadge(background: Tokens.Semantic.buttonTintDefault,
                               buttonAction: .share)
             }
@@ -153,7 +164,8 @@ struct RecapView: View {
         .padding(.top, Tokens.Spacing.goodLord)
     }
 
-    /// What the share sheet hands on. Plain text, and only this account's own totals.
+    /// What the share sheet is titled with, once the collage has an image to hand it.
+    /// Plain text, and only this account's own totals.
     private var summary: String {
         let window = period.datePrefix == nil ? "" : " in \(period.title)"
         guard total > 0 else { return "I'm just getting started on Eco Habbit." }
