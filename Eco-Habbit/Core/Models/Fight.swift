@@ -59,6 +59,13 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
     var longitude: Double?
     var startsAt: Date
     var endsAt: Date
+    /// Where to find out more — Instagram, WhatsApp, a signup form, anything.
+    ///
+    /// Free text rather than a `URL`: an organiser types this on a phone and will leave
+    /// off the scheme. `infoURL` below repairs that at the point of use, so a bad value
+    /// costs a hidden button rather than a crash.
+    var link: String?
+
     var preparationNotes: [String] = []
     var status: Status = .published
     /// Exhibit seed data is labelled so it can never be mistaken for a real event (§8).
@@ -139,6 +146,19 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
     /// The local day the event falls on — what attendance credits Vitality against.
     var localDate: String { Day.today(startsAt) }
 
+    /// The link as something openable, or `nil`.
+    ///
+    /// Adds `https://` when the organiser omitted it — which they will — and refuses
+    /// anything without a host, so a stray word never becomes a button that opens
+    /// nothing.
+    var infoURL: URL? {
+        let trimmed = (link ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let candidate = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
+        guard let url = URL(string: candidate), url.host?.isEmpty == false else { return nil }
+        return url
+    }
+
     var isUpcoming: Bool { endsAt > Date() }
 
     /// PRD §4.5 — opens 1 hour before start, closes 3 hours after end.
@@ -166,6 +186,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
          startsAt: Date,
          endsAt: Date,
          preparationNotes: [String] = [],
+         link: String? = nil,
          status: Status = .published,
          isDemo: Bool = false,
          tier: EventTier = .standard,
@@ -184,6 +205,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
         self.startsAt = startsAt
         self.endsAt = endsAt
         self.preparationNotes = preparationNotes
+        self.link = link
         self.status = status
         self.isDemo = isDemo
         self.tier = tier
@@ -198,7 +220,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case id, title, summary, category, hostName, hostId, locationName, address
         case latitude, longitude, startsAt, endsAt, preparationNotes, status, isDemo
-        case tier, checkInCode, rewardBadgeId
+        case tier, checkInCode, rewardBadgeId, link
     }
 
     /// Hand-written for the same reason `PersistedState`'s is: synthesized
@@ -223,6 +245,7 @@ nonisolated struct Fight: Identifiable, Codable, Hashable {
         startsAt = try c.decode(Date.self, forKey: .startsAt)
         endsAt = try c.decode(Date.self, forKey: .endsAt)
         preparationNotes = try c.decodeIfPresent([String].self, forKey: .preparationNotes) ?? []
+        link = try c.decodeIfPresent(String.self, forKey: .link)
         status = try c.decodeIfPresent(Status.self, forKey: .status) ?? .published
         isDemo = try c.decodeIfPresent(Bool.self, forKey: .isDemo) ?? false
         tier = try c.decodeIfPresent(EventTier.self, forKey: .tier) ?? .standard

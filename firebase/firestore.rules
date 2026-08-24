@@ -39,7 +39,22 @@ service cloud.firestore {
 
     // Admin comes from a custom auth claim, never a client-writable field.
     // Set it with the Admin SDK, not from the app.
-    function isAdmin()    { return signedIn() && request.auth.token.admin == true; }
+    //
+    // The uid list is the exhibition dashboard (`dashboard/`), which reads every
+    // account to show aggregate numbers on a screen at the booth. It is here rather
+    // than as a custom claim because a claim needs the Admin SDK and a service-account
+    // key on somebody's laptop; a uid in a reviewable, version-controlled file is both
+    // less machinery and easier to audit — and to revoke, by deleting a line.
+    //
+    // Read-only in practice: no `allow write` anywhere below grants on isAdmin() alone
+    // except account deletion, which the dashboard never calls.
+    function isAdmin() {
+      return signedIn()
+        && (request.auth.token.admin == true
+            || request.auth.uid in [
+                 'PASTE_DASHBOARD_UID_HERE'
+               ]);
+    }
 
     function fight(fightId) {
       return get(/databases/$(database)/documents/fights/$(fightId)).data;
@@ -173,10 +188,15 @@ service cloud.firestore {
     // host's roster can list attendees without parsing document ids.
 
     match /attendance/{attendanceId} {
-      allow read: if signedIn()
-        && (resource.data.userId == request.auth.uid
-            || fight(resource.data.fightId).hostId == request.auth.uid
-            || isAdmin());
+      // `isAdmin()` FIRST, and the order is load-bearing. `||` short-circuits left to
+      // right, so with it last the dashboard's collection-wide list would fall through
+      // to `fight(...)` — a get() per document — and blow Firestore's document-access
+      // budget for a query. The listing fails outright at that point; it does not
+      // merely run slowly.
+      allow read: if isAdmin()
+        || (signedIn()
+            && (resource.data.userId == request.auth.uid
+                || fight(resource.data.fightId).hostId == request.auth.uid));
 
       allow create: if signedIn()
         // the id must be exactly {fightId}_{uid} of the payload
@@ -191,6 +211,26 @@ service cloud.firestore {
 
       // Proof of attendance is a fact, not a preference.
       allow update, delete: if false;
+    }
+
+    // ---- collection-group reads, admin only --------------------------------
+    //
+    // The rules above match `/users/{uid}/logs/{logId}` — one named user's logs. A
+    // `collectionGroup('logs')` query does not match that path at all, so it is denied
+    // however the caller is authenticated. These grant it, and only to an admin.
+    //
+    // Without them the dashboard has to walk every account one at a time: two round
+    // trips per user, hundreds of listeners on booth wifi. With them it is two.
+    //
+    // Nothing is widened for ordinary users — the condition is `isAdmin()` alone, so a
+    // normal account gains no read it did not already have through the paths above.
+
+    match /{path=**}/logs/{logId} {
+      allow read: if isAdmin();
+    }
+
+    match /{path=**}/badges/{badgeId} {
+      allow read: if isAdmin();
     }
 
     // ---- default deny -----------------------------------------------------

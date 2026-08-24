@@ -25,6 +25,9 @@ struct CustomerFightDetailCard: View {
     private let host: String
     private let actionTitle: String?
     private let onAction: () -> Void
+    /// Defaults keep the original dark button for any caller that does not care.
+    private let actionBackground: Color
+    private let actionForeground: Color
 
     init(title: String,
          caption: String,
@@ -35,6 +38,8 @@ struct CustomerFightDetailCard: View {
          isLoved: Bool,
          host: String = "Eco Tourism Bali",
          actionTitle: String? = "Scan or check in",
+         actionBackground: Color = Color(hex: 0x2F3A32),
+         actionForeground: Color = Tokens.Semantic.ourFightQR,
          onAction: @escaping () -> Void = {},
          onLove: @escaping () -> Void,
          onCollapse: @escaping () -> Void
@@ -48,6 +53,8 @@ struct CustomerFightDetailCard: View {
         self.isLoved = isLoved
         self.host = host
         self.actionTitle = actionTitle
+        self.actionBackground = actionBackground
+        self.actionForeground = actionForeground
         self.onAction = onAction
         self.onLove = onLove
         self.onCollapse = onCollapse
@@ -118,10 +125,10 @@ struct CustomerFightDetailCard: View {
                         Button(action: onAction) {
                             Text(actionTitle)
                                 .textStyle(Tokens.Typography.body)
-                                .foregroundStyle(Tokens.Semantic.ourFightQR)
+                                .foregroundStyle(actionForeground)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 40)
-                                .background(Color(hex: 0x2F3A32))
+                                .background(actionBackground)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .padding(.bottom, Tokens.Spacing.xl)

@@ -125,6 +125,19 @@ struct EventFormView: View {
                 TextField("Description", text: $draft.locationName)
                     .multilineTextAlignment(.trailing)
             }
+            row("Link") {
+                // What "More info" on the card opens. Free text — `Fight.infoURL`
+                // adds the scheme and refuses anything without a host, so a typo
+                // costs a hidden button rather than a dead one.
+                TextField("instagram.com/…", text: Binding(
+                    get: { draft.link ?? "" },
+                    set: { draft.link = $0.isEmpty ? nil : $0 }
+                ))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .multilineTextAlignment(.trailing)
+            }
             row("Picture") {
                 // Deferred: a Fight is shared, so a photo from this phone's library
                 // would be a blank card on everybody else's. Needs Cloud Storage.
