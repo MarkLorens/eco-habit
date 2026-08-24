@@ -83,7 +83,7 @@ nonisolated struct PointsConfiguration: Codable, Equatable {
     // MARK: - Default
 
     static let `default` = PointsConfiguration(
-        stageThresholds: [0, 150, 450, 950, 1_600, 2_500],
+        stageThresholds: [0, 20, 450, 950, 1_600, 2_500],
         streakTiers: [
             StreakTier(minimumStreakDay: 1,  multiplier: 1.0),
             StreakTier(minimumStreakDay: 7,  multiplier: 1.1),

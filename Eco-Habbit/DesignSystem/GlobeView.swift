@@ -1,10 +1,20 @@
 import SwiftUI
 
 struct GlobeView: View {
+    enum Art {
+        case globe
+        case homepage
+    }
+
     var stage: Int = 0
+    var art: Art = .globe
 
     private var assetName: String {
-        "globe-static-stage-\(min(max(stage, 0), GlobeView.lastStage))"
+        let stage = min(max(stage, 0), GlobeView.lastStage)
+        switch art {
+        case .globe: return "globe-static-stage-\(stage)"
+        case .homepage: return "stage-\(stage)-homepage"
+        }
     }
     
     static let lastStage = 5

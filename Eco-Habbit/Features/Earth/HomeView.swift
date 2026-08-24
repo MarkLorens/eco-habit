@@ -9,8 +9,6 @@ private enum GlobeArt {
         var nudgeX: CGFloat { (0.5 - centreX) * fillScale }
         var nudgeY: CGFloat { (0.5 - centreY) * fillScale }
     }
-    /// Measured opaque bounds of the 2048² PNGs. Stage 0 was drawn to a different
-    /// template from stages 1–5, so one set of numbers cannot serve both.
     static func geometry(forStage stage: Int) -> Geometry {
         stage == 0
             ? Geometry(widthFraction: 0.8003, centreX: 0.4814, centreY: 0.4866)
@@ -81,14 +79,32 @@ struct HomeView: View {
     private func globe(side: CGFloat) -> some View {
         let art = GlobeArt.geometry(forStage: app.globeStage)
         let canvas = side * art.fillScale
-        return GlobeView(stage: app.globeStage)
+        return GlobeView(stage: app.globeStage, art: isGlobeFocused ? .globe : .homepage)
             .frame(width: canvas, height: canvas)
             .offset(x: side * art.nudgeX, y: side * art.nudgeY)
             .frame(width: side, height: side)
             .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.snappy(duration: 0.35)) { isGlobeFocused.toggle() }
-        }	
+            .onTapGesture {
+                withAnimation(.snappy(duration: 0.35)) { isGlobeFocused.toggle() }
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 30)
+                    .onEnded { value in
+                        let verticalMovement = value.translation.height
+
+                        if verticalMovement < -30 {
+                            // Swiped up
+                            withAnimation(.snappy(duration: 0.35)) {
+                                isGlobeFocused = true
+                            }
+                        } else if verticalMovement > 30 {
+                            // Swiped down
+                            withAnimation(.snappy(duration: 0.35)) {
+                                isGlobeFocused = false
+                            }
+                        }
+                    }
+            )
         .accessibilityElement()
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Your Earth, stage \(app.globeStage + 1) of \(GlobeView.lastStage + 1)")

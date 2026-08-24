@@ -33,3 +33,6 @@ playground.xcworkspace
 
 # Secrets
 .env
+
+# Agent
+CLAUDE.md

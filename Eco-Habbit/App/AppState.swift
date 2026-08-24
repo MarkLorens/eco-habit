@@ -527,6 +527,40 @@ final class AppState: ObservableObject {
         data.logs.filter { MockData.habitsById[$0.habitId]?.category == category }.count
     }
 
+    /// The logs a recap covers. Filtering on `localDate` rather than `loggedAt`: the
+    /// day string is the one the rest of the app counts by.
+    private func logs(in period: RecapPeriod) -> [HabitLog] {
+        guard period.datePrefix != nil else { return data.logs }
+        return data.logs.filter { period.contains($0.localDate) }
+    }
+
+    func totalActions(in period: RecapPeriod) -> Int { logs(in: period).count }
+
+    /// Every category's tally in one pass — what the recap chart plots. A log whose
+    /// habit has left the catalogue is skipped rather than parked in some bucket.
+    func actionCounts(in period: RecapPeriod) -> [HabitCategory: Int] {
+        logs(in: period).reduce(into: [:]) { counts, log in
+            guard let category = MockData.habitsById[log.habitId]?.category else { return }
+            counts[category, default: 0] += 1
+        }
+    }
+
+    /// The habits logged most often in a category, biggest first — the recap's top
+    /// five. Ties break on name, so the order does not reshuffle between launches.
+    func topActivities(in category: HabitCategory,
+                       period: RecapPeriod,
+                       limit: Int = 5) -> [ActivityTally] {
+        var counts: [String: Int] = [:]
+        for log in logs(in: period) where MockData.habitsById[log.habitId]?.category == category {
+            counts[log.habitId, default: 0] += 1
+        }
+        let tallies = counts.compactMap { id, count in
+            MockData.habitsById[id].map { ActivityTally(habit: $0, count: count) }
+        }
+        return Array(tallies.sorted { ($0.count, $1.habit.name) > ($1.count, $0.habit.name) }
+                            .prefix(limit))
+    }
+
     /// The catalogue joined with this account's awards.
     var badges: [Badge] { badgeService.display(catalogue: MockData.badges, earned: data.earnedBadges) }
 
