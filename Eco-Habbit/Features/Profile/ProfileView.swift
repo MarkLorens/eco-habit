@@ -107,26 +107,13 @@ struct ProfileView: View {
                         Circle()
                             .stroke(Tokens.Palette.white, lineWidth: 5)
                     )
-                    // The only route to the account actions. `SignOutFooter` hangs off
-                    // `settings`, which is commented out of `body`, so nothing on screen
-                    // reached `logOut` and nothing at all reached `deleteAccount` — which
-                    // App Review requires for any app with sign-in.
-                    //
-                    // `contextMenu` IS the long press, so there is no gesture to wire up
-                    // and no state to hold for the menu itself.
                     .contextMenu {
                         #if DEBUG
-                        // Compiled out of Release entirely. The only way in: the
-                        // settings list that used to carry this route is commented
-                        // out of `body`.
                         Button { path.append(ProfileRoute.debug) } label: {
                             Label("Debug tools", systemImage: "hammer")
                         }
                         #endif
                         Button {
-                            // Seeded from the raw stored value, not `app.userName`,
-                            // which reads "there" when empty — offering that as the
-                            // current name would be a lie you then have to delete.
                             draftName = app.data.userName
                             editingName = true
                         } label: {
@@ -442,7 +429,14 @@ struct BadgeDetailSheet: View {
  
     var body: some View {
         VStack(spacing: Tokens.Spacing.md) {
-            Avatar(type: .avatarBig, icon: badge.icon)
+            // `unlocked` was carried by every call site but never rendered, so a
+            // locked badge opened looking earned. Grey art behind a lock keeps
+            // the name and detail below reading as a requirement, not a reward.
+            if unlocked {
+                Avatar(type: .avatarBig, icon: badge.icon)
+            } else {
+                LockedAvatar(type: .avatarBig, icon: badge.icon)
+            }
  
             Text(badge.name)
                 .textStyle(Tokens.Typography.hero)
