@@ -14,12 +14,12 @@ struct ProfileView: View {
     @State private var badgeDetail: Badge?
     @State private var showingBadges = false
     @State private var confirmingDelete = false
+    @State private var confirmingReset = false
     @State private var editingName = false
     @State private var draftName = ""
 
-    /// Bound so the avatar's long-press menu can push. `settings` — the list that used
-    /// to hold every route — is commented out of `body`, which left Debug tools with no
-    /// door at all.
+    /// Bound so the avatar's long-press menu can push. The settings list that used to
+    /// hold every route is gone, so the menu is the only door to Debug tools.
     @State private var path = NavigationPath()
 
     private let badgeColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
@@ -34,7 +34,6 @@ struct ProfileView: View {
                     stats
                     badges
                     recap
-//                    settings
                 }
                 .padding(.horizontal, 20)
                 // The identity block is an overlay, so it takes up no layout space —
@@ -78,10 +77,6 @@ struct ProfileView: View {
             .background(Tokens.Palette.white.ignoresSafeArea())
             .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
-                case .favourites: FavouriteCategoriesView()
-                case .notifications: NotificationSettingsView()
-                case .privacy: PrivacySettingsView()
-                case .history: ActivityHistoryView()
                 case .recap(let period): RecapView(period: period)
                 #if DEBUG
                 case .debug: TimeTravelMenu()
@@ -107,18 +102,15 @@ struct ProfileView: View {
                         Circle()
                             .stroke(Tokens.Palette.white, lineWidth: 5)
                     )
-                    // The only route to the account actions. `SignOutFooter` hangs off
-                    // `settings`, which is commented out of `body`, so nothing on screen
-                    // reached `logOut` and nothing at all reached `deleteAccount` — which
-                    // App Review requires for any app with sign-in.
+                    // The only route to the account actions, `deleteAccount` included —
+                    // App Review requires that for any app with sign-in.
                     //
                     // `contextMenu` IS the long press, so there is no gesture to wire up
                     // and no state to hold for the menu itself.
                     .contextMenu {
                         #if DEBUG
-                        // Compiled out of Release entirely. The only way in: the
-                        // settings list that used to carry this route is commented
-                        // out of `body`.
+                        // Compiled out of Release entirely — this is the time-travel
+                        // and host-verification surface, not a user feature.
                         Button { path.append(ProfileRoute.debug) } label: {
                             Label("Debug tools", systemImage: "hammer")
                         }
@@ -134,6 +126,12 @@ struct ProfileView: View {
                         }
                         Button { app.logOut() } label: {
                             Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                        // Came off `SignOutFooter`, which hung from the settings list
+                        // and went with it. Distinct from "Delete account": this starts
+                        // the Earth over, it does not end the account.
+                        Button(role: .destructive) { confirmingReset = true } label: {
+                            Label("Reset local data", systemImage: "arrow.counterclockwise")
                         }
                         Button(role: .destructive) { confirmingDelete = true } label: {
                             Label("Delete account", systemImage: "trash")
@@ -161,11 +159,12 @@ struct ProfileView: View {
         } message: {
             Text("Your points, streak, history and badges are permanently deleted from this device and from our servers. This cannot be undone.")
         }
-    }
-
-    private var initials: String {
-        let parts = app.userName.split(separator: " ").prefix(2)
-        return parts.compactMap { $0.first.map(String.init) }.joined().uppercased()
+        .alert("Reset local data?", isPresented: $confirmingReset) {
+            Button("Reset", role: .destructive) { app.resetEverything() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Points, streak, history and settings on this device are deleted. The Earth starts over from the beginning.")
+        }
     }
 
     private var stats: some View {
@@ -225,16 +224,6 @@ struct ProfileView: View {
         .padding(.top, Tokens.Spacing.xxl)
     }
 
-    /// Whether the Activity history row still needs its divider — false in
-    /// Release, where it is the last row.
-    private var debugRowVisible: Bool {
-        #if DEBUG
-        true
-        #else
-        false
-        #endif
-    }
-    
     /// Read from `app.today` rather than `Date()`, so the debug time-travel menu
     /// moves the recap cards along with everything else.
     private var thisMonth: RecapPeriod { .month(of: app.today) }
@@ -270,70 +259,6 @@ struct ProfileView: View {
         .padding(.top, Tokens.Spacing.xxl)
     }
 
-    private var settings: some View {
-        EHCard(padding: 4) {
-            VStack(spacing: 0) {
-                NavigationLink(value: ProfileRoute.favourites) {
-                    SettingsRow(title: "Favorite categories") {
-                        HStack(spacing: 6) {
-                            Text("\(app.favouriteCategories.count)")
-                                .font(Theme.F.body(13))
-                                .foregroundStyle(Theme.C.neutral600)
-                            ChevronRight()
-                        }
-                    }
-                }
-                .buttonStyle(PlainPressStyle())
-
-                NavigationLink(value: ProfileRoute.notifications) {
-                    SettingsRow(title: "Notifications") {
-                        HStack(spacing: 6) {
-                            Text(app.notificationsEnabled ? "On" : "Off")
-                                .font(Theme.F.body(13))
-                                .foregroundStyle(Theme.C.neutral600)
-                            ChevronRight()
-                        }
-                    }
-                }
-                .buttonStyle(PlainPressStyle())
-
-                NavigationLink(value: ProfileRoute.privacy) {
-                    SettingsRow(title: "Privacy") { ChevronRight() }
-                }
-                .buttonStyle(PlainPressStyle())
-
-                NavigationLink(value: ProfileRoute.history) {
-                    SettingsRow(title: "Activity history", showsDivider: debugRowVisible) {
-                        HStack(spacing: 6) {
-                            Text("\(app.totalActionsLogged)")
-                                .font(Theme.F.body(13))
-                                .foregroundStyle(Theme.C.neutral600)
-                            ChevronRight()
-                        }
-                    }
-                }
-                .buttonStyle(PlainPressStyle())
-
-                #if DEBUG
-                // Compiled out of Release entirely — this is the time-travel and
-                // host-verification surface, not a user feature.
-                NavigationLink(value: ProfileRoute.debug) {
-                    SettingsRow(title: "Debug tools", showsDivider: false) {
-                        HStack(spacing: 6) {
-                            Text(app.isOrganization ? "Org" : "")
-                                .font(Theme.F.body(13))
-                                .foregroundStyle(Theme.C.neutral600)
-                            ChevronRight()
-                        }
-                    }
-                }
-                .buttonStyle(PlainPressStyle())
-                #endif
-            }
-        }
-        .padding(.top, 24)
-        .modifier(SignOutFooter())
-    }
 }
 
 private struct RecapCards: View {
@@ -372,32 +297,7 @@ private struct RecapCards: View {
         }
     }
 }
-private struct SignOutFooter: ViewModifier {
-    @EnvironmentObject private var app: AppState
-    @State private var confirmingReset = false
-
-    func body(content: Content) -> some View {
-        VStack(spacing: 10) {
-            content
-
-            Button("Log out") { app.logOut() }
-                .buttonStyle(SecondaryButtonStyle(height: 46))
-                .padding(.top, 14)
-
-            Button("Reset local data") { confirmingReset = true }
-                .buttonStyle(GhostButtonStyle(height: 40, fontSize: 14))
-                .alert("Reset local data?", isPresented: $confirmingReset) {
-                    Button("Reset", role: .destructive) { app.resetEverything() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Points, streak, history and settings on this device are deleted. The Earth starts over from the beginning.")
-                }
-        }
-    }
-}
-
 enum ProfileRoute: Hashable {
-    case favourites, notifications, privacy, history
     case recap(RecapPeriod)
     #if DEBUG
     case debug
@@ -492,7 +392,7 @@ struct BadgeDetailSheet: View {
     struct Harness: View {
         @State private var badge: Badge? = MockData.badges.first
         var body: some View {
-            Theme.C.bg
+            Tokens.Palette.white
                 .ignoresSafeArea()
                 .sheet(item: $badge) { badge in
                     BadgeDetailSheet(badge: badge, unlocked: true) { print("tapped") }

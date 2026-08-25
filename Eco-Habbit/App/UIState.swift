@@ -24,9 +24,9 @@ struct Toast: Identifiable, Equatable {
 
         var tint: Color {
             switch self {
-            case .success: return Theme.C.accent2_600
-            case .info: return Theme.C.neutral800
-            case .warning: return Theme.C.accent600
+            case .success: return Tokens.Semantic.toastSuccess
+            case .info: return Tokens.Semantic.toastInfo
+            case .warning: return Tokens.Semantic.toastWarning
             }
         }
 

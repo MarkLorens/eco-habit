@@ -42,7 +42,6 @@ struct OurFightListCard: View {
         self.onExpand = onExpand
     }
     
-    private let iconSize: CGFloat = 44
     
     var body: some View{
         HStack(alignment: .center){

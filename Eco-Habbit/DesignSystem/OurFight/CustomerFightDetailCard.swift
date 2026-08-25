@@ -53,7 +53,6 @@ struct CustomerFightDetailCard: View {
         self.onCollapse = onCollapse
     }
 
-    private let iconSize: CGFloat = 44
 
     var body: some View{
         VStack(spacing: 0){

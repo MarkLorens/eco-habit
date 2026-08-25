@@ -93,14 +93,17 @@ struct ToastLayer: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                     Text(toast.message)
-                        .font(Theme.F.body(13.5, weight: .semibold))
+                        .textStyle(Tokens.Typography.body)
                         .foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(Capsule().fill(toast.kind.tint))
-                .elevation(Theme.E.md)
+                // Was `Theme.E.md`. Kept as its own line rather than becoming a token:
+                // this and `AppTabBar` are the only two shadows in the app, and they
+                // are deliberately different shapes of lift.
+                .shadow(color: Color.black.opacity(0.16), radius: 10, x: 0, y: 3)
                 .padding(.horizontal, 20)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .task(id: toast.id) {

@@ -511,17 +511,7 @@ final class AppState: ObservableObject {
         recommendationService.recommend(from: MockData.habits, state: data, today: today)
     }
 
-    // MARK: - History and badges (all derived — nothing summable is stored)
-
-    var history: [HistoryEntry] {
-        data.logs
-            .compactMap { log in
-                MockData.habitsById[log.habitId].map { HistoryEntry(log: log, habit: $0) }
-            }
-            .sorted { $0.date > $1.date }
-    }
-
-    var totalActionsLogged: Int { data.logs.count }
+    // MARK: - Badges (all derived — nothing summable is stored)
 
     func actionCount(in category: HabitCategory) -> Int {
         data.logs.filter { MockData.habitsById[$0.habitId]?.category == category }.count

@@ -35,12 +35,6 @@ private extension LottieView {
     }
 }
 
-struct Globe: View {
-    var body: some View{
-        DotLottieAsset(name: "stage 3-4")
-    }
-}
-
 // Do not delete
 // We're not using GlobeJson, this is a fallback in case lottie misbehaves
 // Also Feli sent me this, I felt bad not using it lmao. Note that JSON is about 75% heavier, though
@@ -57,5 +51,5 @@ struct JSONLottieAsset: View {
 }
 
 #Preview {
-    Globe()
+    DotLottieAsset(name: "stage 3-4")
 }
