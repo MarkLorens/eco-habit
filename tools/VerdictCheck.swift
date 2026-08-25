@@ -91,4 +91,26 @@ check("still rejected when a distractor wins",
       v(frame([("direct_a", 0.40), ("direct_b", 0.02)], distractor: ("bottle", 0.45))),
       "rejected(bottle)")
 
+// --- the failure contract the camera screen now depends on ----------------------
+//
+// `.rejected` sends the user back to the viewfinder naming what was in frame, and
+// `.unsure` seeds the picker with camera matches ONLY. Both depend on `verdict`
+// separating "identified a non-habit" from "could not tell", so the two must never
+// collapse into one another.
+check("a distractor above the floor still rejects",
+      v(frame([("direct_a", 0.20)], distractor: ("plastic_bottle", 0.22), confidence: 0.90)),
+      "rejected(plastic_bottle)")
+check("a distractor below the top habit does NOT reject",
+      v(frame([("direct_a", 0.50)], distractor: ("plastic_bottle", 0.20), confidence: 0.90)),
+      "confident(direct_a)")
+// The tie goes to the distractor: `>=` in the gate. Claiming a habit on a dead heat
+// with "a single-use plastic bottle" is the wrong way to be wrong.
+check("a tie goes to the distractor",
+      v(frame([("direct_a", 0.40)], distractor: ("cup", 0.40), confidence: 0.90)),
+      "rejected(cup)")
+// Nothing in frame at all is `.nothing`, which is the only case allowed to fall
+// through to recommendations.
+check("an empty field is nothing, not rejected",
+      v(frame([])), "nothing")
+
 print(fails == 0 ? "\nALL PASS" : "\n\(fails) FAILED")

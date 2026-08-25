@@ -15,7 +15,13 @@ struct VisualSearchView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var camera = CameraService()
 
-    private enum Overlay { case firstTimer, analyzing, whoops }
+    private enum Overlay: Equatable {
+        case firstTimer, analyzing, whoops
+        /// A distractor outranked every habit — the model is fairly sure it is looking
+        /// at a NON-habit, and says which. Distinct from `whoops`, which means it could
+        /// not tell at all.
+        case rejected(String)
+    }
 
     @AppStorage("hasSeenCameraIntro") private var hasSeenIntro = false
     @State private var overlay: Overlay?
@@ -105,6 +111,12 @@ struct VisualSearchView: View {
             // would render behind the camera. It needs its own copy.
             ToastLayer()
 
+            #if DEBUG
+            // Compiled out of Release entirely. Everything the verdict was made from,
+            // so a wrong answer can be read rather than guessed at.
+            diagnostics
+            #endif
+
             if let overlay { modal(overlay) }
 
             if showAward, let award {
@@ -177,6 +189,54 @@ struct VisualSearchView: View {
         .padding(.bottom, Tokens.Spacing.goodLord)
     }
 
+    #if DEBUG
+    /// The numbers behind the last verdict.
+    ///
+    /// The thresholds shown are read live from the classifier rather than copied, so
+    /// they cannot drift from the ones actually deciding — and `explain` lives beside
+    /// the gates for the same reason.
+    private var diagnostics: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verdictLabel)
+                .foregroundStyle(Tokens.Palette.lime)
+            Text(camera.lastExplanation)
+                .foregroundStyle(.white.opacity(0.75))
+
+            Text(String(format: "conf %.2f · floor %.2f · auto %.2f/%.2f · %d distractors",
+                        camera.lastFrame.confidence, camera.minThreshold,
+                        camera.autoLogThreshold, camera.confidenceThreshold,
+                        camera.distractorCount))
+                .foregroundStyle(.white.opacity(0.55))
+
+            ForEach(Array(camera.lastFrame.habits.enumerated()), id: \.element.habitId) { i, m in
+                Text(String(format: "%d %-30@ %.3f", i + 1, m.habitId as NSString, m.similarity))
+                    .foregroundStyle(.white.opacity(i == 0 ? 0.95 : 0.6))
+            }
+            if let d = camera.lastFrame.topDistractor {
+                Text(String(format: "✕ %-30@ %.3f", d.label as NSString, d.similarity))
+                    .foregroundStyle(Tokens.Palette.orange.opacity(0.9))
+            }
+        }
+        .font(.system(size: 9, design: .monospaced))
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 6).fill(.black.opacity(0.55)))
+        .padding(.horizontal, Tokens.Spacing.md)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        .padding(.bottom, 150)
+        .allowsHitTesting(false)
+    }
+
+    private var verdictLabel: String {
+        switch camera.verdict {
+        case .confident(let m):  "CONFIDENT \(m.habitId) — auto-logged"
+        case .unsure(let m):     "UNSURE (\(m.count)) — picker"
+        case .rejected(let d):   "REJECTED \(d.label)"
+        case .nothing:           "NOTHING"
+        case nil:                "— take a shot —"
+        }
+    }
+    #endif
+
     /// Bare white glyphs, as in the design — no circles behind them.
     private func control(icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -234,9 +294,15 @@ struct VisualSearchView: View {
                 sawSomething = true
                 overlay = .whoops
 
-            case .nothing, .rejected:
-                // Nothing recognisable (or a known non-habit won) — same picker,
-                // seeded with whatever is still available today.
+            case .rejected(let distractor):
+                // The model identified something and refused it. Saying "we can't
+                // identify that" here would be a lie, and sending the user to a picker
+                // of unrelated habits trains them to log whatever is nearest.
+                overlay = .rejected(distractor.label)
+
+            case .nothing:
+                // Genuinely could not tell. There are no camera matches to offer, so
+                // recommendations are all that is left.
                 pickerPhoto = photo ?? Self.simulatorPhoto()
                 pickerSuggestions = suggestions(from: [])
                 sawSomething = false
@@ -265,10 +331,13 @@ struct VisualSearchView: View {
             .compactMap { MockData.habitsById[$0.habitId] }
             .filter { app.isAvailable($0) }
 
-        let fill = app.suggestedHabits.filter { suggestion in
-            !detected.contains { $0.id == suggestion.id }
-        }
-        return Array((detected + fill).prefix(3))
+        // **Camera matches are never padded.** They used to be topped up to three from
+        // `suggestedHabits`, so one real match arrived flanked by two the camera never
+        // saw, indistinguishable from it — which is worse than offering fewer.
+        guard detected.isEmpty else { return Array(detected.prefix(3)) }
+
+        // Nothing was recognised, so recommendations are all there is.
+        return Array(app.suggestedHabits.prefix(3))
     }
 
     // MARK: - Logging
@@ -276,7 +345,9 @@ struct VisualSearchView: View {
     private func log(_ habit: Habit) {
         // `.visualSearch` is what marks the log as photo-evidence; it is what
         // the evidence badges count.
-        let result = app.logAndToast(habit, source: .visualSearch)
+        // `announcesSuccess: false` — `AwardOverlay` below already names the habit and
+        // counts up its points, so the success toast was the same sentence twice.
+        let result = app.logAndToast(habit, source: .visualSearch, announcesSuccess: false)
 
         // Keep the frame that earned it. After the log, not before — the file is named
         // after the log's own id, so there is nothing to name it until it exists.
@@ -340,7 +411,9 @@ struct VisualSearchView: View {
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        let result = app.checkIn(to: fight, code: code)
+        // `AwardOverlay` below names the Fight and counts up its points, so the
+        // success toast would be the same sentence twice. Refusals still toast.
+        let result = app.checkIn(to: fight, code: code, announcesSuccess: false)
 
         // `AppState.checkIn` raises the toast for the window, the cancelled
         // state and a second scan. The camera stays open for those — none of
@@ -428,6 +501,11 @@ struct VisualSearchView: View {
             overlay = nil
             camera.reset()
             showingPicker = true
+        case .rejected:
+            // Straight back to the viewfinder. No picker: the point of naming what was
+            // in frame is that the next photo should be of something else.
+            overlay = nil
+            camera.reset()
         case .analyzing:
             break   // nothing to skip to — the classifier decides where we go
         }
@@ -436,7 +514,7 @@ struct VisualSearchView: View {
     private func mascot(_ kind: Overlay) -> String {
         switch kind {
         // The pink "?!" mascot fronts both the intro and the miss, as designed.
-        case .firstTimer, .whoops: return "mascot-whoops"
+        case .firstTimer, .whoops, .rejected: return "mascot-whoops"
         case .analyzing: return "mascot-analyzing"
         }
     }
@@ -450,6 +528,7 @@ struct VisualSearchView: View {
         // even when it was working — and made the suggestions below look arbitrary
         // rather than earned.
         case .whoops: return sawSomething ? "Is this it?" : "Whoops!"
+        case .rejected: return "That's not it"
         }
     }
 
@@ -461,6 +540,10 @@ struct VisualSearchView: View {
             return sawSomething
                 ? "We spotted something — pick the right one and we'll log it for you!"
                 : "We can't identify that but you can choose what you did and we'll log it for you!"
+        // Names what was actually in frame. "We can't identify that" would be untrue —
+        // it identified something and refused it — and the difference is what tells
+        // somebody to point at a different thing rather than press again.
+        case .rejected(let label): return "That looks like \(label). Try again with your action in frame."
         }
     }
 
@@ -648,7 +731,7 @@ private struct AwardOverlay: View {
         withAnimation(.easeOut(duration: 0.28).delay(0.26)) { showName = true }
 
         // Hold long enough to read the action name, then leave.
-        withAnimation(.easeIn(duration: 0.55).delay(1.15)) { floatAway = true }
+        withAnimation(.easeIn(duration: 0.55).delay(2)) { floatAway = true }
         finish(after: 1.75)
     }
 
