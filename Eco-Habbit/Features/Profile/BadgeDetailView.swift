@@ -42,7 +42,7 @@ struct BadgeDetailView: View {
                                     Avatar(type: .avatarBig, icon: badge.icon)
 
                                 } else {
-                                    Locked()
+                                    LockedAvatar(type: .avatarBig, icon: badge.icon)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -53,19 +53,10 @@ struct BadgeDetailView: View {
                 .padding(.horizontal, Tokens.Spacing.xl)
             }
         }
-    }
-}
-
-private struct Locked: View {
-    let badgeSize: CGFloat = avatarType.avatarBig.size
-    var body: some View{
-        ZStack (alignment: .center){
-            Circle()
-                .fill(Tokens.Semantic.statIcon)
-                .frame(width: badgeSize, height: badgeSize)
-            Image(systemName: "lock.fill")
-                .textStyle(Tokens.Typography.hero)
-                .foregroundStyle(Tokens.Palette.white)
+        .modalCard(item: $badgeDetail) { badge in
+            BadgeDetailSheet(badge: badge, unlocked: app.isUnlocked(badge)) {
+                badgeDetail = nil
+            }
         }
     }
 }

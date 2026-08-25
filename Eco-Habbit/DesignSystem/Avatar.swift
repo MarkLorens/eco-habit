@@ -57,6 +57,35 @@ struct Avatar: View {
     }
 }
 
+/// The locked counterpart of `Avatar`: the badge art drained of colour behind a
+/// lock, so a locked badge still reads as *which* badge it is rather than as an
+/// anonymous grey disc.
+struct LockedAvatar: View {
+    private let type: avatarType
+    private let icon: String
+
+    init(type: avatarType, icon: String) {
+        self.type = type
+        self.icon = icon
+    }
+
+    var body: some View{
+        ZStack (alignment: .center){
+            Circle()
+                .fill(Tokens.Semantic.statIcon)
+                .frame(width: type.size, height: type.size)
+            Image(icon)
+                .resizable()
+                .scaledToFit()
+                .grayscale(1.0)
+                .frame(width: type.size * 0.75, height: type.size * 0.75)
+            Image(systemName: "lock.fill")
+                .textStyle(Tokens.Typography.hero)
+                .foregroundStyle(Tokens.Palette.white)
+        }
+    }
+}
+
 struct AvatarIcon: View {
     private let type: avatarType
     private let icon: String
@@ -78,6 +107,7 @@ struct AvatarIcon: View {
     VStack{
         Avatar(type: .user, icon: Tokens.Icons.wasteIcon)
         Avatar(type: .avatarBig, icon: Tokens.Icons.energyIcon)
+        LockedAvatar(type: .avatarBig, icon: Tokens.Icons.energyIcon)
         AvatarIcon(type: .avatarOurFight, icon: Tokens.Icons.mobilityIcon)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
