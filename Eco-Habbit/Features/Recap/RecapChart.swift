@@ -26,27 +26,83 @@ struct RecapChart: View{
     /// with whatever the reader is looking at; `nil` is the resting state.
     @Binding var selected: HabitCategory?
 
+    /// The least of the circle any one category is drawn with, as a percentage.
+    ///
+    /// Sized so the slice is still worth aiming at: on the 280pt chart the recap
+    /// screen draws, this is about 45pt of arc across the middle of the band, which
+    /// is roughly a fingertip, and it is wide enough that the tally still fits inside
+    /// when the slice is picked.
+    private static let minimumShare: Double = 8
+
     /// Built from `allCases`, so a category added to the enum shows up here without
     /// anyone having to remember this file.
     private var data: [CategoryData] {
-        let total = HabitCategory.allCases.reduce(0) { $0 + (activities[$1] ?? 0) }
-        guard total > 0 else { return [] }
-        return HabitCategory.allCases.compactMap { category in
-            let logged = activities[category] ?? 0
-            guard logged > 0 else { return nil }
-            return CategoryData(category: category,
-                                value: Double(logged) / Double(total) * 100,
-                                count: logged)
+        let logged = HabitCategory.allCases.compactMap { category -> (category: HabitCategory, count: Int)? in
+            let count = activities[category] ?? 0
+            return count > 0 ? (category, count) : nil
         }
+        guard !logged.isEmpty else { return [] }
+
+        return zip(logged, shares(of: logged.map(\.count))).map {
+            CategoryData(category: $0.category, value: $1, count: $0.count)
+        }
+    }
+
+    /// How much of the circle each category is drawn with — its share of the total,
+    /// with a floor under the small ones.
+    ///
+    /// Straight proportion turns one activity out of thirty-three into a three-degree
+    /// splinter: too thin to put a finger on, and when it *is* picked it grows inward
+    /// into a needle rather than a wedge. Anything under `minimumShare` is lifted to
+    /// it and the rest give up the difference in proportion, so the order and the
+    /// rough weight of the categories still read true while every one of them stays a
+    /// target. Deliberately a lie about the geometry and only the geometry: the tally
+    /// on the slice, and the list the selection drives, are the real counts.
+    private func shares(of counts: [Int]) -> [Double] {
+        let total = counts.reduce(0, +)
+        guard total > 0 else { return [] }
+        let raw = counts.map { Double($0) / Double(total) * 100 }
+
+        // The floor is paid for out of the slices above it, so it can never ask for
+        // more than an even split would leave — six categories cannot all be given a
+        // fifth of the circle.
+        let floor = min(Self.minimumShare, 100 / Double(counts.count))
+
+        // Lifting one slice takes room from the others, which can push the next
+        // smallest under the floor in turn. Pin them one at a time, smallest first,
+        // until the scale that fits everyone else leaves them all clear.
+        var pinned = Set<Int>()
+        var scale = 1.0
+        while true {
+            let free = raw.indices.filter { !pinned.contains($0) }
+            let freeTotal = free.reduce(0.0) { $0 + raw[$1] }
+            guard freeTotal > 0 else { break }
+            scale = (100 - Double(pinned.count) * floor) / freeTotal
+
+            let sinking = free.filter { raw[$0] * scale < floor }
+            guard let next = sinking.min(by: { raw[$0] < raw[$1] }) else { break }
+            pinned.insert(next)
+        }
+
+        return raw.indices.map { pinned.contains($0) ? floor : raw[$0] * scale }
     }
 
     /// What `selected` was before the current transition — the shape being animated
     /// *away from*. Switching slices moves two of them at once, so the "from" state
     /// has to be remembered rather than inferred.
     @State private var previous: HabitCategory?
-    /// 0 = still showing `previous`, 1 = fully showing `selected`. This is the only
-    /// thing that animates; everything else is derived from it.
-    @State private var progress: Double = 1
+    /// Which end of the crossfade `selected` currently sits at: 0 or 1, never in
+    /// between. The only thing that animates; everything else is derived from it.
+    ///
+    /// It *alternates* rather than resetting. See `select(_:)`.
+    @State private var phase: Double = 1
+
+    /// The selection the plot draws at `phase == 0`, and the one at `phase == 1`.
+    /// Whichever end `phase` points at holds the live selection, so a selection set
+    /// from outside — the recap screen opening on its busiest category — still shows
+    /// at full weight, with no transition left to run.
+    private var endA: HabitCategory? { phase == 0 ? selected : previous }
+    private var endB: HabitCategory? { phase == 0 ? previous : selected }
 
     private let duration: Double = 0.3
 
@@ -70,9 +126,10 @@ struct RecapChart: View{
 
     private func plot(side: CGFloat) -> some View {
         DonutPlot(data: data,
-                  previous: previous,
+                  endA: endA,
+                  endB: endB,
                   current: selected,
-                  progress: progress,
+                  phase: phase,
                   side: side,
                   restingInner: restingInner,
                   selectedInner: selectedInner)
@@ -95,7 +152,7 @@ struct RecapChart: View{
 
     // MARK: - Selection
 
-    /// Restarts the transition, rather than animating `selected` itself.
+    /// Turns the crossfade round, rather than animating `selected` itself.
     ///
     /// Swift Charts does not interpolate a `SectorMark`'s radius or style: whatever
     /// the mark is handed, it draws at once, so animating the selection directly —
@@ -103,11 +160,20 @@ struct RecapChart: View{
     /// frame to the next. That hard cut is the flicker. Driving a plain `Double`
     /// through `DonutPlot`'s `animatableData` instead re-runs the chart every frame
     /// with interpolated values, which is an animation Charts cannot skip.
+    ///
+    /// `phase` **flips** between its two ends instead of being reset to 0 and animated
+    /// back to 1. Resetting writes the animated value twice in one tap — once plainly,
+    /// once animated — and SwiftUI has to render the plain one before it can animate
+    /// out of it. That cost two still frames and about 27ms of nothing happening after
+    /// the tap, which is short enough to look like a stutter rather than a delay.
+    /// Flipping writes it once, inside a single transaction, so the first frame after
+    /// the tap is already moving.
     private func select(_ category: HabitCategory?) {
-        previous = selected
-        selected = category
-        progress = 0
-        withAnimation(.snappy(duration: duration)) { progress = 1 }
+        withAnimation(.snappy(duration: duration)) {
+            previous = selected
+            selected = category
+            phase = 1 - phase
+        }
     }
 
     /// Which slice, if any, sits under `point`.
@@ -156,15 +222,19 @@ struct RecapChart: View{
 
 /// The donut itself, rebuilt on every frame of a selection change.
 ///
-/// `Animatable` is what makes that happen: SwiftUI interpolates `progress` and calls
+/// `Animatable` is what makes that happen: SwiftUI interpolates `phase` and calls
 /// `body` for each step, so the chart is handed a slightly different shape each time
 /// instead of being asked to animate between two of them.
 private struct DonutPlot: View, Animatable {
     let data: [RecapChart.CategoryData]
-    /// The selection being animated away from, and the one being animated towards.
-    let previous: HabitCategory?
+    /// The two ends of the crossfade: what to draw at `phase == 0` and at `phase == 1`.
+    /// Which one is being travelled towards alternates with every tap, so neither is
+    /// permanently the "from" or the "to".
+    let endA: HabitCategory?
+    let endB: HabitCategory?
+    /// The live selection. Only the fill colour uses it, and that does not interpolate.
     let current: HabitCategory?
-    nonisolated var progress: Double
+    nonisolated var phase: Double
     let side: CGFloat
     let restingInner: CGFloat
     let selectedInner: CGFloat
@@ -175,16 +245,16 @@ private struct DonutPlot: View, Animatable {
     private let maximumInset: CGFloat = 12
 
     nonisolated var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
+        get { phase }
+        set { phase = newValue }
     }
 
     /// How selected a category is right now: 1 fully out, 0 fully at rest. Both the
     /// slice being left and the one being taken are part-way through mid-transition.
     private func selectedness(_ category: HabitCategory) -> Double {
-        let from = previous == category ? 1.0 : 0.0
-        let to = current == category ? 1.0 : 0.0
-        return from + (to - from) * progress
+        let a = endA == category ? 1.0 : 0.0
+        let b = endB == category ? 1.0 : 0.0
+        return a + (b - a) * phase
     }
 
     /// Where one slice sits on the circle: the angle its centre line points along,
@@ -338,8 +408,8 @@ private struct DonutPlot: View, Animatable {
     /// which is exactly the state the reader has just tapped their way out of.
     private var centrepiece: some View {
         ZStack {
-            mascot(previous).opacity(1 - progress)
-            mascot(current).opacity(progress)
+            mascot(endA).opacity(1 - phase)
+            mascot(endB).opacity(phase)
         }
         .frame(width: side * restingInner * 0.55)
         .allowsHitTesting(false)

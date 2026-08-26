@@ -110,6 +110,7 @@ extension Tokens {
         static let hero2 = TextStyle(.system(size: 24, weight: .bold, design: .rounded))
         static let title = TextStyle(.system(size: 20, weight: .bold, design: .rounded))
         static let title2 = TextStyle(.system(size: 20, weight: .heavy, design: .rounded))
+        static let buttonText = TextStyle(.system(size: 18, weight: .bold, design: .rounded))
         static let body = TextStyle(.system(size: 16, weight: .semibold, design: .rounded))
         static let footnote = TextStyle(.system(size: 12, weight: .regular, design: .rounded))
         static let pointsTag = TextStyle(.system(size: 12, weight: .bold, design: .rounded))

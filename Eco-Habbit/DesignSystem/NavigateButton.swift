@@ -53,7 +53,8 @@ struct NavigateBadge: View {
                 .shadow(color: background.opacity(0.8), radius: 2, x: 0, y: 1)
                 .shadow(color: background.opacity(0.4), radius: 10, x: 0, y: 6)
             Image(systemName: buttonAction.action)
-                .font(.system(size: 20 + imageMultiplier, weight: .bold, design: .rounded))
+                .textStyle(Tokens.Typography.buttonText)
+            
         }
     }
 }

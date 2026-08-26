@@ -25,17 +25,17 @@ struct Cards: View {
     }
     
     var body: some View {
-        VStack (alignment: .leading, spacing: Tokens.Spacing.sm){
-            VStack(alignment: .leading){
+        VStack (alignment: .leading, spacing: 0){
+            VStack(alignment: .leading, spacing: Tokens.Spacing.sm){
                 Text(title)
                     .textStyle(Tokens.Typography.title)
                     .foregroundStyle(Tokens.Semantic.text)
                 Text(caption)
                     .textStyle(Tokens.Typography.footnote)
-                    .foregroundStyle(Tokens.Semantic.footnote)
+                    .foregroundStyle(Tokens.Semantic.text)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(Tokens.Spacing.xl)
+            .padding([.horizontal, .top], Tokens.Spacing.xl)
             Spacer(minLength: 0)
             HStack(alignment: .bottom, spacing: Tokens.Spacing.sm){
 //                    ZStack{
@@ -50,12 +50,8 @@ struct Cards: View {
 //                    }
                 Spacer()
                 NavigateButton(background: tint, buttonAction: .forward) {
-                    print("tapped")
                 }
                 .allowsHitTesting(false)
-                .onTapGesture {
-                    print("tapped")
-                }
             }
             .padding([.horizontal, .bottom], Tokens.Spacing.sm)
         }
