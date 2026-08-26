@@ -20,8 +20,13 @@ struct OnboardingAnswers {
 struct OnboardingFlow: View {
     var onFinished: (OnboardingAnswers) -> Void = { _ in }
 
-    private enum Stage { case welcome, questions }
+    private enum Stage { case welcome, questions, finish }
     @State private var stage: Stage = .welcome
+
+    /// Held between the last question and the tap that leaves the finish screen —
+    /// `onFinished` is what marks onboarding done, so firing it when the questions end
+    /// would drop the user on the home screen before they ever saw the finish screen.
+    @State private var answers = OnboardingAnswers()
 
     static let stepAnimation: Animation = .easeInOut(duration: 0.35)
 
@@ -34,7 +39,14 @@ struct OnboardingFlow: View {
                         withAnimation(Self.stepAnimation) { stage = .questions }
                     }
                 case .questions:
-                    OnboardingQuestions(onFinished: onFinished)
+                    OnboardingQuestions { answered in
+                        answers = answered
+                        withAnimation(Self.stepAnimation) { stage = .finish }
+                    }
+                case .finish:
+                    OnboardingFinish {
+                        onFinished(answers)
+                    }
                 }
             }
             .slidingSteps(value: stage)
