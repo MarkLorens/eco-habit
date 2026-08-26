@@ -31,20 +31,25 @@ s = mk(points: 1000, lastActive: "2026-08-12")
 _ = d.apply(to: &s, today: "2026-08-20")
 eq("same day twice — unchanged", d.apply(to: &s, today: "2026-08-20").pointsAfter, 980)
 
-// points floor
-s = mk(points: 160, lastActive: "2026-06-01")
+// Points floor — taken from the config so retuning the ladder does not fail a test
+// that is checking the FLOOR HOLDS, not what number it happens to be set to.
+let floor = c.decayPointsFloor
+s = mk(points: floor + 10, lastActive: "2026-06-01")
 let lo = d.apply(to: &s, today: "2026-08-20")
-eq("floor holds at 150", lo.pointsAfter, 150)
+eq("floor holds", lo.pointsAfter, floor)
 yes("reports points floor", lo.limitedByPointsFloor)
 
 // already below floor must not be RAISED
-s = mk(points: 100, lastActive: "2026-06-01")
-eq("below floor — not raised", d.apply(to: &s, today: "2026-08-20").pointsAfter, 100)
+let under = max(0, floor - 10)
+s = mk(points: under, lastActive: "2026-06-01")
+eq("below floor — not raised", d.apply(to: &s, today: "2026-08-20").pointsAfter, under)
 
-// one-stage-drop limit: 2500 (restored) can fall no further than flourishing (1600)
-s = mk(points: 2500, lastActive: "2026-01-01")
+// one stage drop at most: from Restored you may fall no further than Flourishing
+let restored = c.threshold(for: .restored)
+let flourishing = c.threshold(for: .flourishing)
+s = mk(points: restored, lastActive: "2026-01-01")
 let st = d.apply(to: &s, today: "2026-08-20")
-eq("max one stage drop", st.pointsAfter, 1600)
+eq("max one stage drop", st.pointsAfter, max(flourishing, floor))
 yes("reports stage floor", st.limitedByStageFloor)
 
 // never logged -> untouched
