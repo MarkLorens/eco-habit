@@ -676,15 +676,15 @@ private struct AwardOverlay: View {
                 .tracking(2)
 
             Text(title)
-                .font(Theme.F.body(16, weight: .semibold))
+                .textStyle(Tokens.Typography.body)
                 .foregroundStyle(.white.opacity(0.95))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, Theme.S.x6)
+                .padding(.horizontal, Tokens.Spacing.huge)
 
             if let badgeName {
                 Label(badgeName, systemImage: "rosette")
-                    .font(Theme.F.body(13, weight: .bold))
+                    .textStyle(Tokens.Typography.pointsTag)
                     .foregroundStyle(tint)
                     .padding(.top, 4)
             }

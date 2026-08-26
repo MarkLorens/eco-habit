@@ -46,9 +46,8 @@ struct EventFormView: View {
                     .padding(.top, Tokens.Spacing.md)
                 }
 
-                // Not `PrimaryButtonStyle` — that is a green capsule from the older
-                // `Theme` system. The hi-fi's Done is the same dark rounded rectangle
-                // as "See QR Code", which is what the rest of these screens use.
+                // The hi-fi's Done is the same dark rounded rectangle as "See QR Code",
+                // which is what the rest of these screens use.
                 Button { save() } label: {
                     Text("Done")
                         .textStyle(Tokens.Typography.body)
