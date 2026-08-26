@@ -17,13 +17,6 @@ struct SignInView: View {
     @State private var askingPassword = false
     @State private var password = ""
 
-    /// **A speed bump, not a secret.** It sits in the binary in plain text and anyone
-    /// with the `strings` command can read it out. It exists to stop a curious visitor
-    /// wandering past the sign-in screen, which is all it needs to do — nothing behind
-    /// it can touch another account, because a skipped session has no `userId` and
-    /// writes only to the reserved `local` store.
-    private static let skipPassword = "mangrove"
-
     var body: some View {
         VStack(spacing: 24) {
             GlobeView()
@@ -79,12 +72,13 @@ struct SignInView: View {
     }
 
     private func unlock() {
-        // Trimmed and case-folded: this gets typed on a phone, and rejecting
-        // "Mangrove " teaches nobody anything.
-        let entered = password.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // `TeamAccess` owns the password and the trimming. Nothing behind this door
+        // can touch another account anyway — a skipped session has no `userId` and
+        // writes only to the reserved `local` store.
+        let entered = password
         password = ""
 
-        guard entered == Self.skipPassword else {
+        guard TeamAccess.accepts(entered) else {
             errorMessage = "That password isn't right."
             return
         }

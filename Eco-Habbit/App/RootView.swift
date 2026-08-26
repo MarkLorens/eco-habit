@@ -8,6 +8,9 @@ struct RootView: View {
     /// False until the auth listener has reported once. See the `Color.clear` branch.
     @State private var sessionResolved = false
 
+    /// Holds the badge back for a beat after the globe closes — see the queue below.
+    @State private var badgeHeld = false
+
     /// The `-EHDemo` launch path builds a signed-in demo account with no Firebase
     /// session behind it. Letting the listener run would immediately sign it out.
     private var isDemoLaunch: Bool {
@@ -72,8 +75,23 @@ struct RootView: View {
         // animated over each other, and the badge's card slid in behind a globe still
         // playing its own timeline. `nil` while a stage-up is pending holds the badge
         // back until that has been dismissed, and then it appears on its own.
+        //
+        // Plus **a second of quiet in between**. Handing the badge over on the frame the
+        // globe left still read as one animation cutting into another; the pause is what
+        // makes them two moments rather than a collision.
+        //
+        // Armed when the globe *opens*, not when it closes. `onChange` runs after the
+        // body update, so arming on close was already too late — that pass had presented
+        // the badge, and the hold only arrived in time to yank it back.
+        .onChange(of: app.pendingGlobeStageUp == nil) { _, globeClosed in
+            guard globeClosed else { badgeHeld = true; return }
+            Task {
+                try? await Task.sleep(for: .seconds(0.6))
+                badgeHeld = false
+            }
+        }
         .modalCard(item: Binding(
-            get: { app.pendingGlobeStageUp == nil ? app.pendingBadge : nil },
+            get: { app.pendingGlobeStageUp == nil && !badgeHeld ? app.pendingBadge : nil },
             set: { if $0 == nil, let badge = app.pendingBadge { app.acknowledgeBadge(badge) } }
         )) { badge in
             BadgeDetailSheet(badge: badge, unlocked: true) { app.acknowledgeBadge(badge) }

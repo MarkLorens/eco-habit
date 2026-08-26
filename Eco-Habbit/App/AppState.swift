@@ -924,17 +924,13 @@ final class AppState: ObservableObject {
     /// `false` on the very next launch, and the local/server disagreement in between got
     /// every user-document write refused.
     var isOrganization: Bool {
-        #if DEBUG
         if debugOrgOverride { return true }
-        #endif
         return data.isOrganization
     }
 
-    #if DEBUG
     /// Local-only, survives relaunch, never pushed and never overwritten by a fetch.
     @Published private var debugOrgOverride = UserDefaults.standard.bool(forKey: debugOrgKey)
     fileprivate static let debugOrgKey = "EHDebugForceOrganisation"
-    #endif
     var orgName: String { data.orgName.isEmpty ? userName : data.orgName }
     var hostedFights: [Fight] { FightRepository.hostedFights(in: data) }
 
@@ -1243,16 +1239,21 @@ final class AppState: ObservableObject {
     }
 
     // MARK: - Debug
+    //
+    // **Compiled into Release too.** TestFlight builds are Release builds, so a
+    // `#if DEBUG` menu is invisible to exactly the people who cannot build the app
+    // themselves and most need to reset a demo phone between visitors. The door is
+    // `TeamAccess` instead of the compiler — see `TimeTravelMenu`.
 
-    #if DEBUG
     /// Time travel (PRD §13 Phase 2). Runs the real loop against a chosen day.
     func debugEvaluate(asOf day: String) {
         mutate { EvaluationLoop.evaluate(state: &$0, habits: MockData.habits, today: day) }
     }
 
     /// PRD §4.3 — verification is a human flipping a flag, and there is no admin
-    /// surface until Phase 10. DEBUG-only on purpose: `isOrganization` must never
-    /// be user-writable, and §9.6 makes that a Security Rules requirement.
+    /// surface until Phase 10. §9.6 makes "never user-writable" a Security Rules
+    /// requirement, and the rules still enforce it: this flag is local, so shipping it
+    /// grants the host *screens*, never host *permissions*.
     ///
     /// **This unlocks the host UI locally; it does not make publishing work.** The
     /// rules read `isOrganization` from the server, so a Fight published on the
@@ -1332,7 +1333,6 @@ final class AppState: ObservableObject {
         UserDefaults.standard.set(on, forKey: Self.debugOrgKey)
         mutate { $0.orgName = on ? name : "" }
     }
-    #endif
 
     private func mutate(_ change: (inout PersistedState) -> Void) {
         let before = data

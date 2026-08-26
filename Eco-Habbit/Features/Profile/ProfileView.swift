@@ -6,8 +6,10 @@ struct ProfileView: View {
     @State private var badgeDetail: Badge?
     @State private var showingBadges = false
     @State private var confirmingDelete = false
-    @State private var confirmingReset = false
     @State private var editingName = false
+    @State private var askingDebugPassword = false
+    @State private var debugPassword = ""
+    @State private var debugRefused = false
     @State private var draftName = ""
 
     /// Bound so the avatar's long-press menu can push. The settings list that used to
@@ -50,9 +52,7 @@ struct ProfileView: View {
             .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
                 case .recap(let period): RecapView(period: period)
-                #if DEBUG
                 case .debug: TimeTravelMenu()
-                #endif
                 }
             }
         }
@@ -78,6 +78,9 @@ struct ProfileView: View {
         identity
             .padding(.horizontal, Tokens.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .topTrailing) {
+                accountMenu.padding(.trailing, Tokens.Spacing.md)
+            }
             .background {
                 UnevenRoundedRectangle(
                     bottomLeadingRadius: 40,
@@ -98,41 +101,23 @@ struct ProfileView: View {
                         Circle()
                             .stroke(Tokens.Palette.white, lineWidth: 5)
                     )
-                    // The only route to the account actions, `deleteAccount` included —
-                    // App Review requires that for any app with sign-in.
+                    // **Debug tools and nothing else.** The account actions moved to a
+                    // button you can see: sharing one menu meant "Delete account" sat a
+                    // finger's width from the developer surface, and put the one control
+                    // App Review requires to be findable behind an invisible gesture.
                     //
                     // `contextMenu` IS the long press, so there is no gesture to wire up
-                    // and no state to hold for the menu itself.
+                    // and no state to hold for the menu itself. Undiscoverable is the
+                    // point here — the password behind it is the actual gate.
                     .contextMenu {
-                        #if DEBUG
-                        // Compiled out of Release entirely — this is the time-travel
-                        // and host-verification surface, not a user feature.
-                        Button { path.append(ProfileRoute.debug) } label: {
+                        Button {
+                            debugPassword = ""
+                            askingDebugPassword = true
+                        } label: {
                             Label("Debug tools", systemImage: "hammer")
                         }
-                        #endif
-                        Button {
-                            draftName = app.data.userName
-                            editingName = true
-                        } label: {
-                            Label("Edit name", systemImage: "pencil")
-                        }
-                        Button { app.logOut() } label: {
-                            Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                        // Came off `SignOutFooter`, which hung from the settings list
-                        // and went with it. Distinct from "Delete account": this starts
-                        // the Earth over, it does not end the account.
-                        Button(role: .destructive) { confirmingReset = true } label: {
-                            Label("Reset local data", systemImage: "arrow.counterclockwise")
-                        }
-                        Button(role: .destructive) { confirmingDelete = true } label: {
-                            Label("Delete account", systemImage: "trash")
-                        }
                     }
-                    // Long press leaves no visual trace, so VoiceOver has to be told.
-                    .accessibilityLabel("Account")
-                    .accessibilityHint("Long press for log out and delete account")
+                    .accessibilityLabel("Profile picture")
             Text(app.userName)
                 .textStyle(Tokens.Typography.title2)
                 .foregroundStyle(Tokens.Semantic.text)
@@ -146,18 +131,63 @@ struct ProfileView: View {
         } message: {
             Text("This is the name shown on your profile and on any Fight you host.")
         }
+        .alert("Team access", isPresented: $askingDebugPassword) {
+            SecureField("Password", text: $debugPassword)
+            Button("Cancel", role: .cancel) { debugPassword = "" }
+            Button("Open") { unlockDebugTools() }
+                .keyboardShortcut(.defaultAction)
+        } message: {
+            Text("Debug tools fake the date and reset this device's data.")
+        }
+        .alert("That password isn't right.", isPresented: $debugRefused) {
+            Button("OK", role: .cancel) {}
+        }
         .alert("Delete account?", isPresented: $confirmingDelete) {
             Button("Delete", role: .destructive) { Task { await app.deleteAccount() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Your points, streak, history and badges are permanently deleted from this device and from our servers. This cannot be undone.")
         }
-        .alert("Reset local data?", isPresented: $confirmingReset) {
-            Button("Reset", role: .destructive) { app.resetEverything() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Points, streak, history and settings on this device are deleted. The Earth starts over from the beginning.")
+    }
+
+    /// Edit name, log out, delete account — the things a person actually came for.
+    ///
+    /// A `Menu` rather than a route: three actions, two of which are one tap and a
+    /// confirmation, do not need a screen.
+    private var accountMenu: some View {
+        Menu {
+            Button {
+                draftName = app.data.userName
+                editingName = true
+            } label: {
+                Label("Edit name", systemImage: "pencil")
+            }
+            Button { app.logOut() } label: {
+                Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+            Button(role: .destructive) { confirmingDelete = true } label: {
+                Label("Delete account", systemImage: "trash")
+            }
+        } label: {
+            // The bare glyph — no badge, no fill, no border. Symbol name still comes
+            // from `ButtonAction.edit` so it stays the same pencil the badges draw, and
+            // the weight matches what `NavigateBadge` sets on its own icon.
+            Image(systemName: ButtonAction.edit.action)
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(Tokens.Palette.black)
+                // The glyph alone is a small target; the frame keeps it at 44pt without
+                // drawing anything.
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
+        .accessibilityLabel("Account settings")
+    }
+
+    private func unlockDebugTools() {
+        let entered = debugPassword
+        debugPassword = ""
+        guard TeamAccess.accepts(entered) else { debugRefused = true; return }
+        path.append(ProfileRoute.debug)
     }
 
     private var stats: some View {
@@ -304,9 +334,7 @@ private struct RecapCards: View {
 }
 enum ProfileRoute: Hashable {
     case recap(RecapPeriod)
-    #if DEBUG
     case debug
-    #endif
 }
 
 private struct StatTile: View {
@@ -316,11 +344,15 @@ private struct StatTile: View {
 
     var body: some View {
         VStack(spacing: Tokens.Spacing.sm) {
+            // Sized by **point size, not by frame**. `.resizable()` stretches a symbol
+            // to its bounding box, and those boxes are not equally full — `medal.star.fill`
+            // carries more empty margin than `flame.fill`, so an identical 30pt frame
+            // drew a visibly smaller medal. Point size is what SF Symbols are balanced
+            // on, so all three now read the same weight. The frame only reserves the row.
             Image(systemName: icon)
-                .resizable()
-                .scaledToFit()
-                .frame(height: 30)
+                .font(.system(size: 27))
                 .foregroundStyle(Tokens.Semantic.statIcon)
+                .frame(height: 30)
             Text(value)
                 .textStyle(Tokens.Typography.hero)
             Text(label)
