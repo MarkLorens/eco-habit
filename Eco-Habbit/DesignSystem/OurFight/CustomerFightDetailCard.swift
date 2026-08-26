@@ -27,6 +27,10 @@ struct CustomerFightDetailCard: View {
     private let host: String
     private let actionTitle: String?
     private let onAction: () -> Void
+    /// The second, right-hand action — check-in. `nil` leaves the first button full
+    /// width, which is what an attendee who has already checked in should see.
+    private let secondaryTitle: String?
+    private let onSecondary: () -> Void
     /// Defaults keep the original dark button for any caller that does not care.
     private let actionBackground: Color
     private let actionForeground: Color
@@ -43,7 +47,9 @@ struct CustomerFightDetailCard: View {
          actionTitle: String? = "Scan or check in",
          actionBackground: Color = Color(hex: 0x2F3A32),
          actionForeground: Color = Tokens.Semantic.ourFightQR,
+         secondaryTitle: String? = nil,
          onAction: @escaping () -> Void = {},
+         onSecondary: @escaping () -> Void = {},
          onLove: @escaping () -> Void,
          onCollapse: @escaping () -> Void
     ) {
@@ -60,10 +66,39 @@ struct CustomerFightDetailCard: View {
         self.actionBackground = actionBackground
         self.actionForeground = actionForeground
         self.onAction = onAction
+        self.secondaryTitle = secondaryTitle
+        self.onSecondary = onSecondary
         self.onLove = onLove
         self.onCollapse = onCollapse
     }
 
+
+    /// `outlined` draws the same colour as a border over a clear ground, so the two
+    /// buttons read as a pair without competing — one filled, one not.
+    private func cardButton(_ title: String, colour: Color, text: Color,
+                            outlined: Bool = false,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .textStyle(Tokens.Typography.body)
+                .foregroundStyle(outlined ? colour : text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(outlined ? .clear : colour)
+                        .overlay {
+                            if outlined {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(colour, lineWidth: 1.5)
+                            }
+                        }
+                }
+        }
+        .buttonStyle(.plain)
+    }
 
     var body: some View{
         VStack(spacing: 0){
@@ -128,15 +163,24 @@ struct CustomerFightDetailCard: View {
                     // An attendee never *shows* a code; the organiser does. This is the
                     // check-in entry point, so it says so. `nil` hides it once there is
                     // nothing left to do.
-                    if let actionTitle {
-                        Button(action: onAction) {
-                            Text(actionTitle)
-                                .textStyle(Tokens.Typography.body)
-                                .foregroundStyle(actionForeground)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 40)
-                                .background(actionBackground)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                    // Two actions side by side: read about it on the left, check in on
+                    // the right. Check-in used to be a floating camera button over the
+                    // list, which is a long way from the event it belongs to — here it
+                    // sits on the card for the Fight you are actually looking at.
+                    if actionTitle != nil || secondaryTitle != nil {
+                        HStack(spacing: Tokens.Spacing.sm) {
+                            // Check-in leads: it is the thing somebody standing at the
+                            // venue came to do. Outlined so the filled "More info"
+                            // beside it does not have to shout over it.
+                            if let secondaryTitle {
+                                cardButton(secondaryTitle, colour: Tokens.Semantic.text,
+                                           text: Tokens.Semantic.ourFightQR,
+                                           outlined: true, action: onSecondary)
+                            }
+                            if let actionTitle {
+                                cardButton(actionTitle, colour: actionBackground,
+                                           text: actionForeground, action: onAction)
+                            }
                         }
                         .padding(.bottom, Tokens.Spacing.xl)
                     }

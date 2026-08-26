@@ -11,6 +11,7 @@ import SwiftUI
 struct TimeTravelMenu: View {
     @EnvironmentObject private var app: AppState
     @State private var targetDate = Date()
+    @State private var resetting = false
 
     /// No `NavigationStack` here. This screen is *pushed* into the one Profile
     /// already owns, and nesting a second stack inside a `navigationDestination`
@@ -38,6 +39,13 @@ struct TimeTravelMenu: View {
                         .textSelection(.enabled)
                 }
                 Button("Retry sync") { app.retrySyncIfNeeded() }
+            }
+
+            Section("Exhibition") {
+                Button("Reset account data", role: .destructive) { resetting = true }
+                Text("Back to a new visitor: points, streak, badges, history, photos, onboarding and check-ins, cleared on this device and on the server. Fights this account HOSTS are kept, and so is its name — other phones are reading those.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Evidence photos") {
@@ -89,6 +97,12 @@ struct TimeTravelMenu: View {
         }
         .navigationTitle("Time Travel")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Reset this account?", isPresented: $resetting) {
+            Button("Reset", role: .destructive) { Task { await app.debugResetAccount() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Clears everything this account earned, here and on the server. Fights it hosts are not touched. This cannot be undone.")
+        }
     }
 
     private func advance() {

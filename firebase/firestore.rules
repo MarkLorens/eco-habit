@@ -114,16 +114,20 @@ service cloud.firestore {
         // would rewrite history, so it is immutable once written.
         allow update: if false;
 
-        // Same-day undo. Measured from the log's own timestamp; 36h covers the
-        // widest timezone plus a late-night change of mind.
+        // Your own logs, yours to delete.
         //
-        // HONEST LIMIT: rules cannot verify `localDate` against the user's
-        // timezone — request.time is UTC and the device offset is unknown. So
-        // "no retroactive logging" stays a CLIENT rule in HabitRepository. What
-        // rules enforce is ownership and immutability, which is what protects
-        // other people.
-        allow delete: if isOwner(uid)
-          && request.time < resource.data.loggedAt + duration.value(36, 'h');
+        // This used to add `request.time < loggedAt + 36h` for same-day undo. That
+        // window silently broke wiping an account: a purge deletes in BATCHES, a batch
+        // is all-or-nothing, so a single log older than 36 hours failed the whole
+        // commit and nothing was removed at all. The client swallows the error, so it
+        // looked like the reset simply did not clear Firestore.
+        //
+        // Nothing is protected by keeping it. Deleting a log only ever reduces the
+        // owner's own totals, forges nothing — `create` still requires the id to be
+        // `{habitId}_{localDate}`, which is what makes once-per-day structural — and
+        // points are already client-authoritative by documented decision. Same-day undo
+        // stays a CLIENT rule in `HabitRepository`, where it always really lived.
+        allow delete: if isOwner(uid);
       }
 
       // ---- earned badges ----
@@ -209,8 +213,21 @@ service cloud.firestore {
         // and you must present the organiser's code
         && request.resource.data.code == fight(request.resource.data.fightId).checkInCode;
 
-      // Proof of attendance is a fact, not a preference.
-      allow update, delete: if false;
+      // A record cannot be EDITED — attendance is a fact, and rewriting one would
+      // rewrite the history every badge and point total is built on.
+      allow update: if false;
+
+      // But you may delete your own.
+      //
+      // Added for the exhibition reset: `create` refuses a document that already
+      // exists, which is what makes one-check-in-per-person structural — and also
+      // what stops the same phone demonstrating a check-in twice. Deleting your own
+      // record forfeits your own proof and can forge nothing, because creating one
+      // still requires the organiser's code.
+      //
+      // Scoped to the owner: `userId` must be the caller, so a host cannot quietly
+      // remove an attendee from their own event.
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
     // ---- collection-group reads, admin only --------------------------------

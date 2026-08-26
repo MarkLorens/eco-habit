@@ -52,12 +52,6 @@ struct CustomerFightListView: View {
                 .tabContentInsets()
             }
             .background(Tokens.Palette.white)
-            // Check-in moved here when the card's button became "More info". An
-            // organiser shows the code rather than scanning one, so this is the
-            // attendee's screen only.
-            .overlay(alignment: .bottomTrailing) {
-                if !isHosting { scanButton }
-            }
             // Published Fights come from the shared collection, so an organiser at the
             // next table shows up by the time somebody looks.
             .task { await app.refreshFights() }
@@ -122,9 +116,15 @@ struct CustomerFightListView: View {
     @ViewBuilder
     private var browsing: some View {
         if fights.isEmpty {
+            // An empty list is a normal state now that the bundled seeds are gone, so
+            // it matters whether we have actually looked. Saying "none published" while
+            // the fetch is still in flight is a lie that lasts about a second and makes
+            // the tab look broken on every launch.
             note(showingLovedOnly
                  ? "Nothing saved yet. Tap the heart on an event to keep it here."
-                 : "No Fights published yet. Check back — organisers add them as they go.")
+                 : app.hasLoadedRemoteFights
+                   ? "No Fights published yet. Check back — organisers add them as they go."
+                   : "Looking for Fights…")
         } else {
             ForEach(fights) { fight in
                 CustomerFightWrapper(
@@ -145,7 +145,9 @@ struct CustomerFightListView: View {
                     actionTitle: actionTitle(for: fight),
                     actionBackground: fight.category.accent,
                     actionForeground: fight.category.accentForeground,
-                    onAction: { act(on: fight) }
+                    secondaryTitle: checkInTitle(for: fight),
+                    onAction: { act(on: fight) },
+                    onSecondary: { checkingInTo = fight }
                 )
             }
             .padding(.horizontal, Tokens.Spacing.xl)
@@ -161,6 +163,13 @@ struct CustomerFightListView: View {
     /// button and sometimes does not reads as broken rather than as informative.
     private func actionTitle(for fight: Fight) -> String? {
         app.isHost(of: fight) ? "Show QR Code" : "More info"
+    }
+
+    /// The right-hand button. `nil` once they have checked in — there is nothing left to
+    /// do — and `nil` for a host, who shows a code rather than scanning one.
+    private func checkInTitle(for fight: Fight) -> String? {
+        if app.isHost(of: fight) { return nil }
+        return app.hasAttended(fight) ? nil : "Check-in"
     }
 
     private func act(on fight: Fight) {
@@ -202,35 +211,6 @@ struct CustomerFightListView: View {
             }
             .padding(.horizontal, Tokens.Spacing.xl)
         }
-    }
-
-    /// Scan a Fight's QR to check in.
-    ///
-    /// Sits above the tab bar rather than in it: the tab bar's camera opens the same
-    /// screen, but somebody standing at a venue is looking at this list, and a control
-    /// they have to leave the list to find is one they will ask a volunteer about.
-    private var scanButton: some View {
-        Button {
-            app.isCameraPresented = true
-        } label: {
-            Image(systemName: "qrcode.viewfinder")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(Tokens.Palette.white)
-                .frame(width: 60, height: 60)
-                .background(Circle().fill(Tokens.Semantic.text))
-                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 4)
-        }
-        .buttonStyle(.plain)
-        // Typing the code is the fallback for when a camera will not cooperate — bad
-        // light, a cracked lens, a denied permission prompt — which a booth is exactly
-        // where you find out. It lost its entry point when the card's button became
-        // "More info", so it lives here.
-        .onLongPressGesture { checkingInTo = app.browsableFights.first }
-        .accessibilityLabel("Scan a check-in code")
-        .accessibilityHint("Long press to type a code instead")
-        .padding(.trailing, Tokens.Spacing.xl)
-        // Clears the floating tab bar, which `tabContentInsets` allows 110pt for.
-        .padding(.bottom, 124)
     }
 
     private func note(_ text: String) -> some View {
