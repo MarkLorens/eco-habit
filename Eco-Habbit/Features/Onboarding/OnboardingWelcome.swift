@@ -9,8 +9,14 @@ import SwiftUI
 
 struct OnboardingWelcome: View {
     var onContinue: () -> Void = {}
-
+    
     var body: some View {
+        content
+            .overlay(alignment: .bottomTrailing) { continueButton }
+            .onTapGesture { onContinue() }
+    }
+
+    private var content: some View {
         copy
             .padding(.top, 100)
             .padding(.horizontal, 40)
@@ -20,24 +26,25 @@ struct OnboardingWelcome: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: 600)
-                    .offset(x: -100, y: 150)
+                    .offset(x: -170, y: 150)
                     .ignoresSafeArea()
             }
             .background(Tokens.Palette.white.ignoresSafeArea())
-            .overlay(alignment: .bottomTrailing) {
-                Button{
-                    onContinue()
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .textStyle(Tokens.Typography.hero)
-                        .frame(width:60, height: 60)
-                        .background(Circle().fill(Tokens.Palette.white))
-                        .foregroundStyle(Tokens.Semantic.text)
-                }
-                .padding(.trailing, Tokens.Spacing.xl)
-                .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
-                .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
-            }
+    }
+
+    private var continueButton: some View {
+        Button {
+            onContinue()
+        } label: {
+            Image(systemName: "chevron.right")
+                .textStyle(Tokens.Typography.hero)
+                .frame(width: 60, height: 60)
+                .background(Circle().fill(Tokens.Semantic.text))
+                .foregroundStyle(Tokens.Palette.white)
+        }
+        .padding(.trailing, Tokens.Spacing.xl)
+        .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
+        .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
     }
 
     private var copy: some View {
