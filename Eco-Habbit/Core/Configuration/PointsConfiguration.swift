@@ -83,7 +83,17 @@ nonisolated struct PointsConfiguration: Codable, Equatable {
     // MARK: - Default
 
     static let `default` = PointsConfiguration(
-        stageThresholds: [0, 20, 450, 950, 1_600, 2_500],
+        // EXHIBITION TUNING. Habits are worth 5–20 base points (mean ~10), so at a
+        // booth somebody logs 4–8 actions in a couple of minutes. On the old ladder the
+        // second stage needed 450 — a visitor saw the Earth move once, if at all, and
+        // the whole point of the globe is that it answers back.
+        //
+        // Reading these as actions: 1 → Fragile, ~3 → Stabilizing, ~5 → Recovering,
+        // ~8 → Flourishing, ~13 → Restored. A Fight check-in pays 75 on its own, so
+        // scanning a code visibly leaps the globe, which is the demo worth showing.
+        //
+        // One line to put back: [0, 150, 450, 950, 1_600, 2_500] was the original.
+        stageThresholds: [0, 10, 25, 50, 85, 130],
         streakTiers: [
             StreakTier(minimumStreakDay: 1,  multiplier: 1.0),
             StreakTier(minimumStreakDay: 7,  multiplier: 1.1),
@@ -95,14 +105,21 @@ nonisolated struct PointsConfiguration: Codable, Equatable {
         evidenceBonusWithoutPhoto: 1.0,
         priorityMultiplierActive: 1.3,
         priorityMultiplierInactive: 1.0,
-        dailyBasePointsCap: 100,
+        // **The daily cap is off.** Set beyond anything reachable rather than deleted:
+        // the mechanism stays — `countedBasePoints`, `atDailyCap`, the messaging — so
+        // turning it back on is this one number, not a re-implementation. At 100 a
+        // visitor hit the ceiling after ~7 taps and every action afterwards paid zero,
+        // which at a booth reads as a broken app rather than a design decision.
+        dailyBasePointsCap: 1_000_000,
         fightAttendancePoints: 75,
         monthlyEventPointsCap: 150,
         decayGracePeriodDays: 7,
         decayWarningDayThreshold: 5,
         decayRatePerDay: 0.02,
         maxStageDropPerAbsence: 1,
-        decayPointsFloor: 150
+        // Scaled with the ladder above. Left at 150 it sat ABOVE the whole scale, so
+        // decay could never touch anyone and the floor silently meant "never decay".
+        decayPointsFloor: 10
     )
 
     // MARK: - Lookup
