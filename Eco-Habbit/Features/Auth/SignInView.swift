@@ -28,7 +28,7 @@ struct SignInView: View {
         VStack(spacing: 24) {
             GlobeView()
 
-            Text("Eco-Habbit")
+            Text("Earthie")
                 .textStyle(Tokens.Typography.hero)
                 .foregroundStyle(Tokens.Semantic.text)
 
@@ -48,6 +48,7 @@ struct SignInView: View {
             //
             // Behind a password because it now *does* ship: without one, anybody handed
             // a build walks past sign-in, and the accounts stop meaning anything.
+            #if DEBUG
             Button("Continue without an account") {
                 password = ""
                 askingPassword = true
@@ -55,7 +56,7 @@ struct SignInView: View {
             .textStyle(Tokens.Typography.body)
             .foregroundStyle(Tokens.Semantic.footnote)
             .padding(.top, -8)
-
+            #endif // debug
             if let errorMessage {
                 Text(errorMessage)
                     .textStyle(Tokens.Typography.footnote)

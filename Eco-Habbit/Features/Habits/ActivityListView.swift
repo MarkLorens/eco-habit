@@ -19,7 +19,7 @@ struct ActivityListView: View {
                         }
                         Spacer()
                         NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .camera){
-                            app.isCameraPresented = true
+                            app.openCamera()
                         }
                     }
                     .padding(.horizontal, Tokens.Spacing.xxl)
