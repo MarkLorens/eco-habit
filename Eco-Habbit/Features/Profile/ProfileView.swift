@@ -1,13 +1,5 @@
 import SwiftUI
 
-private struct HeaderHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
-
 struct ProfileView: View {
     @EnvironmentObject private var app: AppState
 
@@ -23,57 +15,34 @@ struct ProfileView: View {
     @State private var path = NavigationPath()
 
     private let badgeColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
-    
-    @State private var headerHeight: CGFloat = 0
+
+    /// How far the green sheet reaches past the bottom of the identity, so the stats
+    /// card lands on it rather than under it.
     private let sheetTail: CGFloat = 56
+    /// And how far it reaches the other way. Enough to cover the status bar at rest and
+    /// still be there at the top of a rubber-band overscroll, where a shape that stopped
+    /// at the identity would tear open a white gap.
+    private let sheetReach: CGFloat = 600
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
+                // The identity is the first thing in the scroll, not an overlay over it.
+                // Pinned, it stayed put while the stats slid underneath and vanished
+                // behind the name; in here the whole sheet travels with the content.
                 VStack(alignment: .leading, spacing: 0) {
-                    stats
-                    badges
-                    recap
+                    header
+                    VStack(alignment: .leading, spacing: 0) {
+                        stats
+                        badges
+                        recap
+                    }
+                    // Only the content below is inset — the sheet has to reach both
+                    // edges of the screen.
+                    .padding(.horizontal, 20)
                 }
-                .padding(.horizontal, 20)
-                // The identity block is an overlay, so it takes up no layout space —
-                // without this the stats row starts at the top of the ScrollView and
-                // renders behind it.
-                .padding(.top, headerHeight)
                 .tabContentInsets()
             }
-            .background(alignment: .top) {
-                UnevenRoundedRectangle(
-                    bottomLeadingRadius: 40,
-                    bottomTrailingRadius: 40,
-                    style: .continuous
-                )
-                .fill(Tokens.Semantic.profileBg)
-                .frame(height: headerHeight + sheetTail)
-            }
-            .overlay(alignment: .top) {
-                identity
-                    .padding(.horizontal, Tokens.Spacing.md)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        UnevenRoundedRectangle(
-                            bottomLeadingRadius: 40,
-                            bottomTrailingRadius: 40,
-                            style: .continuous
-                        )
-                        .fill(Tokens.Semantic.profileBg)
-                        .ignoresSafeArea(edges: .top)
-                    )
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: HeaderHeightKey.self,
-                                value: proxy.size.height
-                            )
-                        }
-                    )
-            }
-            .onPreferenceChange(HeaderHeightKey.self) { headerHeight = $0 }
             .background(Tokens.Palette.white.ignoresSafeArea())
             .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
@@ -92,6 +61,30 @@ struct ProfileView: View {
         .fullScreenCover(isPresented: $showingBadges){
             BadgeDetailView()
         }
+    }
+
+    /// The identity on the green sheet it sits on.
+    ///
+    /// The sheet is drawn as the identity's own background rather than as a layer
+    /// behind the scroll view, which is what lets it scroll away: no measuring, and no
+    /// height to keep in step with whatever the avatar and the name happen to add up
+    /// to. It is stretched past its host at both ends by negative padding — a
+    /// background is measured against what it backs and reports nothing back, so
+    /// growing it moves nothing.
+    private var header: some View {
+        identity
+            .padding(.horizontal, Tokens.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                UnevenRoundedRectangle(
+                    bottomLeadingRadius: 40,
+                    bottomTrailingRadius: 40,
+                    style: .continuous
+                )
+                .fill(Tokens.Semantic.profileBg)
+                .padding(.top, -sheetReach)
+                .padding(.bottom, -sheetTail)
+            }
     }
 
     private var identity: some View {
