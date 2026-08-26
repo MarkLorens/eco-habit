@@ -1,10 +1,13 @@
 import SwiftUI
 
-// The whole file is DEBUG-only. It calls `debugEvaluate` and
-// `debugSetOrganization`, which do not exist in Release — and it should not
-// ship regardless: this is the surface that fakes time and grants host
-// verification.
-#if DEBUG
+// **Ships in Release, behind `TeamAccess`.** It used to be `#if DEBUG`, which put it
+// out of reach in TestFlight — and TestFlight is where it is needed most: the people
+// running a demo phone at the exhibition are the ones who cannot rebuild it themselves.
+//
+// A password is a weaker gate than the compiler, so what is behind it matters. Nothing
+// here reaches another account: time travel and the resets act on this device's own
+// state, and "Verified organization" is a local override the security rules ignore, so
+// it unlocks the host screens without granting any host permission.
 
 /// PRD §13 Phase 2 — validate the evaluation loop against missed days, timezone
 /// rollover, Shield and streak breaks without waiting real calendar days.
@@ -12,6 +15,7 @@ struct TimeTravelMenu: View {
     @EnvironmentObject private var app: AppState
     @State private var targetDate = Date()
     @State private var resetting = false
+    @State private var confirmingReset = false
 
     /// No `NavigationStack` here. This screen is *pushed* into the one Profile
     /// already owns, and nesting a second stack inside a `navigationDestination`
@@ -94,6 +98,15 @@ struct TimeTravelMenu: View {
             } footer: {
                 Text("PRD §4.3: verification is a person flipping a flag. This is the flag. It lives here rather than in Settings because it must never be user-writable.\n\nThe toggle is LOCAL — it unlocks the host screens and survives relaunch, but the security rules read \"Server says\", so publishing a Fight needs isOrganization set to true on /users/{uid} in the Firebase console, then a relaunch.")
             }
+
+            // Last on purpose. It came off the avatar's long-press menu, where it sat one
+            // tap away from "Delete account" — the bottom of a debug screen is far enough
+            // from anything reached by accident.
+            Section {
+                Button("Reset local data", role: .destructive) { confirmingReset = true }
+            } footer: {
+                Text("This device only — the server copy is untouched, so signing in again pulls it all back. \"Reset account data\" above is the one that clears both.")
+            }
         }
         .navigationTitle("Time Travel")
         .navigationBarTitleDisplayMode(.inline)
@@ -103,10 +116,15 @@ struct TimeTravelMenu: View {
         } message: {
             Text("Clears everything this account earned, here and on the server. Fights it hosts are not touched. This cannot be undone.")
         }
+        .alert("Reset local data?", isPresented: $confirmingReset) {
+            Button("Reset", role: .destructive) { app.resetEverything() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Points, streak, history and settings on this device are deleted. The Earth starts over from the beginning.")
+        }
     }
 
     private func advance() {
         app.debugEvaluate(asOf: Day.today(targetDate))
     }
 }
-#endif
