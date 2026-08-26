@@ -1,4 +1,3 @@
-#if DEBUG
 import SwiftUI
 
 /// Every photo kept on this device, and which log it belongs to.
@@ -108,4 +107,3 @@ struct EvidenceBrowserView: View {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 }
-#endif
