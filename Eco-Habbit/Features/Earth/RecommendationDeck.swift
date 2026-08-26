@@ -8,6 +8,10 @@ import SwiftUI
 /// would mean the deck reshuffled underneath the user at the exact moment they checked
 /// something off. It is snapshotted on appear and only rebuilt when the day rolls over
 /// or the answers change.
+///
+/// What the deck *presents* is that snapshot filtered — see `queue`. Filtering only ever
+/// removes, so it cannot reorder anything mid-swipe, which is what the snapshot exists to
+/// prevent.
 struct RecommendationDeck: View {
     @EnvironmentObject private var app: AppState
 
@@ -15,11 +19,18 @@ struct RecommendationDeck: View {
     @State private var deck: [Habit] = []
     /// Which day `deck` was built for, so a phone left open past midnight refreshes.
     @State private var builtFor: String = ""
-    @State private var index = 0
+    /// Swiped past this session. Not persisted: a skip means "not now", not "never".
+    @State private var skipped: Set<String> = []
     @State private var drag: CGSize = .zero
 
-    /// How far a card must travel before it counts as dismissed.
+    /// How far a card must be *projected* to travel before it counts as dismissed.
     private let commitDistance: CGFloat = 96
+    /// Far enough to clear any screen the app runs on.
+    private let throwDistance: CGFloat = 620
+    /// Seconds of the flick's velocity projected past the fingertip when deciding whether
+    /// the user meant to throw the card. A fast flick barely moves — without this, the
+    /// gesture people actually make springs back and the deck feels dead.
+    private let flickProjection: CGFloat = 0.14
 
     var body: some View {
         ZStack {
@@ -30,32 +41,53 @@ struct RecommendationDeck: View {
         .task(id: app.today) { rebuildIfNeeded() }
     }
 
+    // MARK: - What is left to show
+
+    /// The frozen deck minus anything the user has swiped past, and minus anything that
+    /// has stopped being loggable since the snapshot was taken — logged from the
+    /// checklist or the camera while the dashboard sat in another tab, or knocked out by
+    /// a cooldown over midnight. Without this the deck keeps offering a card that can
+    /// only answer "already logged today" when it is tapped.
+    private var queue: [Habit] {
+        deck.filter {
+            !skipped.contains($0.id) && HabitRepository.isAvailable($0, on: app.today, in: app.data)
+        }
+    }
+
+    /// How far the top card is towards being gone, `0...1`. This is what makes the deck
+    /// feel like a deck: the card behind rises into the top slot in step with the one
+    /// being pulled off it, rather than the stack sitting frozen while one card slides.
+    private var advanceProgress: CGFloat {
+        min(1, abs(drag.width) / commitDistance)
+    }
+
     // MARK: - Layers
 
-    /// Two blank cards peeking out, and only while there is something still to come.
-    /// Left under the final card they promise more that is not there.
+    /// The next two cards, blank and tinted with their own categories.
+    ///
+    /// Drawn deepest-first so the shallower card genuinely overlaps the deeper one, and
+    /// taken from `dropFirst()` so the last card has nothing behind it — under the final
+    /// card a backdrop promises more that is not there.
     @ViewBuilder
     private var backdrops: some View {
-        let remaining = deck.count - index
-        if remaining > 0 {
-            // Offset diagonally rather than only downward, so the stack shows at the
-            // corners the way the design does. Same size as the top card — insetting
-            // them instead only ever reveals a sliver along the bottom edge.
-            RecommendationBackdrop(fill: Tokens.Palette.yellowCard)
-                .offset(x: -12, y: 14)
-                .rotationEffect(.degrees(-3))
-            if remaining > 1 {
-                RecommendationBackdrop(fill: Tokens.Palette.blueCard)
-                    .offset(x: 12, y: -10)
-                    .rotationEffect(.degrees(2.5))
-            }
+        let upcoming = Array(queue.dropFirst().prefix(2).enumerated())
+        ForEach(upcoming.reversed(), id: \.element.id) { position, habit in
+            let depth = position + 1
+            let layer = RecommendationDeckLayer.interpolated(depth: depth, advancing: advanceProgress)
+            RecommendationBackdrop(
+                tint: habit.category.tint,
+                tintStrength: RecommendationDeckLayer.tintStrength(depth: depth, advancing: advanceProgress),
+                shadowOpacity: layer.shadowOpacity
+            )
+            .scaleEffect(layer.scale)
+            .rotationEffect(.degrees(layer.rotation))
+            .offset(layer.offset)
         }
     }
 
     @ViewBuilder
     private var top: some View {
-        if index < deck.count {
-            let habit = deck[index]
+        if let habit = queue.first {
             RecommendationCard(
                 title: habit.name,
                 detail: habit.detailOrCaption,
@@ -71,59 +103,97 @@ struct RecommendationDeck: View {
             // A new identity per card, so the incoming one animates in from its own
             // resting position instead of inheriting the outgoing card's offset.
             .id(habit.id)
+            // Pivoting below the card rather than about its middle: a card held at the
+            // bottom swings, and that swing is most of what reads as "a real card".
+            .rotationEffect(.degrees(tiltDegrees), anchor: .bottom)
             .offset(drag)
-            .rotationEffect(.degrees(Double(drag.width) / 22))
-            .opacity(1 - min(1, abs(Double(drag.width)) / 420))
             .gesture(swipe)
-            .accessibilityAction(named: "Skip") { advance() }
+            .accessibilityAction(named: "Skip") { skip(habit) }
         } else {
             RecommendationDoneCard(onSeeAll: { app.selectedTab = .actions })
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
         }
     }
 
+    /// Capped, so dragging a long way does not spin the card past the angle at which it
+    /// still reads as a card being moved.
+    private var tiltDegrees: Double {
+        min(18, max(-18, Double(drag.width) / 8))
+    }
+
     // MARK: - Swiping
 
     private var swipe: some Gesture {
         DragGesture()
-            .onChanged { drag = CGSize(width: $0.translation.width, height: 0) }
+            // The full translation, not just the horizontal component. Discarding the
+            // vertical part puts the card on a rail, and a card on a rail is the thing
+            // that reads as "no animation" however smoothly it slides.
+            .onChanged { drag = $0.translation }
             .onEnded { value in
-                guard abs(value.translation.width) > commitDistance else {
-                    withAnimation(.snappy(duration: 0.25)) { drag = .zero }
+                // The gesture is attached to the top card, so this is the card being
+                // thrown. Read now rather than in the completion handler: by the time the
+                // throw lands the queue has already moved on.
+                guard let habit = queue.first else { return }
+                let travel = projected(value)
+                guard abs(travel.width) > commitDistance else {
+                    withAnimation(.spring(duration: 0.35, bounce: 0.34)) { drag = .zero }
                     return
                 }
-                dismissTop(towards: value.translation.width < 0 ? -1 : 1)
+                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                throwOff(travel) { skipped.insert(habit.id) }
             }
     }
 
-    /// Throw the card off screen, then swap in the next one once it is out of sight.
-    private func dismissTop(towards direction: CGFloat) {
-        withAnimation(.easeOut(duration: 0.22)) {
-            drag = CGSize(width: direction * 520, height: 0)
-        }
-        Task {
-            try? await Task.sleep(for: .seconds(0.22))
-            advance()
+    /// Where the gesture was heading, not just where it ended. Distance alone rejects the
+    /// short fast flick most people actually swipe with.
+    private func projected(_ value: DragGesture.Value) -> CGSize {
+        CGSize(width: value.translation.width + value.velocity.width * flickProjection,
+               height: value.translation.height + value.velocity.height * flickProjection)
+    }
+
+    /// Extend the throw along its own direction until it is off screen, then hand over.
+    ///
+    /// Driven off the animation's completion rather than a hand-matched `sleep`, so the
+    /// swap cannot drift out of step with the animation and flash the next card.
+    private func throwOff(_ travel: CGSize, then finish: @escaping () -> Void) {
+        withAnimation(.spring(duration: 0.34, bounce: 0.06), completionCriteria: .logicallyComplete) {
+            drag = exit(along: travel)
+        } completion: {
+            drag = .zero
+            finish()
         }
     }
 
-    /// Reset the offset in the same update that changes the index. Split across two
-    /// updates, the incoming card renders once at the outgoing card's offset and snaps
-    /// back, which looks like a flicker.
-    private func advance() {
-        drag = .zero
-        withAnimation(.snappy(duration: 0.2)) { index += 1 }
+    /// The off-screen resting point for a throw that went `travel`. The vertical slope is
+    /// damped: a steep flick should leave at an angle, not shoot straight off the top.
+    private func exit(along travel: CGSize) -> CGSize {
+        let direction: CGFloat = travel.width < 0 ? -1 : 1
+        let slope = min(0.6, max(-0.6, travel.height / max(abs(travel.width), 1)))
+        return CGSize(width: direction * throwDistance, height: slope * throwDistance)
     }
 
     // MARK: - Actions
 
+    private func skip(_ habit: Habit) {
+        withAnimation(.snappy(duration: 0.25)) { skipped.insert(habit.id) }
+    }
+
     private func complete(_ habit: Habit) {
-        // `logAndToast` raises the toast and the award, and refuses politely when the
-        // habit is already logged or on cooldown. The card leaves either way — a
-        // refusal still means the user is done with it.
-        app.logAndToast(habit, source: .checklist)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.snappy(duration: 0.25)) { advance() }
+        // Thrown up and to the right rather than simply vanishing, so a check reads as
+        // the same physical act as a swipe.
+        //
+        // The log runs *after* the throw lands. Logging first makes the habit
+        // unavailable, `queue` drops it, and the card the user just checked disappears
+        // mid-flight instead of finishing its animation.
+        throwOff(CGSize(width: 320, height: -110)) {
+            // `logAndToast` raises the toast and the award, and refuses politely when the
+            // habit is already logged or on cooldown. The card leaves either way — a
+            // refusal still means the user is done with it, which is what `skipped`
+            // records here.
+            app.logAndToast(habit, source: .checklist)
+            skipped.insert(habit.id)
+        }
     }
 
     /// Build the deck once per day. Reads `recommendedHabits` exactly here, so the
@@ -132,7 +202,7 @@ struct RecommendationDeck: View {
         guard builtFor != app.today || deck.isEmpty else { return }
         builtFor = app.today
         deck = app.recommendedHabits
-        index = 0
+        skipped = []
         drag = .zero
     }
 }

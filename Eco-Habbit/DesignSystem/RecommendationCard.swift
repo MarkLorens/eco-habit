@@ -147,16 +147,76 @@ private extension View {
 
 /// The blank coloured cards visible behind the top one. Deliberately not real cards:
 /// rendering the next two recommendations underneath means their titles show through
-/// the gaps, and the deck stops reading as "one thing to decide about".
+/// the gaps, and the deck stops reading as "one thing to decide about". They are tinted
+/// with the category of the habit each one actually stands for, so advancing the deck
+/// changes the colours underneath and the stack reads as a queue rather than decoration.
 struct RecommendationBackdrop: View {
-    let fill: Color
+    let tint: Color
+    /// `1` is fully the next habit's colour, `0` is the white of a real card. A layer
+    /// fades to white as it rises into the top slot, so the handoff — backdrop out, real
+    /// card in — happens between two identical surfaces instead of flashing a colour.
+    let tintStrength: Double
+    let shadowOpacity: Double
 
     var body: some View {
         RoundedRectangle(cornerRadius: RecommendationCardMetrics.radius, style: .continuous)
-            .fill(fill)
+            .fill(Tokens.Palette.white)
+            .overlay {
+                RoundedRectangle(cornerRadius: RecommendationCardMetrics.radius, style: .continuous)
+                    .fill(tint)
+                    .opacity(tintStrength)
+            }
             .frame(height: RecommendationCardMetrics.height)
-            .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(shadowOpacity), radius: 8, x: 0, y: 4)
     }
+}
+
+/// Where a card sits in the stack, by depth: `0` is the card in hand, `1` and `2` are the
+/// ones still underneath it.
+///
+/// **Every value moves the same way as depth increases** — smaller, lower, further round,
+/// fainter shadow. The stack this replaces fanned its two backdrops in *opposite*
+/// directions at full size, with the deeper one drawn on top of the shallower one, which
+/// is why it read as three cards dropped on a table rather than a pile with a top card.
+struct RecommendationDeckLayer {
+    var scale: CGFloat
+    var offset: CGSize
+    var rotation: Double
+    var shadowOpacity: Double
+
+    /// Index is depth. Kept modest on the horizontal: the deck sits inside a 24pt margin
+    /// and these corners are meant to peek, not to reach the bezel.
+    private static let slots: [RecommendationDeckLayer] = [
+        .init(scale: 1.00, offset: .zero,                          rotation:  0.0, shadowOpacity: 0.10),
+        .init(scale: 0.95, offset: .init(width:  12, height: 20),  rotation:  3.5, shadowOpacity: 0.07),
+        .init(scale: 0.90, offset: .init(width: -16, height: 34),  rotation: -4.0, shadowOpacity: 0.05)
+    ]
+
+    /// `progress` is how far the top card has travelled towards being dismissed, `0...1`.
+    ///
+    /// At `1` every layer has taken the place of the one in front of it — so when the top
+    /// card finally leaves and the depths all shift down by one, every remaining layer is
+    /// already standing exactly where it needs to end up and nothing jumps.
+    static func interpolated(depth: Int, advancing progress: CGFloat) -> RecommendationDeckLayer {
+        let here = slots[min(depth, slots.count - 1)]
+        let ahead = slots[min(max(depth - 1, 0), slots.count - 1)]
+        let t = clamp(progress)
+        return .init(
+            scale: here.scale + (ahead.scale - here.scale) * t,
+            offset: CGSize(width: here.offset.width + (ahead.offset.width - here.offset.width) * t,
+                           height: here.offset.height + (ahead.offset.height - here.offset.height) * t),
+            rotation: here.rotation + (ahead.rotation - here.rotation) * Double(t),
+            shadowOpacity: here.shadowOpacity + (ahead.shadowOpacity - here.shadowOpacity) * Double(t)
+        )
+    }
+
+    /// See `RecommendationBackdrop.tintStrength`. Only the layer next in line fades — the
+    /// one behind it is still two slots from the top and stays its own colour throughout.
+    static func tintStrength(depth: Int, advancing progress: CGFloat) -> Double {
+        min(1, max(0, Double(depth) - Double(clamp(progress))))
+    }
+
+    private static func clamp(_ progress: CGFloat) -> CGFloat { min(max(progress, 0), 1) }
 }
 
 #if DEBUG
