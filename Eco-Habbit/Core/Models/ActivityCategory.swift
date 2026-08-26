@@ -65,6 +65,17 @@ enum HabitCategory: String, Codable, CaseIterable, Identifiable, Hashable {
         }
     }
     
+    var tintDark: Color {
+        switch self{
+        case .energy: return Tokens.Palette.yellow
+        case .waste: return Tokens.Palette.purple
+        case .actions: return Tokens.Palette.lime
+        case .water: return Tokens.Palette.blue
+        case .mobility: return Tokens.Palette.green
+        case .consumption: return Tokens.Palette.orange
+        }
+    }
+    
     var background: Color {
         switch self {
         case .energy:      return Tokens.Semantic.pointTagYellow
