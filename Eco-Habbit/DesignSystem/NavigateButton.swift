@@ -35,22 +35,25 @@ enum ButtonAction {
 struct NavigateBadge: View {
     let background: Color
     let buttonAction: ButtonAction
+    var size: CGFloat = 36
+    
+    private var ellipseHeight: CGFloat { size * 30/36 }
+    private var imageMultiplier: CGFloat { size-36 }
     
     var body: some View {
         ZStack{
             Circle()
-                .frame(width: 36, height: 36)
+                .frame(width: size, height: size)
                 .foregroundStyle(Tokens.Palette.white)
                 .shadow(color: .black.opacity(0.10), radius: 10, x: 0, y: 6)
             Ellipse()
-                .frame(width: 36, height: 30)
+                .frame(width: size, height: size)
                 .rotationEffect(.degrees(135))
                 .foregroundStyle(background).opacity(1)
                 .shadow(color: background.opacity(0.8), radius: 2, x: 0, y: 1)
                 .shadow(color: background.opacity(0.4), radius: 10, x: 0, y: 6)
             Image(systemName: buttonAction.action)
-                .textStyle(Tokens.Typography.title)
-            
+                .font(.system(size: 20 + imageMultiplier, weight: .bold, design: .rounded))
         }
     }
 }
@@ -58,16 +61,18 @@ struct NavigateBadge: View {
 struct NavigateButton: View {
     let background: Color
     let buttonAction: ButtonAction
+    var size: CGFloat = 36
     let action: () -> Void
     
-    init(background: Color, buttonAction: ButtonAction, action: @escaping () -> Void) {
+    init(background: Color, buttonAction: ButtonAction, size: CGFloat = 36, action: @escaping () -> Void) {
         self.background = background
         self.buttonAction = buttonAction
+        self.size = size
         self.action = action
     }
     var body: some View {
         Button(action: action) {
-            NavigateBadge(background: background, buttonAction: buttonAction)
+            NavigateBadge(background: background, buttonAction: buttonAction, size: size)
         }
         .buttonStyle(.plain)
     }

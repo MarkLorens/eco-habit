@@ -7,9 +7,9 @@ struct ActivityListView: View {
         NavigationStack(path: $app.actionsPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack{
+                    HStack(alignment: .top){
                         VStack(alignment: .leading, spacing: Tokens.Spacing.sm){
-                            Text("Daily Practices")
+                            Text("Practices")
                                 .textStyle(Tokens.Typography.hero)
                                 .foregroundStyle(Tokens.Semantic.text)
                             
@@ -18,7 +18,7 @@ struct ActivityListView: View {
                                 .foregroundStyle(Tokens.Semantic.footnote)
                         }
                         Spacer()
-                        NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .camera){
+                        NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .camera, size: 48){
                             app.openCamera()
                         }
                     }
