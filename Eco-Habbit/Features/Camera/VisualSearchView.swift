@@ -52,6 +52,9 @@ struct VisualSearchView: View {
     /// The last code that failed, so holding it in frame does not re-report.
     @State private var lastRejectedCode: String?
 
+    @State private var typingCode = false
+    @State private var typedCode = ""
+
     var body: some View {
         ZStack {
             if showingPicker, let photo = pickerPhoto {
@@ -77,6 +80,16 @@ struct VisualSearchView: View {
         .onChange(of: camera.verdict) { _, verdict in
             guard let verdict else { return }
             resolve(verdict)
+        }
+        .alert("Enter the code", isPresented: $typingCode) {
+            TextField("Code", text: $typedCode)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+            Button("Check In") { submitTypedCode() }
+                .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Ask the organiser for the code shown on their screen.")
         }
     }
 
@@ -111,11 +124,11 @@ struct VisualSearchView: View {
             // would render behind the camera. It needs its own copy.
             ToastLayer()
 
-            #if DEBUG
+//            #if DEBUG
             // Compiled out of Release entirely. Everything the verdict was made from,
             // so a wrong answer can be read rather than guessed at.
-            diagnostics
-            #endif
+//            diagnostics
+//            #endif
 
             if let overlay { modal(overlay) }
 
@@ -133,10 +146,12 @@ struct VisualSearchView: View {
     private var topBar: some View {
         ZStack {
             VStack(spacing: Tokens.Spacing.xs) {
-                Text("Take a Picture")
+                Text(app.cameraPurpose == .scanFight ? "Scan the QR Code" : "Take a Picture")
                     .textStyle(Tokens.Typography.title2)
                     .foregroundStyle(Tokens.Palette.white)
-                Text("Log your action")
+                Text(app.cameraPurpose == .scanFight
+                     ? "Point at the organiser's code to check in"
+                     : "Log your action")
                     .textStyle(Tokens.Typography.footnote)
                     .foregroundStyle(Tokens.Palette.white.opacity(0.85))
             }
@@ -187,55 +202,70 @@ struct VisualSearchView: View {
         }
         .padding(.horizontal, 44)
         .padding(.bottom, Tokens.Spacing.goodLord)
-    }
-
-    #if DEBUG
-    /// The numbers behind the last verdict.
-    ///
-    /// The thresholds shown are read live from the classifier rather than copied, so
-    /// they cannot drift from the ones actually deciding — and `explain` lives beside
-    /// the gates for the same reason.
-    private var diagnostics: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(verdictLabel)
-                .foregroundStyle(Tokens.Palette.lime)
-            Text(camera.lastExplanation)
-                .foregroundStyle(.white.opacity(0.75))
-
-            Text(String(format: "conf %.2f · floor %.2f · auto %.2f/%.2f · %d distractors",
-                        camera.lastFrame.confidence, camera.minThreshold,
-                        camera.autoLogThreshold, camera.confidenceThreshold,
-                        camera.distractorCount))
-                .foregroundStyle(.white.opacity(0.55))
-
-            ForEach(Array(camera.lastFrame.habits.enumerated()), id: \.element.habitId) { i, m in
-                Text(String(format: "%d %-30@ %.3f", i + 1, m.habitId as NSString, m.similarity))
-                    .foregroundStyle(.white.opacity(i == 0 ? 0.95 : 0.6))
-            }
-            if let d = camera.lastFrame.topDistractor {
-                Text(String(format: "✕ %-30@ %.3f", d.label as NSString, d.similarity))
-                    .foregroundStyle(Tokens.Palette.orange.opacity(0.9))
+        .overlay(alignment: .bottom) {
+            // A booth is exactly where a camera fails — bad light, a cracked lens,
+            // someone who denied the permission prompt on their first launch. The way
+            // out belongs here, at the moment scanning is visibly not working, rather
+            // than on a screen they would have to go back to.
+            if app.cameraPurpose == .scanFight {
+                Button("Enter code instead") {
+                    typedCode = ""
+                    typingCode = true
+                }
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Palette.white.opacity(0.85))
+                .padding(.bottom, Tokens.Spacing.sm)
             }
         }
-        .font(.system(size: 9, design: .monospaced))
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 6).fill(.black.opacity(0.55)))
-        .padding(.horizontal, Tokens.Spacing.md)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        .padding(.bottom, 150)
-        .allowsHitTesting(false)
     }
 
-    private var verdictLabel: String {
-        switch camera.verdict {
-        case .confident(let m):  "CONFIDENT \(m.habitId) — auto-logged"
-        case .unsure(let m):     "UNSURE (\(m.count)) — picker"
-        case .rejected(let d):   "REJECTED \(d.label)"
-        case .nothing:           "NOTHING"
-        case nil:                "— take a shot —"
-        }
-    }
-    #endif
+//    #if DEBUG
+//    /// The numbers behind the last verdict.
+//    ///
+//    /// The thresholds shown are read live from the classifier rather than copied, so
+//    /// they cannot drift from the ones actually deciding — and `explain` lives beside
+//    /// the gates for the same reason.
+//    private var diagnostics: some View {
+//        VStack(alignment: .leading, spacing: 2) {
+//            Text(verdictLabel)
+//                .foregroundStyle(Tokens.Palette.lime)
+//            Text(camera.lastExplanation)
+//                .foregroundStyle(.white.opacity(0.75))
+//
+//            Text(String(format: "conf %.2f · floor %.2f · auto %.2f/%.2f · %d distractors",
+//                        camera.lastFrame.confidence, camera.minThreshold,
+//                        camera.autoLogThreshold, camera.confidenceThreshold,
+//                        camera.distractorCount))
+//                .foregroundStyle(.white.opacity(0.55))
+//
+//            ForEach(Array(camera.lastFrame.habits.enumerated()), id: \.element.habitId) { i, m in
+//                Text(String(format: "%d %-30@ %.3f", i + 1, m.habitId as NSString, m.similarity))
+//                    .foregroundStyle(.white.opacity(i == 0 ? 0.95 : 0.6))
+//            }
+//            if let d = camera.lastFrame.topDistractor {
+//                Text(String(format: "✕ %-30@ %.3f", d.label as NSString, d.similarity))
+//                    .foregroundStyle(Tokens.Palette.orange.opacity(0.9))
+//            }
+//        }
+//        .font(.system(size: 9, design: .monospaced))
+//        .padding(8)
+//        .background(RoundedRectangle(cornerRadius: 6).fill(.black.opacity(0.55)))
+//        .padding(.horizontal, Tokens.Spacing.md)
+//        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+//        .padding(.bottom, 150)
+//        .allowsHitTesting(false)
+//    }
+//
+//    private var verdictLabel: String {
+//        switch camera.verdict {
+//        case .confident(let m):  "CONFIDENT \(m.habitId) — auto-logged"
+//        case .unsure(let m):     "UNSURE (\(m.count)) — picker"
+//        case .rejected(let d):   "REJECTED \(d.label)"
+//        case .nothing:           "NOTHING"
+//        case nil:                "— take a shot —"
+//        }
+//    }
+//    #endif
 
     /// Bare white glyphs, as in the design — no circles behind them.
     private func control(icon: String, action: @escaping () -> Void) -> some View {
@@ -544,6 +574,20 @@ struct VisualSearchView: View {
         // it identified something and refused it — and the difference is what tells
         // somebody to point at a different thing rather than press again.
         case .rejected(let label): return "That looks like \(label). Try again with your action in frame."
+        }
+    }
+
+    /// Checks in from a typed code.
+    ///
+    /// Goes through `checkIn(withCode:)` rather than a chosen Fight, because the camera
+    /// never knew which event it was pointed at — the code is what identifies it, the
+    /// same way a scan does. `nil` means no Fight owns that code.
+    private func submitTypedCode() {
+        let code = typedCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        typedCode = ""
+        guard !code.isEmpty else { return }
+        if app.checkIn(withCode: code) == nil {
+            app.toast = Toast(kind: .warning, message: "No Fight uses that code.")
         }
     }
 

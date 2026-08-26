@@ -47,7 +47,7 @@ struct MainTabView: View {
                     // Two tabs stretched across a phone leave a lake of black between
                     // them; the hi-fi shows a small centred pill.
                     fillsWidth: !app.isOrganization,
-                    onCapture: { app.isCameraPresented = true }
+                    onCapture: { app.openCamera() }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }

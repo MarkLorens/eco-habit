@@ -14,6 +14,21 @@ final class AppState: ObservableObject {
     // Added for the action tab ya
     @Published var actionsPath = NavigationPath()
     @Published var isCameraPresented = false
+
+    /// Why the camera was opened.
+    ///
+    /// The same screen scans habit photos and Fight QR codes, and it told everybody it
+    /// was there to "log your action" — so somebody who tapped Scan QR on a Fight was
+    /// looking at a viewfinder that appeared to be about something else entirely.
+    enum CameraPurpose { case logAction, scanFight }
+    @Published private(set) var cameraPurpose: CameraPurpose = .logAction
+
+    /// Open the camera, saying what for. Always set — an entry point that forgets would
+    /// inherit whatever the last one wanted.
+    func openCamera(for purpose: CameraPurpose = .logAction) {
+        cameraPurpose = purpose
+        isCameraPresented = true
+    }
     @Published var toast: Toast?
     @Published var lastAward: Award?
 

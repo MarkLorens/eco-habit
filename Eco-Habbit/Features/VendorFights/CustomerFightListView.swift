@@ -25,7 +25,6 @@ struct CustomerFightListView: View {
 
     @State private var showingLovedOnly = false
     @State private var showingCreate = false
-    @State private var checkingInTo: Fight?
     @State private var editing: Fight?
     @State private var showingCode: Fight?
     @State private var enabling: Fight?
@@ -57,7 +56,6 @@ struct CustomerFightListView: View {
             // next table shows up by the time somebody looks.
             .task { await app.refreshFights() }
             .refreshable { await app.refreshFights() }
-            .sheet(item: $checkingInTo) { CheckInCodeSheet(fight: $0) }
             .sheet(isPresented: $showingCreate) { EventFormView(app: app) }
             .sheet(item: $editing) { EventFormView(editing: $0, app: app) }
             .sheet(item: $showingCode) { FightCodeView(fight: $0) }
@@ -148,7 +146,7 @@ struct CustomerFightListView: View {
                     actionForeground: fight.category.accentForeground,
                     secondaryTitle: checkInTitle(for: fight),
                     onAction: { act(on: fight) },
-                    onSecondary: { checkingInTo = fight }
+                    onSecondary: { app.openCamera(for: .scanFight) }
                 )
             }
             .padding(.horizontal, Tokens.Spacing.xl)
@@ -170,7 +168,7 @@ struct CustomerFightListView: View {
     /// do — and `nil` for a host, who shows a code rather than scanning one.
     private func checkInTitle(for fight: Fight) -> String? {
         if app.isHost(of: fight) { return nil }
-        return app.hasAttended(fight) ? nil : "Check-in"
+        return app.hasAttended(fight) ? nil : "Scan QR"
     }
 
     private func act(on fight: Fight) {
@@ -303,90 +301,3 @@ private struct OurFightExpandable: View {
     }
 }
 
-// MARK: - Check-in
-
-/// Type the organiser's code, or open the camera and scan it.
-///
-/// Both routes end at the same `checkIn(to:code:)`, which verifies the code against the
-/// Fight, refuses a second check-in and refuses one outside the window. Typing exists
-/// because a booth is exactly where a camera fails — bad light, a cracked lens, someone
-/// who denied the permission prompt on their first launch.
-private struct CheckInCodeSheet: View {
-    @EnvironmentObject private var app: AppState
-    @Environment(\.dismiss) private var dismiss
-    let fight: Fight
-
-    @State private var code = ""
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
-                Text("Ask the organiser for the code, or scan the QR they're showing.")
-                    .textStyle(Tokens.Typography.footnote)
-                    .foregroundStyle(Tokens.Semantic.footnote)
-
-                TextField("Code", text: $code)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .textStyle(Tokens.Typography.title)
-                    .focused($focused)
-                    .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Tokens.Semantic.buttonTintDefault)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Tokens.Semantic.statIcon.opacity(0.3)))
-                    )
-                    .onSubmit(submit)
-
-                // The shared button styles are `Theme` — a terracotta capsule from the
-                // older palette. Drawn here to match the dark action button the cards
-                // and the Fight form use.
-                Button(action: submit) {
-                    Text("Check In")
-                        .textStyle(Tokens.Typography.body)
-                        .foregroundStyle(Tokens.Semantic.ourFightQR)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(Tokens.Semantic.text)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .opacity(code.trimmingCharacters(in: .whitespaces).isEmpty ? 0.45 : 1)
-                .disabled(code.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                // Both halves of the flow in one sheet. Offering "scan or type" as a
-                // dialog *before* this would mean presenting a sheet from a dismissing
-                // dialog, which SwiftUI drops often enough to matter at a booth.
-                Button("Scan the QR code instead") {
-                    dismiss()
-                    app.isCameraPresented = true
-                }
-                .buttonStyle(.plain)
-                .textStyle(Tokens.Typography.body)
-                .foregroundStyle(Tokens.Semantic.footnote)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-
-                Spacer()
-            }
-            .padding(Tokens.Spacing.lg)
-            .background(Tokens.Palette.white.ignoresSafeArea())
-            .navigationTitle(fight.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
-        .onAppear { focused = true }
-    }
-
-    private func submit() {
-        // `checkIn` raises its own toast for every outcome — wrong code, window shut,
-        // already checked in — so this only has to decide whether to get out of the way.
-        if case .checkedIn = app.checkIn(to: fight, code: code) { dismiss() }
-    }
-}
