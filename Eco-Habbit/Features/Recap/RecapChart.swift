@@ -119,10 +119,9 @@ struct RecapChart: View{
         let dx = point.x - size.width / 2
         let dy = point.y - size.height / 2
 
-        // Ignore the hole and anything outside the rim — a tap on the centrepiece is
-        // not a vote for the slice behind it.
+        // Anything past the rim is off the chart.
         let distance = (dx * dx + dy * dy).squareRoot()
-        guard distance >= radius * selectedInner, distance <= radius else { return nil }
+        guard distance <= radius else { return nil }
 
         // `atan2(dx, -dy)` measures clockwise from straight up; shift into 0..2π.
         var angle = atan2(dx, -dy)
@@ -134,11 +133,24 @@ struct RecapChart: View{
         let reached = angle / (2 * .pi) * total
 
         var upperBound = 0.0
+        var hit = slices.last
         for item in slices {
             upperBound += item.value
-            if reached <= upperBound { return item.category }
+            if reached <= upperBound {
+                hit = item
+                break
+            }
         }
-        return slices.last?.category
+        guard let hit else { return nil }
+
+        // Then the hole, measured against the band *that* slice is drawn at rather
+        // than the widest one any slice could take: the pulled-out slice reaches
+        // further in than the rest, so where the hole starts depends on which slice
+        // the tap is lined up with. Either way a tap inside it is a tap on nothing —
+        // it is not a vote for the slice behind the centrepiece.
+        let inner = hit.category == selected ? selectedInner : restingInner
+        guard distance >= radius * inner else { return nil }
+        return hit.category
     }
 }
 
@@ -322,6 +334,10 @@ private struct DonutPlot: View, Animatable {
     }
 
     /// Sits in the hole, so it has to stay inside the inner radius.
+    ///
+    /// Empty when nothing is selected. The hole belongs to whichever slice is pulled
+    /// out, and a mascot left standing in it at rest reads as a selection of its own —
+    /// which is exactly the state the reader has just tapped their way out of.
     private var centrepiece: some View {
         ZStack {
             mascot(previous).opacity(1 - progress)
@@ -331,10 +347,13 @@ private struct DonutPlot: View, Animatable {
         .allowsHitTesting(false)
     }
 
+    @ViewBuilder
     private func mascot(_ category: HabitCategory?) -> some View {
-        Image(category?.iconDetail ?? HabitCategory.waste.iconDetail)
-            .resizable()
-            .scaledToFit()
+        if let category {
+            Image(category.iconDetail)
+                .resizable()
+                .scaledToFit()
+        }
     }
 }
 

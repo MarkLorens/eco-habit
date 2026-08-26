@@ -7,8 +7,8 @@
 
 import SwiftUI
 
-/// A recap of one period: how much was logged, split by category, with the focused
-/// category's own top five underneath.
+/// A recap of one period: how much was logged, split by category, with a top five
+/// underneath — every category's, or the focused category's own.
 ///
 /// The period is the only thing that changes between the Profile screen's three
 /// recap cards — the screen itself is the same either way.
@@ -25,28 +25,14 @@ struct RecapView: View {
     var period: RecapPeriod = .allTime
 
     /// Which slice is pulled out, and therefore what the list below is about.
-    /// Resolved on appear, since it depends on the account's own history.
+    /// `nil` is the resting state the screen opens in: no slice pulled out, and a top
+    /// five drawn from every category at once.
     @State private var focus: HabitCategory?
 
     @State private var showsCollage = false
 
     private var counts: [HabitCategory: Int] { app.actionCounts(in: period) }
     private var total: Int { app.totalActions(in: period) }
-
-    /// Where the recap opens: the category with the most behind it. `max(by:)` over
-    /// `allCases` rather than over the dictionary, so ties land the same way twice.
-    private var busiest: HabitCategory? {
-        HabitCategory.allCases
-            .filter { (counts[$0] ?? 0) > 0 }
-            .max { (counts[$0] ?? 0) < (counts[$1] ?? 0) }
-    }
-
-    /// The chart offers a resting state with nothing selected. This screen does not
-    /// want one — the list underneath has to be about some category — so tapping the
-    /// focused slice again leaves it where it is.
-    private var focusBinding: Binding<HabitCategory?> {
-        Binding(get: { focus }, set: { if let category = $0 { focus = category } })
-    }
 
     var body: some View {
         ScrollView {
@@ -64,10 +50,10 @@ struct RecapView: View {
                     // Capped rather than full-width: the donut is read against the
                     // number above it, and at the full width of the screen the band
                     // is thick enough to compete with it.
-                    RecapChart(activities: counts, selected: focusBinding)
+                    RecapChart(activities: counts, selected: $focus)
                         .frame(maxWidth: 280)
                         .frame(maxWidth: .infinity)
-                    if let focus { topActivities(in: focus) }
+                    topActivities(in: focus)
                 }
             }
             .padding(.horizontal, Tokens.Spacing.xl)
@@ -76,9 +62,6 @@ struct RecapView: View {
         .background(Tokens.Palette.white.ignoresSafeArea())
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
-        // Not `busiest` directly: a later log must not move the reader's selection
-        // out from under them, so this only fills in the opening choice.
-        .onAppear { if focus == nil { focus = busiest } }
         // Passed explicitly rather than relied on being inherited — a cover builds its
         // own hierarchy, and a missing `EnvironmentObject` is a crash, not a warning.
         .fullScreenCover(isPresented: $showsCollage) {
@@ -117,7 +100,10 @@ struct RecapView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func topActivities(in category: HabitCategory) -> some View {
+    /// The list under the chart: the focused category's top five, or — with nothing
+    /// selected — the top five across all of them, each row wearing the colours of
+    /// whichever category it came from.
+    private func topActivities(in category: HabitCategory?) -> some View {
         let tallies = app.topActivities(in: category, period: period)
 
         return VStack(alignment: .leading, spacing: Tokens.Spacing.md) {
@@ -128,8 +114,7 @@ struct RecapView: View {
             ForEach(tallies) { tally in
                 RecapActivityRow(name: tally.habit.name,
                                  count: tally.count,
-                                 icon: category.icon,
-                                 tint: category.tint)
+                                 category: tally.habit.category)
             }
         }
         // The list is the reason the chart is tappable, so it should not look like a
@@ -138,11 +123,13 @@ struct RecapView: View {
     }
 
     /// "Top 5" is a claim about the list, not a fixed label: an account with three
-    /// waste habits behind it has a top three.
-    private func heading(for count: Int, in category: HabitCategory) -> String {
-        count == 1
-            ? "Your Top Activity in \(category.title)"
-            : "Your Top \(count) Activities in \(category.title)"
+    /// waste habits behind it has a top three. The category is named only when one is
+    /// selected — with the chart at rest the list is about everything.
+    private func heading(for count: Int, in category: HabitCategory?) -> String {
+        let subject = category.map { " in \($0.title)" } ?? ""
+        return count == 1
+            ? "Your Top Activity\(subject)"
+            : "Your Top \(count) Activities\(subject)"
     }
 
     private var emptyState: some View {
@@ -180,19 +167,20 @@ struct RecapView: View {
 private struct RecapActivityRow: View {
     let name: String
     let count: Int
-    let icon: String
-    let tint: Color
+    /// The habit's own category, not the chart's selection: the list can hold rows
+    /// from several categories at once.
+    let category: HabitCategory
 
     private let iconSize: CGFloat = 44
 
     var body: some View {
         HStack(spacing: Tokens.Spacing.md) {
-            Image(icon)
+            Image(category.icon)
                 .resizable()
                 .scaledToFit()
                 .padding(Tokens.Spacing.xs)
                 .frame(width: iconSize, height: iconSize)
-                .background(Circle().fill(tint).frame(width: 40, height: 40))
+                .background(Circle().fill(category.tint).frame(width: 40, height: 40))
 
             Text(name)
                 .textStyle(Tokens.Typography.body)

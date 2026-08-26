@@ -535,13 +535,18 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The habits logged most often in a category, biggest first — the recap's top
-    /// five. Ties break on name, so the order does not reshuffle between launches.
-    func topActivities(in category: HabitCategory,
+    /// The habits logged most often, biggest first — the recap's top five.
+    ///
+    /// A `category` narrows the tally to one slice of the chart; `nil` is the chart's
+    /// resting state, and counts every category together. Ties break on name, so the
+    /// order does not reshuffle between launches.
+    func topActivities(in category: HabitCategory? = nil,
                        period: RecapPeriod,
                        limit: Int = 5) -> [ActivityTally] {
         var counts: [String: Int] = [:]
-        for log in logs(in: period) where MockData.habitsById[log.habitId]?.category == category {
+        for log in logs(in: period) {
+            guard let logged = MockData.habitsById[log.habitId]?.category else { continue }
+            guard category == nil || logged == category else { continue }
             counts[log.habitId, default: 0] += 1
         }
         let tallies = counts.compactMap { id, count in
