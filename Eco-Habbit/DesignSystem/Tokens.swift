@@ -62,6 +62,10 @@ extension Tokens{
             static let ourFightCaption = Color(hex: 0x2F3A32)
             static let ourFightQR = Color(hex: 0xFFFFFF)
             static let bgProgressEmpty = Color(hex: 0xB8BDCC)
+            // Toast capsules — white text sits on these, so all three are full strength.
+            static let toastSuccess = Palette.greenDark
+            static let toastInfo = Palette.black
+            static let toastWarning = Palette.orange
         }
 }
 

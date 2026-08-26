@@ -19,7 +19,6 @@ struct Eco_HabbitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     
     init() {
-        FontLoader.registerBundledFonts()
         // The one place the real sync is chosen. Previews, tests and the offline demo
         // build an AppState without it and stay entirely local.
         let sync = FirebaseUserStateSync()

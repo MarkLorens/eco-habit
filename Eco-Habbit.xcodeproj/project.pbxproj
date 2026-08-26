@@ -278,7 +278,6 @@
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Eco Habit listens only while you hold the mic button in search, so you can dictate instead of typing.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Eco Habit lets you attach a photo from your library as evidence for an activity.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Eco Habit turns what you say in the search field into text. Audio is processed for that search only.";
-				INFOPLIST_KEY_UIAppFonts = "Caprasimo-Regular.ttf Figtree-Regular.ttf Figtree-SemiBold.ttf Figtree-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -322,7 +321,6 @@
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Eco Habit listens only while you hold the mic button in search, so you can dictate instead of typing.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Eco Habit lets you attach a photo from your library as evidence for an activity.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Eco Habit turns what you say in the search field into text. Audio is processed for that search only.";
-				INFOPLIST_KEY_UIAppFonts = "Caprasimo-Regular.ttf Figtree-Regular.ttf Figtree-SemiBold.ttf Figtree-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

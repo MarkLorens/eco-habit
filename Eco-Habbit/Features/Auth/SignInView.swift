@@ -29,8 +29,8 @@ struct SignInView: View {
             GlobeView()
 
             Text("Eco-Habbit")
-                .font(Theme.F.heading(28))
-                .foregroundStyle(Theme.C.text)
+                .textStyle(Tokens.Typography.hero)
+                .foregroundStyle(Tokens.Semantic.text)
 
             SignInWithAppleButton(.signIn) { request in
                 AppleSignInService.prepare(request)
@@ -52,21 +52,21 @@ struct SignInView: View {
                 password = ""
                 askingPassword = true
             }
-            .font(Theme.F.body(14, weight: .semibold))
-            .foregroundStyle(Theme.C.neutral600)
+            .textStyle(Tokens.Typography.body)
+            .foregroundStyle(Tokens.Semantic.footnote)
             .padding(.top, -8)
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(Theme.F.body(13))
-                    .foregroundStyle(Theme.C.neutral600)
+                    .textStyle(Tokens.Typography.footnote)
+                    .foregroundStyle(Tokens.Semantic.footnote)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 40)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.C.bg)
+        .background(Tokens.Palette.white)
         .alert("Team access", isPresented: $askingPassword) {
             SecureField("Password", text: $password)
             Button("Cancel", role: .cancel) { password = "" }
