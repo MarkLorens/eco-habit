@@ -63,7 +63,7 @@ struct RecommendationDeck: View {
                 // service that does the awarding, so the chip cannot promise a number
                 // the toast then contradicts.
                 points: app.projectedPoints(for: habit).finalPoints,
-                artwork: habit.category.iconDetail,
+                artwork: habit.category.icon,
                 tint: habit.category.tint,
                 accent: habit.category.background,
                 onComplete: { complete(habit) }

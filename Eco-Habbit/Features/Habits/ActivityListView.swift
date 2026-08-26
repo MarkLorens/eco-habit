@@ -41,8 +41,9 @@ struct ActivityListView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(Tokens.Spacing.md)
+                    .padding(Tokens.Spacing.xxl)
                 }
+                .tabContentInsets()
             }
             .background(Tokens.Palette.white)
             .navigationDestination(for: HabitCategory.self) { category in

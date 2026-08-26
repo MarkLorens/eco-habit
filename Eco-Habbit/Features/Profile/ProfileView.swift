@@ -196,6 +196,10 @@ struct ProfileView: View {
         .padding(.top, Tokens.Spacing.xl)
         
     }
+    
+    private var unlockedBadges: [Badge] {
+        MockData.badges.filter(app.isUnlocked)
+    }
 
     private var badges: some View {
         VStack(alignment: .leading, spacing: Tokens.Spacing.lg) {
@@ -208,12 +212,24 @@ struct ProfileView: View {
                     showingBadges = true
                 }
             }
-            LazyVGrid(columns: badgeColumns) {
-                ForEach(MockData.badges.filter(app.isUnlocked).prefix(4)) { badge in
-                    Button {
-                        badgeDetail = badge
-                    } label: {
-                        Avatar(type: .avatarSmall, icon: badge.icon)
+            if unlockedBadges.isEmpty {
+                LazyVGrid(columns: badgeColumns) {
+                    ForEach(MockData.badges.prefix(4)) { badge in
+                        Button {
+                            badgeDetail = badge
+                        } label: {
+                            LockedAvatar(type: .avatarSmall, icon: badge.icon)
+                        }
+                    }
+                }
+            } else {
+                LazyVGrid(columns: badgeColumns) {
+                    ForEach(MockData.badges.filter(app.isUnlocked).prefix(4)) { badge in
+                        Button {
+                            badgeDetail = badge
+                        } label: {
+                            Avatar(type: .avatarSmall, icon: badge.icon)
+                        }
                     }
                 }
             }
@@ -239,7 +255,7 @@ struct ProfileView: View {
                     // a card headed "July" that opens August's numbers is worse than
                     // no card, and the month rolls over on its own.
                     NavigationLink(value: ProfileRoute.recap(thisMonth)) {
-                        RecapCards(caption: "Your \(thisMonth.shortTitle) Recap", icon: Tokens.Icons.actionIcon, background: Tokens.Palette.limeCard)
+                        RecapCards(caption: "Your \(thisMonth.shortTitle) Recap", icon: Tokens.Icons.badge1, background: Tokens.Palette.limeCard)
                     }
                     .buttonStyle(PlainPressStyle())
                     NavigationLink(value: ProfileRoute.recap(.allTime)) {
@@ -272,20 +288,16 @@ private struct RecapCards: View {
     var body: some View {
         HStack(spacing: Tokens.Spacing.md){
             Text(caption)
-                // The mascot is `resizable`, so without a size of its own it takes
-                // whatever the row will give it and leaves the caption a column
-                // narrower than one word — "August" came out as "Augus / t".
                 .minimumScaleFactor(0.8)
                 .textStyle(Tokens.Typography.body)
                 .foregroundStyle(Tokens.Semantic.text)
+            Spacer()
             Image(icon)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 44, height: 44)
         }
-        // `height`, not `maxHeight`: the card used to be held open by the mascot
-        // stretching to fill it, and the mascot now has a size of its own.
-        .frame(maxWidth: 150, minHeight: 148, maxHeight: 148, alignment: .bottom)
+        .frame(width: 130, height: 148, alignment: .bottom)
         .padding([.horizontal], Tokens.Spacing.md)
         .padding([.vertical], Tokens.Spacing.lg)
         .background{

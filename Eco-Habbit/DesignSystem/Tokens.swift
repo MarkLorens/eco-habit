@@ -193,6 +193,9 @@ extension Tokens {
         static let waterIcon = "water-icon"
         static let waterDetail = "water-detail"
         
+        // MARK: - Misc
+        static let badge1 = "b1"
+        
 //        static let dashboardGlobe = "dashboard-globe" placeholder for our 3D asset
     }
 }

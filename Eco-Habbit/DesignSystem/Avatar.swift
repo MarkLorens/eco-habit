@@ -81,7 +81,7 @@ struct LockedAvatar: View {
                 .frame(width: type.size * 0.75, height: type.size * 0.75)
             Image(systemName: "lock.fill")
                 .textStyle(Tokens.Typography.hero)
-                .foregroundStyle(Tokens.Palette.white)
+                .foregroundStyle(Tokens.Semantic.text)
         }
     }
 }

@@ -34,7 +34,6 @@ struct RecapCollageView: View {
     @State private var months: [String] = []
     @State private var index = 0
     @State private var pins: [CollagePin] = []
-    @State private var backdrop: UIImage?
     @State private var zoomed: CollagePin?
     @State private var shareable: Image?
 
@@ -80,28 +79,24 @@ struct RecapCollageView: View {
 
     // MARK: - Layers
 
-    /// One of the account's own photos, blurred back until it is only a colour wash.
+    /// The painted backdrop the wall is pinned over.
     ///
-    /// Blurred rather than shown: the source is a 960×540 video frame, and anything
-    /// less than a heavy blur at full-screen size looks like a mistake.
-    /// A `Rectangle` carrying the photo as an **overlay**, not a `ZStack` holding both.
+    /// This used to be one of the account's own photos, blurred back to a colour wash.
+    /// The painting replaces it: the wash was a different colour every month and on a
+    /// fresh install there was no photo to make one from, so the screen you shared
+    /// never looked twice the same. `Backdrop.name` is the one place that choice lives.
     ///
-    /// `scaledToFill` reports the filled size as the image's own, and a `ZStack` sizes
-    /// itself to its largest child — so a sibling backdrop silently proposes that width
-    /// to everything next to it and the calendar ends up twice the width of the screen.
-    /// An overlay is measured against its host instead, and `clipped()` takes the rest.
+    /// A `Rectangle` carrying the painting as an **overlay**, not a `ZStack` holding
+    /// both. `scaledToFill` reports the filled size as the image's own, and a `ZStack`
+    /// sizes itself to its largest child — so a sibling backdrop silently proposes that
+    /// width to everything next to it and the calendar ends up twice the width of the
+    /// screen. An overlay is measured against its host instead, and `clipped()` takes
+    /// the rest.
     private var backdropLayer: some View {
         Rectangle()
             .fill(Tokens.Semantic.text)
-            .overlay {
-                if let backdrop {
-                    Image(uiImage: backdrop)
-                        .resizable()
-                        .scaledToFill()
-                        .blur(radius: 28)
-                }
-            }
-            .overlay(Color.black.opacity(0.45))
+            .overlay { Backdrop.image }
+            .overlay(Backdrop.scrim)
             .clipped()
             .ignoresSafeArea()
     }
@@ -217,7 +212,6 @@ struct RecapCollageView: View {
     /// fills in, which is the honest thing to show while ImageIO works through them.
     private func loadMonth() async {
         shareable = nil
-        backdrop = nil
         guard !month.isEmpty else { return }
 
         var built = app.photographedLogs(in: .month(of: month + "-01"))
@@ -242,13 +236,6 @@ struct RecapCollageView: View {
             pins = built
         }
 
-        // The newest photo of the month becomes the wash behind the card. Bigger than a
-        // polaroid because it covers the screen, still nowhere near the full frame.
-        if let newest = built.last?.id {
-            backdrop = await EvidenceStore.loadThumbnail(
-                forLogId: newest, userId: account, maxPixel: Int(320 * displayScale))
-        }
-
         // Rendered once, off the back of the images already in hand. Doing it inside
         // `ShareLink` instead would re-render the whole wall on every body pass.
         shareable = render()
@@ -269,11 +256,37 @@ struct RecapCollageView: View {
                              onTap: nil)
                 .frame(width: 360)
                 .padding(Tokens.Spacing.xl)
-                .background(Tokens.Semantic.text)
+                // The same painting the screen is on, so the picture that leaves the
+                // app is the one the reader was looking at when they tapped share.
+                // Without the scrim, though: that is there to hold white text over the
+                // sky, and nothing outside the card here is text.
+                .background { Backdrop.image.clipped() }
         )
         renderer.scale = displayScale
         return renderer.uiImage.map { Image(uiImage: $0) }
     }
+}
+
+// MARK: - Backdrop
+
+/// The painting behind the wall, on screen and in the shared image alike.
+///
+/// One place, because the two have to agree: the whole point of rendering the card
+/// through `ImageRenderer` is that what is shared is what was on screen.
+private enum Backdrop {
+    static let name = "RecapChartBg-2"
+
+    static var image: some View {
+        Image(name)
+            .resizable()
+            .scaledToFill()
+    }
+
+    /// The painting's sky is pale, and everything the screen puts over it — the pager,
+    /// the empty state, the two round buttons — is white. This is what keeps them
+    /// readable, and it is deliberately lighter than the one the blurred photo needed:
+    /// the painting is worth seeing.
+    static let scrim = Color.black.opacity(0.28)
 }
 
 // MARK: - One photo on the wall
