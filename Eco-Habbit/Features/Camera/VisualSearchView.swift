@@ -180,19 +180,24 @@ struct VisualSearchView: View {
 
             Spacer()
 
-            Button { takeSnap() } label: {
-                ZStack {
-                    Circle()
-                        .stroke(Tokens.Palette.white.opacity(0.55), lineWidth: 4)
-                        .frame(width: 78, height: 78)
-                    Circle()
-                        .fill(Tokens.Palette.white)
-                        .frame(width: 64, height: 64)
+            // Absent, not greyed, when scanning a Fight: the QR reader works off the
+            // live feed, so there is no shutter action to offer and a dimmed circle
+            // still reads as something that ought to work.
+            if !isScanningFight {
+                Button { takeSnap() } label: {
+                    ZStack {
+                        Circle()
+                            .stroke(Tokens.Palette.white.opacity(0.55), lineWidth: 4)
+                            .frame(width: 78, height: 78)
+                        Circle()
+                            .fill(Tokens.Palette.white)
+                            .frame(width: 64, height: 64)
+                    }
                 }
+                .buttonStyle(.plain)
+                .disabled(overlay == .analyzing || showAward
+                          || (camera.isAvailable && (!camera.isReady || camera.isAnalysing)))
             }
-            .buttonStyle(.plain)
-            .disabled(overlay == .analyzing || showAward
-                      || (camera.isAvailable && (!camera.isReady || camera.isAnalysing)))
 
             Spacer()
 
@@ -280,6 +285,8 @@ struct VisualSearchView: View {
     }
 
     // MARK: - Snap → two flows
+
+    private var isScanningFight: Bool { app.cameraPurpose == .scanFight }
 
     private func takeSnap() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()

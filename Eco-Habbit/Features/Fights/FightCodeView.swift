@@ -19,6 +19,11 @@ struct FightCodeView: View {
     /// Restored on dismiss — nobody wants their screen left at full brightness.
     @State private var previousBrightness = UIScreen.main.brightness
 
+    /// Hidden until asked for. The QR is the fast path and should own the screen; the
+    /// characters are the fallback for a camera that will not focus, someone across a
+    /// room, or a phone with no camera permission.
+    @State private var showingCode = false
+
     var body: some View {
         NavigationStack {
             // Just the code. The title, location, typed fallback and window guidance
@@ -34,6 +39,17 @@ struct FightCodeView: View {
                     .textStyle(Tokens.Typography.title2)
                     .foregroundStyle(Tokens.Semantic.text)
                     .multilineTextAlignment(.center)
+
+                if showingCode {
+                    typedCode
+                } else {
+                    Button("Show code") {
+                        withAnimation(.snappy(duration: 0.2)) { showingCode = true }
+                    }
+                    .textStyle(Tokens.Typography.body)
+                    .foregroundStyle(Tokens.Semantic.footnote)
+                }
+
                 Spacer()
             }
             .frame(maxWidth: .infinity)
@@ -87,6 +103,29 @@ struct FightCodeView: View {
     }
 
 
+
+    /// The same code as characters, for reading aloud or typing.
+    ///
+    /// Monospaced and tracked out: this gets read across a table and dictated, and the
+    /// alphabet already excludes `0/O` and `1/I` for the same reason.
+    private var typedCode: some View {
+        VStack(spacing: Tokens.Spacing.xs) {
+            Text("OR TYPE")
+                .textStyle(Tokens.Typography.footnote)
+                .foregroundStyle(Tokens.Semantic.footnote)
+
+            Text(fight.checkInCode)
+                .font(.system(size: 38, weight: .bold, design: .monospaced))
+                .tracking(6)
+                .foregroundStyle(Tokens.Semantic.text)
+                .textSelection(.enabled)
+                .padding(.horizontal, Tokens.Spacing.lg)
+                .padding(.vertical, Tokens.Spacing.sm)
+                .background(RoundedRectangle(cornerRadius: 12)
+                    .fill(Tokens.Semantic.buttonTintDefault))
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+    }
 
     // MARK: - Rendering
 
