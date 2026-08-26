@@ -32,6 +32,7 @@ struct OrganisationProfileView: View {
                 .tabContentInsets()
             }
             .background(Tokens.Palette.white.ignoresSafeArea())
+            .statusBarCover()
             .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
                 #if DEBUG

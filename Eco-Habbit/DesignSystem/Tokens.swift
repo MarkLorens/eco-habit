@@ -199,3 +199,36 @@ extension Tokens {
 //        static let dashboardGlobe = "dashboard-globe" placeholder for our 3D asset
     }
 }
+
+// MARK: - Safe area
+
+extension View {
+    /// Fills the status bar's strip with `fill`, over everything the view draws.
+    ///
+    /// A `ScrollView` runs the full height of the screen and lets its content pass
+    /// under the clock, so on any screen whose content starts at the top edge the time
+    /// ends up sitting on a card title and the battery on a heading. This is the opaque
+    /// strip that catches it.
+    ///
+    /// The colour is per screen rather than fixed, because it has to be the one the
+    /// content scrolls out of — a white strip over the Profile's green sheet is only a
+    /// different clash. Companion to `tabContentInsets()`, which does the same job at
+    /// the other end for the floating tab bar.
+    ///
+    /// A screen that already keeps something of its own over the status bar — a pinned
+    /// header, a full-bleed image — does not want this on top of it.
+    func statusBarCover(_ fill: Color = Tokens.Palette.white) -> some View {
+        overlay(alignment: .top) {
+            // Measured rather than `ignoresSafeArea`d into place: an overlay already
+            // starts at the safe area's top edge, and a view that ignores the safe area
+            // is handed an inset of zero — which is a strip zero points tall. Reading
+            // the inset and stepping back up by it is the version that draws.
+            GeometryReader { proxy in
+                fill
+                    .frame(height: proxy.safeAreaInsets.top)
+                    .offset(y: -proxy.safeAreaInsets.top)
+            }
+            .allowsHitTesting(false)
+        }
+    }
+}
