@@ -170,7 +170,8 @@ struct ProfileView: View {
             Divider()
                 .frame(width: 1)
                 .overlay(Tokens.Semantic.statIcon)
-            StatTile(value: "\(app.vitality)", label: "Vitality", icon: "smoke.fill")
+            StatTile(value: "\(app.currentPoints)", label: "Points",
+                     icon: Tokens.Icons.leafTabview, isAsset: true)
             Divider()
                 .frame(width: 1)
                 .overlay(Tokens.Semantic.statIcon)
@@ -317,10 +318,14 @@ private struct StatTile: View {
     let value: String
     let label: String
     let icon: String
+    /// The app's own artwork rather than an SF Symbol. Rendered as a template so it
+    /// takes `statIcon` like its neighbours — the tab-bar leaf is drawn for a dark bar
+    /// and would be invisible on this white card otherwise.
+    var isAsset = false
 
     var body: some View {
         VStack(spacing: Tokens.Spacing.sm) {
-            Image(systemName: icon)
+            (isAsset ? Image(icon).renderingMode(.template) : Image(systemName: icon))
                 .resizable()
                 .scaledToFit()
                 .frame(height: 30)

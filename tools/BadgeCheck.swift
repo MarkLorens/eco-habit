@@ -18,7 +18,8 @@ let all = s.newlyEarned(from: cat, state: st, alreadyEarned: [], today: today)
 yes("seasonal never auto-awarded", !all.contains { $0.badgeId == "b4" })
 
 // earned is permanent: reach Flourishing then decay away
-var rich = PersistedState(); rich.currentPoints = 1600
+let flourishing = PointsConfiguration.default.threshold(for: .flourishing)
+var rich = PersistedState(); rich.currentPoints = flourishing
 let reef = s.newlyEarned(from: cat, state: rich, alreadyEarned: [], today: today).filter { $0.badgeId == "b6" }
 eq("Reef Guardian awarded at Flourishing", reef.count, 1)
 rich.earnedBadges = reef
@@ -36,7 +37,11 @@ let withOrphan = s.display(catalogue: cat, earned: [orphan])
 yes("orphan award still shown", withOrphan.contains { $0.id == "retired_x" && $0.isUnlocked })
 
 // progress
-var p = PersistedState(); p.currentPoints = 800
+// Expectation derived the same way the code derives it, so this tests the RATIO
+// rather than a number that moves whenever the ladder is retuned.
+let part = flourishing / 2
+var p = PersistedState(); p.currentPoints = part
 let b6 = cat.first { $0.id == "b6" }!
-eq("Reef progress at 800/1600 (%)", Int(s.progress(for: b6, state: p, today: today) * 100), 50)
+eq("Reef progress at \(part)/\(flourishing) (%)",
+   Int(s.progress(for: b6, state: p, today: today) * 100), part * 100 / flourishing)
 print(fails == 0 ? "\nALL PASS" : "\n\(fails) FAILED")

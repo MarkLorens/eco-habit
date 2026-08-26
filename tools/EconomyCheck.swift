@@ -65,45 +65,46 @@ drained.currentPoints = 3            // as if decay had run
 HabitRepository.unlog("bottle", on: today, today: today, habits: [bottle], in: &drained)
 ok("undo cannot drive points negative", drained.currentPoints >= 0)
 
-// --- 2. hitting the daily cap must be visible ------------------------------------
-var capped = PersistedState()
-var paid = 0
-var reachedCap = false
+// --- 2. the daily cap, where the cap actually lives -------------------------------
+//
+// The SHIPPED config disables the cap for the exhibition — `dailyBasePointsCap` is set
+// beyond anything reachable, because a visitor hitting a ceiling after seven taps and
+// then earning nothing reads as a broken app. So this exercises
+// `PointsCalculationService` with an explicit small cap instead of driving it through
+// `HabitRepository`, which uses the shipped one.
+//
+// That is the right place for it regardless: the cap is this type's rule. Testing it
+// through the repository only ever worked by coincidence of the shipped number.
+let capped = PointsCalculationService(config: {
+    var c = PointsConfiguration.default
+    c.dailyBasePointsCap = 100
+    return c
+}())
 
-for i in 1...12 {
-    let result = log(habit("h\(i)", 25), &capped)
-    guard case .logged(let points, let atDailyCap) = result else {
-        ok("log \(i) unexpectedly refused", false); break
-    }
-    paid += points
-    if atDailyCap {
-        reachedCap = true
-        eq("a log flagged atDailyCap pays nothing", points, 0)
-        break
-    }
-    ok("log \(i) pays \(points) and is not flagged", points > 0)
+func priced(_ base: Int, used: Int) -> PointsBreakdown {
+    capped.breakdown(habit: habit("h", base), hasEvidence: false,
+                     currentStreak: 0, isPrioritized: false, basePointsUsedToday: used)
 }
 
-ok("the cap is actually reachable", reachedCap)
-eq("total base points paid stops at the cap", paid, cap)
+eq("under the cap pays in full", priced(25, used: 0).finalPoints, 25)
+eq("still under the cap pays in full", priced(25, used: 50).finalPoints, 25)
 
-// A capped log is still a REAL log. It counts for the streak, for badges and for
-// history — which is exactly why it is a flag on success rather than a refusal.
-let cappedCount = capped.logs.count
-ok("the capped log is still recorded", cappedCount > 0)
-ok("the capped log still advanced the streak", capped.streakDays == 1)
-eq("every attempted log is on record", capped.logs.filter { $0.localDate == today }.count, cappedCount)
+// The log that straddles the ceiling pays the remainder, not nothing.
+let straddle = priced(25, used: 95)
+eq("the straddling log pays the remainder", straddle.finalPoints, 5)
+ok("a partly-capped log is NOT flagged as capped", straddle.countedBasePoints > 0)
 
-// And a partial cap — the log that straddles the ceiling — pays the remainder rather
-// than nothing, so it must NOT be flagged.
-var partial = PersistedState()
-log(habit("big", cap - 5), &partial)
-let straddle = log(habit("straddle", 25), &partial)
-if case .logged(let points, let atDailyCap) = straddle {
-    eq("the straddling log pays the remainder", points, 5)
-    ok("a partly-capped log is not flagged as capped", !atDailyCap)
-} else {
-    ok("the straddling log was logged", false)
-}
+// Past it, a log pays nothing and says so — `countedBasePoints == 0` is what
+// `HabitRepository` turns into `atDailyCap`.
+let over = priced(25, used: 100)
+eq("past the cap pays nothing", over.finalPoints, 0)
+eq("past the cap counts nothing against the allowance", over.countedBasePoints, 0)
+eq("well past the cap still pays nothing", priced(25, used: 500).finalPoints, 0)
+
+// And the shipped config really is uncapped, or the exhibition build has a ceiling
+// nobody meant to leave in.
+var uncapped = PersistedState()
+for i in 1...20 { log(habit("u\(i)", 20), &uncapped) }
+eq("shipped config pays all 20 logs", uncapped.currentPoints, 400)
 
 print(fails == 0 ? "\nALL PASS" : "\n\(fails) FAILED")

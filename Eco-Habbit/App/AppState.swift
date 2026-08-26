@@ -723,32 +723,44 @@ final class AppState: ObservableObject {
 
     // MARK: - Fights (PRD §4)
 
-    /// Seeded events plus anything this account hosts. Everything that browses
-    /// or looks a Fight up goes through here, so a hosted event behaves exactly
-    /// like a bundled one.
-    /// Published Fights from the server. Empty until `refreshFights` returns, and empty
-    /// forever on a local-only build — which is why it is additive rather than a
-    /// replacement for the bundled seeds.
+    /// Published Fights from the server.
     @Published private(set) var remoteFights: [Fight] = []
 
-    /// Bundled seeds, this device's own hosted events, and everybody else's published
-    /// ones.
+    /// Whether a fetch has come back, whatever it returned.
+    ///
+    /// Distinct from `remoteFights.isEmpty` on purpose. With the bundled seeds gone an
+    /// empty list is a normal state, so the screen has to tell "we have not looked yet"
+    /// from "nobody has published anything" — otherwise it flashes "no Fights" at every
+    /// launch before the fetch lands.
+    @Published private(set) var hasLoadedRemoteFights = false
+
+    /// This device's own hosted events plus everybody else's published ones.
+    ///
+    /// **No bundled seeds.** Seven invented cleanups used to be mixed in from
+    /// `fights.json`, from before there was a server to publish to. Once real events
+    /// existed the two were indistinguishable on screen — an attendee could not tell an
+    /// organiser's event from a demo fixture, and the demo ones could not be checked
+    /// into for real anyway, because their `hostId` is `org-ombak` rather than a uid and
+    /// `/attendance` requires the Fight to exist in `/fights`.
     ///
     /// **Local wins on a tie.** A host's own Fight exists in both `hostedFights` and,
     /// once published, in `remoteFights`; taking the local copy means an edit shows
-    /// immediately instead of after the next fetch. The seeds stay because they are what
-    /// the app has to show with no network and no organiser.
+    /// immediately instead of after the next fetch.
     var allFights: [Fight] {
-        let local = MockData.fights + data.hostedFights
+        let local = data.hostedFights
         let known = Set(local.map(\.id))
         return local + remoteFights.filter { !known.contains($0.id) }
     }
 
-    /// Pull the shared list. Silent on failure — no network means the bundled seeds and
-    /// your own events, not an error screen.
+    /// Pull the shared list. Silent on failure — no network means your own events and
+    /// whatever was cached, not an error screen.
     func refreshFights() async {
         guard let sync else { return }
-        if let fights = try? await sync.fetchPublishedFights() { remoteFights = fights }
+        guard let fights = try? await sync.fetchPublishedFights() else { return }
+        remoteFights = fights
+        // Only on success. A failed fetch must not be read as "there are none", or a
+        // dropped connection would empty the list instead of leaving it as it was.
+        hasLoadedRemoteFights = true
     }
 
     func fight(id: String) -> Fight? { allFights.first { $0.id == id } }
@@ -1228,6 +1240,70 @@ final class AppState: ObservableObject {
     /// the stored value until the next launch, which means user-document writes are
     /// refused in the meantime. The real switch is the field on `/users/{uid}` in the
     /// Firebase console; this is for demoing host mode with no network.
+    /// Put the account back to how a new visitor finds it — **except what it hosts**.
+    ///
+    /// Written for the exhibition: one phone demonstrates the app to person after
+    /// person, and each needs to start at Critical with an empty history. Clearing
+    /// locally is not enough, because the next sign-in pulls it all back from Firestore.
+    ///
+    /// **Kept:** identity (name, email), organisation status and name, and every Fight
+    /// this account hosts — both the local copies and the `/fights` documents, which
+    /// other phones are reading. Wiping those would take the demo's events down with
+    /// the demo's data.
+    ///
+    /// **Cleared:** points, streak, shields, decay bookkeeping, favourites, logs,
+    /// badges, evidence photos, onboarding answers, and attendance — local *and*
+    /// remote. Attendance has to go from the server too: `create` refuses a document
+    /// that already exists, so without deleting it the same phone can never check in
+    /// to the same Fight twice.
+    func debugResetAccount() async {
+        let keptHosted = data.hostedFights
+        let keptName = data.userName
+        let keptEmail = data.email
+        let keptOrg = data.isOrganization
+        let keptOrgName = data.orgName
+
+        EvidenceStore.purge(userId: storageId)
+
+        var fresh = PersistedState()
+        fresh.hostedFights = keptHosted
+        fresh.userName = keptName
+        fresh.email = keptEmail
+        fresh.isOrganization = keptOrg
+        fresh.orgName = keptOrgName
+
+        data = fresh
+        PersistenceStore.save(fresh, userId: storageId)
+        selectedTab = .home
+
+        // Asserted rather than read: this IS the reconciled state now, and a pull
+        // landing afterwards must not restore what was just cleared.
+        remoteResolved = true
+        hasLocalCopy = true
+
+        pushRemoteState(fresh)
+
+        // **Reported, not swallowed.** Everywhere else a failed Firestore write is
+        // deliberately silent so a sync problem can never interrupt logging. Here that
+        // is exactly wrong: the whole point is that the server is clear, and a reset
+        // that quietly left the logs behind would be discovered by the next visitor
+        // seeing somebody else's history.
+        if let sync, let userId {
+            do {
+                try await sync.purgeSubcollections(userId: userId)   // logs + badges
+                try await sync.deleteAttendance(userId: userId)
+            } catch {
+                syncStatus = .failed(String(describing: error))
+                toast = Toast(kind: .warning,
+                              message: "Cleared on this device, but the server refused. Check Debug → Firebase.")
+                return
+            }
+        }
+        await refreshFights()
+
+        toast = Toast(kind: .info, message: "Account reset. Hosted Fights kept.")
+    }
+
     func debugSetOrganization(_ on: Bool, name: String = "Ombak Bersih") {
         // Deliberately does NOT touch `data.isOrganization`. That field belongs to the
         // server: writing it locally made the toggle vanish on the next launch, and made
