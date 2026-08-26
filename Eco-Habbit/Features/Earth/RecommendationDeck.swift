@@ -175,7 +175,7 @@ struct RecommendationDeck: View {
     // MARK: - Actions
 
     private func skip(_ habit: Habit) {
-        withAnimation(.snappy(duration: 0.25)) { skipped.insert(habit.id) }
+        withAnimation(.snappy(duration: 0.25)) { _ = skipped.insert(habit.id) }
     }
 
     private func complete(_ habit: Habit) {

@@ -25,8 +25,8 @@ struct ActivityListView: View {
                     .padding(.horizontal, Tokens.Spacing.xxl)
                     .padding(.top, Tokens.Spacing.lg)
                     LazyVGrid(
-                        columns: [GridItem(.flexible(), spacing: Tokens.Spacing.md), GridItem(.flexible())],
-                        spacing: Tokens.Spacing.xl
+                        columns: [GridItem(.flexible(), spacing: Tokens.Spacing.xl), GridItem(.flexible())],
+                        spacing: Tokens.Spacing.lg
                     ){
                         ForEach(sortedCategories) { category in
                             NavigationLink(value: category) {
@@ -41,7 +41,8 @@ struct ActivityListView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(Tokens.Spacing.xxl)
+                    .padding(.top, Tokens.Spacing.lg)
+                    .padding(.horizontal, Tokens.Spacing.xl)
                 }
                 .tabContentInsets()
             }
