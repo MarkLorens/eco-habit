@@ -36,9 +36,17 @@ struct OnboardingQuestions: View {
     
     
     var body: some View{
-        ZStack(alignment: .top) {
-            currentQuestion
-                .slidingSteps(value: step)
+        VStack(spacing: Tokens.Spacing.goodLord) {
+            // Outside the sliding group on purpose: the bar measures the flow, not the
+            // question, so it stays put and animates its own fill while the title and
+            // the content below it move.
+            ProgressBar(progress: CGFloat(step - 1) / CGFloat(lastStep))
+
+            ZStack(alignment: .top) {
+                currentQuestion
+                    .slidingSteps(value: step)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .padding(.top, 42)
         .padding(.horizontal, 40)
@@ -116,11 +124,9 @@ struct OnboardingQuestions: View {
 
     private var QuestionOne: some View{
         VStack(spacing: Tokens.Spacing.goodLord){
-            ProgressBar(progress: 0)
-            
             HeaderTitle(title: "Why do you choose to live more sustainably?")
             
-            VStack(spacing: Tokens.Spacing.xl){
+            VStack(spacing: Tokens.Spacing.goodLord){
                 ForEach(reasons, id: \.self) { reason in
                     Button {
                         withAnimation(.easeOut(duration: 0.15)) { selectedReason = reason }
@@ -140,29 +146,39 @@ struct OnboardingQuestions: View {
     
     private var QuestionTwo: some View{
         VStack(alignment: .leading, spacing: Tokens.Spacing.goodLord){
-            ProgressBar(progress: 1.0 / 3.0)
-
             HeaderTitle(
                 title: "Which part of your daily life do you want to improve first?",
                 subtitle: "Select 2-3 from the category"
             )
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: Tokens.Spacing.md), GridItem(.flexible())],
-                spacing: Tokens.Spacing.xl
-            ){
-                ForEach(HabitCategory.allCases) { category in
-                    Button {
-                        withAnimation(.easeOut(duration: 0.15)) { toggle(category) }
-                    } label: {
-                        CategoryCard(
-                            category: category,
-                            isSelected: selectedCategories.contains(category)
-                        )
+            // Deliberately not a `LazyVGrid`. A lazy container builds its children
+            // outside the step transition, so the cards were landing at their final
+            // position while the progress bar and title were still sliding in — six
+            // cards is nothing to lay out eagerly, and `Grid` moves as one piece.
+            Grid(horizontalSpacing: Tokens.Spacing.md,
+                 verticalSpacing: Tokens.Spacing.xl) {
+                ForEach(categoryRows, id: \.first) { row in
+                    GridRow {
+                        ForEach(row) { category in
+                            let isSelected = selectedCategories.contains(category)
+                            // At the cap the unpicked cards go quiet rather than
+                            // swallowing taps in silence, which would read as broken.
+                            let isBlocked = categoryCapReached && !isSelected
+
+                            Button {
+                                withAnimation(.easeOut(duration: 0.15)) { toggle(category) }
+                            } label: {
+                                CategoryCard(category: category, isSelected: isSelected)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isBlocked)
+                            .opacity(isBlocked ? 0.4 : 1)
+                            .animation(.easeOut(duration: 0.15), value: isBlocked)
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                            .accessibilityHint(
+                                isBlocked ? "Deselect another category to choose this one" : ""
+                            )
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(
-                        selectedCategories.contains(category) ? .isSelected : []
-                    )
                 }
             }
         }
@@ -170,8 +186,6 @@ struct OnboardingQuestions: View {
     
     private var QuestionThree: some View{
         VStack(alignment: .leading, spacing: Tokens.Spacing.goodLord){
-            ProgressBar(progress: 2.0 / 3.0)
-
             HeaderTitle(
                 title: "What level of effort are you comfortable with?"
             )
@@ -184,10 +198,6 @@ struct OnboardingQuestions: View {
                         QuestionCards(
                             description: level.displayName,
                             icon: "energy-icon",
-                            // Was `selectedReason == levels` — compared against question
-                            // ONE's answer, so picking an effort level highlighted
-                            // nothing. Tap handling and VoiceOver were already correct,
-                            // which is why it read as a rendering glitch.
                             isSelected: selectedLevel == level
                         )
                     }
@@ -198,10 +208,27 @@ struct OnboardingQuestions: View {
         }
     }
 
+    /// The categories in rows of two, which is what `Grid` wants — `LazyVGrid` took
+    /// the flat list and wrapped it itself.
+    private var categoryRows: [[HabitCategory]] {
+        let all = HabitCategory.allCases
+        return stride(from: 0, to: all.count, by: 2).map {
+            Array(all[$0 ..< min($0 + 2, all.count)])
+        }
+    }
+
+    /// The ceiling on question two. The subtitle asks for "2-3", so three is both the
+    /// target and the limit — `canAdvance` enforces the floor, this enforces the roof.
+    private static let maxCategories = 3
+
+    private var categoryCapReached: Bool {
+        selectedCategories.count >= Self.maxCategories
+    }
+
     private func toggle(_ category: HabitCategory) {
         if selectedCategories.contains(category) {
             selectedCategories.remove(category)
-        } else {
+        } else if !categoryCapReached {
             selectedCategories.insert(category)
         }
     }
@@ -214,13 +241,12 @@ private struct QuestionCards: View {
 
     var body: some View{
         HStack{
-            Avatar(type: .avatarSmall, icon: icon)
             Text(description)
                 .textStyle(Tokens.Typography.body)
                 .foregroundStyle(Tokens.Semantic.text)
             Spacer()
         }
-        .padding(Tokens.Spacing.md)
+        .padding(Tokens.Spacing.huge)
         .background{
             RoundedRectangle(cornerRadius: Tokens.Radius.basicCards)
                 .fill(Tokens.Palette.white)
