@@ -111,6 +111,14 @@ final class CameraService: NSObject, ObservableObject {
     var minThreshold: Float { (try? HabitClassifier.shared.get())?.minSimilarity ?? 0.15 }
     var autoLogThreshold: Float { (try? HabitClassifier.shared.get())?.autoLogSimilarity ?? 0.30 }
     var confidenceThreshold: Float { (try? HabitClassifier.shared.get())?.autoLogConfidence ?? 0.55 }
+    #if DEBUG
+    /// Why the last verdict came out as it did. Empty until something is captured.
+    var lastExplanation: String {
+        guard let classifier = try? HabitClassifier.shared.get() else { return "classifier not loaded" }
+        return classifier.explain(lastFrame)
+    }
+    #endif
+
     /// 0 means no distractors are bundled — regenerate `habit_vectors.json`.
     var distractorCount: Int { (try? HabitClassifier.shared.get())?.distractorCount ?? 0 }
 
@@ -264,6 +272,16 @@ private final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBuff
     private var classifier: HabitClassifier?
     private let lock = NSLock()
     private var captureRequested = false
+
+    /// How many consecutive frames feed one verdict.
+    ///
+    /// A verdict used to come from exactly one frame, so a shutter press that happened
+    /// to land on a blurred or badly exposed 1/30s slice produced a confident wrong
+    /// answer with nothing to smooth it. Five at 30fps is ~0.17s — comfortably inside
+    /// the 0.6s beat `resolve` already waits, so it costs no perceived time.
+    private static let framesPerVerdict = 5
+    private var pending: [[Float]] = []
+    private var firstImage: UIImage?
     /// `.right` is the back camera's native landscape buffer seen in portrait.
     private var orientation: CGImagePropertyOrientation = .right
     private let ciContext = CIContext()
@@ -291,12 +309,20 @@ private final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBuff
         lock.unlock()
     }
 
-    private func consumeRequest() -> (requested: Bool, orientation: CGImagePropertyOrientation) {
+    /// Unlike the old version this does **not** clear the request — the flag stays up
+    /// until `framesPerVerdict` frames have been collected.
+    private func currentRequest() -> (requested: Bool, orientation: CGImagePropertyOrientation) {
         lock.lock()
         defer { lock.unlock() }
-        guard captureRequested else { return (false, orientation) }
+        return (captureRequested, orientation)
+    }
+
+    private func finishRequest() {
+        lock.lock()
         captureRequested = false
-        return (true, orientation)
+        pending.removeAll()
+        firstImage = nil
+        lock.unlock()
     }
 
     func captureOutput(
@@ -304,24 +330,40 @@ private final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBuff
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        let (requested, orientation) = consumeRequest()
+        let (requested, orientation) = currentRequest()
         guard requested else { return }
         guard let classifier, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        // Copy the frame out as a UIImage while the buffer is still alive, so
-        // the picker screen can show what was actually photographed.
-        let ciImage = CIImage(cvPixelBuffer: buffer)
-        let image = ciContext.createCGImage(ciImage, from: ciImage.extent).map {
-            UIImage(cgImage: $0, scale: 1,
-                    orientation: orientation == .leftMirrored ? .leftMirrored : .right)
+        // The FIRST frame is what the picker shows — it is the moment the user pressed
+        // the shutter, and the one they will recognise. Copy it out while the buffer is
+        // still alive.
+        if firstImage == nil {
+            let ciImage = CIImage(cvPixelBuffer: buffer)
+            firstImage = ciContext.createCGImage(ciImage, from: ciImage.extent).map {
+                UIImage(cgImage: $0, scale: 1,
+                        orientation: orientation == .leftMirrored ? .leftMirrored : .right)
+            }
         }
+        let image = firstImage
 
         // Get the orientation wrong and Vision reads a sideways image, which
         // scores wrong-but-plausible for everything.
-        guard let frame = try? classifier.search(buffer, orientation: orientation) else {
+        guard let embedding = try? classifier.embedding(buffer, orientation: orientation) else {
+            finishRequest()
             onResult?(image, .empty, .nothing)
             return
         }
+        pending.append(embedding)
+        guard pending.count >= Self.framesPerVerdict else { return }
+
+        let embeddings = pending
+        finishRequest()
+
+        guard let mean = HabitClassifier.averaged(embeddings) else {
+            onResult?(image, .empty, .nothing)
+            return
+        }
+        let frame = classifier.rank(mean)
         onResult?(image, frame, classifier.verdict(for: frame))
     }
 }

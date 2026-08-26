@@ -153,8 +153,38 @@ nonisolated final class HabitClassifier: @unchecked Sendable {
     /// Call this on a background queue **while the buffer is still valid** —
     /// AVFoundation recycles it the moment the delegate call returns.
     func search(_ pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) throws -> RankedFrame {
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
-        return rank(try embed(handler))
+        rank(try embedding(pixelBuffer, orientation: orientation))
+    }
+
+    /// One frame's unit-length embedding, for callers that want to combine several
+    /// before ranking. See `HabitClassifier.averaged(_:)`.
+    func embedding(_ pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) throws -> [Float] {
+        try embed(VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:]))
+    }
+
+    /// Mean of several frame embeddings, renormalised.
+    ///
+    /// **The same trick the text side already uses.** `generate_vectors.py` encodes a
+    /// prompt *ensemble* per habit — normalise each, mean, normalise again — because one
+    /// phrasing is a noisy sample of what a habit looks like in language. One 1/30s video
+    /// frame is exactly as noisy a sample of what it looks like in pixels: motion blur,
+    /// a bad exposure, a hand crossing the lens. Averaging cancels what is incidental to
+    /// the frame and keeps what is constant across them, which is the subject.
+    ///
+    /// Cheap, because the frames are being captured anyway. Returns `nil` for an empty
+    /// input or a degenerate sum.
+    static func averaged(_ embeddings: [[Float]]) -> [Float]? {
+        guard let first = embeddings.first else { return nil }
+        var mean = [Float](repeating: 0, count: first.count)
+        for embedding in embeddings where embedding.count == mean.count {
+            for i in mean.indices { mean[i] += embedding[i] }
+        }
+        var magnitude: Float = 0
+        for value in mean { magnitude += value * value }
+        magnitude = sqrtf(magnitude)
+        guard magnitude > 1e-6 else { return nil }
+        for i in mean.indices { mean[i] /= magnitude }
+        return mean
     }
 
     // MARK: - Internals
@@ -363,6 +393,47 @@ extension HabitClassifier {
         }
         return .unsure(plausible)
     }
+
+#if DEBUG
+    /// **Which gate decided, and why** — for the on-screen tuning readout.
+    ///
+    /// Lives beside `verdict` and reads the same stored thresholds deliberately: an
+    /// explanation kept in the view would be a second copy of this logic, and the first
+    /// time somebody retuned a number the readout would start describing a decision the
+    /// app was no longer making.
+    func explain(_ frame: RankedFrame) -> String {
+        guard let top = frame.habits.first else { return "no habit scored" }
+
+        if let d = frame.topDistractor, d.similarity >= top.similarity {
+            return String(format: "distractor %@ %.3f ≥ top %.3f", d.label, d.similarity, top.similarity)
+        }
+        if top.similarity < minSimilarity {
+            return String(format: "top %.3f < floor %.3f", top.similarity, minSimilarity)
+        }
+        guard MockData.habitsById[top.habitId]?.evidenceStrength.canAutoSubmitPoints == true else {
+            return "not .direct — always asks"
+        }
+        if top.similarity < autoLogSimilarity {
+            return String(format: "%.3f < auto-log %.3f", top.similarity, autoLogSimilarity)
+        }
+        if frame.confidence < autoLogConfidence {
+            return String(format: "confidence %.2f < %.2f", frame.confidence, autoLogConfidence)
+        }
+        if frame.habits.count > 1 {
+            let lead = top.similarity - frame.habits[1].similarity
+            if lead < decisiveMargin {
+                return String(format: "runner-up only %.3f behind (need %.3f)", lead, decisiveMargin)
+            }
+        }
+        if let d = frame.topDistractor {
+            let lead = top.similarity - d.similarity
+            if lead < distractorMargin {
+                return String(format: "distractor only %.3f behind (need %.3f)", lead, distractorMargin)
+            }
+        }
+        return "all gates passed"
+    }
+#endif
 
     /// Convenience over the app's catalogue.
     func verdict(for frame: RankedFrame) -> CaptureVerdict {

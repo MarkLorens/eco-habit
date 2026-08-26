@@ -631,8 +631,15 @@ final class AppState: ObservableObject {
 
     /// Log and report the outcome. Every logging surface uses this so a weekly cap or a
     /// duplicate reads the same way from the checklist, the dashboard and the camera.
+    /// - Parameter announcesSuccess: pass `false` where something else already says it
+    ///   landed. The camera plays `AwardOverlay` — the habit's name counting up to its
+    ///   points — so a toast underneath saying "\(name) · +\(points) pts" is the same
+    ///   sentence twice. Every other outcome still toasts, because nothing else reports
+    ///   a daily cap or a cooldown.
     @discardableResult
-    func logAndToast(_ habit: Habit, source: HabitLog.Source) -> HabitRepository.LogResult {
+    func logAndToast(_ habit: Habit,
+                     source: HabitLog.Source,
+                     announcesSuccess: Bool = true) -> HabitRepository.LogResult {
         let result = logHabit(habit, source: source)
         switch result {
         // At the cap the log still lands — it is a real action and still counts for the
@@ -641,6 +648,7 @@ final class AppState: ObservableObject {
         case .logged(_, atDailyCap: true):
             toast = Toast(kind: .info, message: "\(habit.name) · logged — daily points cap reached")
         case .logged(let points, _):
+            guard announcesSuccess else { break }
             toast = Toast(kind: .success, message: "\(habit.name) · +\(points) pts")
         case .alreadyLogged:
             toast = Toast(kind: .info, message: "Already logged today — back tomorrow.")
@@ -828,7 +836,13 @@ final class AppState: ObservableObject {
         return checkIn(to: fight, code: code)
     }
 
-    func checkIn(to fight: Fight, code: String? = nil) -> FightRepository.CheckInResult {
+    /// - Parameter announcesSuccess: `false` where an award animation already reports
+    ///   it. The camera plays `AwardOverlay` with the Fight's name and its points, so
+    ///   the "Checked in — +N pts" toast was saying it a second time. Every refusal
+    ///   still toasts: a shut window or a wrong code has nothing else to report it.
+    func checkIn(to fight: Fight,
+                 code: String? = nil,
+                 announcesSuccess: Bool = true) -> FightRepository.CheckInResult {
         var result = FightRepository.CheckInResult.notSignedUp
         mutate {
             result = FightRepository.checkIn(to: fight, code: code, userId: userId ?? "",
@@ -838,7 +852,9 @@ final class AppState: ObservableObject {
         switch result {
         case .checkedIn(let points):
             awardNewBadges()
-            toast = Toast(kind: .success, message: "Checked in — +\(points) pts.")
+            if announcesSuccess {
+                toast = Toast(kind: .success, message: "Checked in — +\(points) pts.")
+            }
             // Fire and forget, unlike publishing. The points are already credited
             // locally and the local record is what the app reads; the server copy is
             // what lets the host see a roster. A failed write costs the attendee

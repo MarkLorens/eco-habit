@@ -116,9 +116,6 @@ struct ProfileView: View {
                         }
                         #endif
                         Button {
-                            // Seeded from the raw stored value, not `app.userName`,
-                            // which reads "there" when empty — offering that as the
-                            // current name would be a lie you then have to delete.
                             draftName = app.data.userName
                             editingName = true
                         } label: {
@@ -342,7 +339,14 @@ struct BadgeDetailSheet: View {
  
     var body: some View {
         VStack(spacing: Tokens.Spacing.md) {
-            Avatar(type: .avatarBig, icon: badge.icon)
+            // `unlocked` was carried by every call site but never rendered, so a
+            // locked badge opened looking earned. Grey art behind a lock keeps
+            // the name and detail below reading as a requirement, not a reward.
+            if unlocked {
+                Avatar(type: .avatarBig, icon: badge.icon)
+            } else {
+                LockedAvatar(type: .avatarBig, icon: badge.icon)
+            }
  
             Text(badge.name)
                 .textStyle(Tokens.Typography.hero)
