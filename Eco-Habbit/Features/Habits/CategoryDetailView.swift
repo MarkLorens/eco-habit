@@ -108,7 +108,7 @@ struct CategoryDetailView: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: Tokens.Spacing.sm) {
-                NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .close){ dismiss() }
+                NavigateButton(background: Tokens.Semantic.buttonTintDefault, buttonAction: .back){ dismiss() }
                 Text(category.title)
                     .foregroundStyle(Tokens.Semantic.text)
                     .textStyle(Tokens.Typography.hero)

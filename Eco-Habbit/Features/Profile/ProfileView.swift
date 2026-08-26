@@ -44,6 +44,9 @@ struct ProfileView: View {
                 .tabContentInsets()
             }
             .background(Tokens.Palette.white.ignoresSafeArea())
+            // The sheet's own green: the identity reaches the top edge at rest, so a
+            // white strip above it would be the clash this is meant to remove.
+            .statusBarCover(Tokens.Semantic.profileBg)
             .navigationDestination(for: ProfileRoute.self) { route in
                 switch route {
                 case .recap(let period): RecapView(period: period)

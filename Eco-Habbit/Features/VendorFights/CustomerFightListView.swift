@@ -51,6 +51,7 @@ struct CustomerFightListView: View {
                 .tabContentInsets()
             }
             .background(Tokens.Palette.white)
+            .statusBarCover()
             // Published Fights come from the shared collection, so an organiser at the
             // next table shows up by the time somebody looks.
             .task { await app.refreshFights() }

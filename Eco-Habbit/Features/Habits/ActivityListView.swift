@@ -46,6 +46,7 @@ struct ActivityListView: View {
                 .tabContentInsets()
             }
             .background(Tokens.Palette.white)
+            .statusBarCover()
             .navigationDestination(for: HabitCategory.self) { category in
                 CategoryDetailView(category: category)
             }

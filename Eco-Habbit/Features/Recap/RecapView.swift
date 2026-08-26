@@ -60,6 +60,7 @@ struct RecapView: View {
             .tabContentInsets()
         }
         .background(Tokens.Palette.white.ignoresSafeArea())
+        .statusBarCover()
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
         // Passed explicitly rather than relied on being inherited — a cover builds its
