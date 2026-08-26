@@ -41,6 +41,9 @@ protocol UserStateSyncing: Sendable {
     /// Record attendance at `/attendance/{fightId}_{userId}`.
     func checkIn(_ attendance: FightAttendance) async throws
 
+    /// Remove every attendance record this account owns, leaving Fights it hosts alone.
+    func deleteAttendance(userId: String) async throws
+
     /// Everyone who checked in to one Fight. **Host-only in practice** — the rules let
     /// a caller read an attendance record if they own it or host the Fight, so this
     /// query only returns anything to the organiser.
@@ -171,6 +174,18 @@ struct FirebaseUserStateSync: UserStateSyncing {
         // no transaction, no race.
         let id = "\(attendance.fightId)_\(attendance.userId)"
         try db.collection("attendance").document(id).setData(from: attendance)
+    }
+
+    func deleteAttendance(userId: String) async throws {
+        let snapshot = try await db.collection("attendance")
+            .whereField("userId", isEqualTo: userId)
+            .getDocuments()
+        // 500 writes per batch is the Firestore limit; chunk rather than assume.
+        for chunk in snapshot.documents.chunked(into: 400) {
+            let batch = db.batch()
+            chunk.forEach { batch.deleteDocument($0.reference) }
+            try await batch.commit()
+        }
     }
 
     func fetchAttendance(fightId: String) async throws -> [FightAttendance] {

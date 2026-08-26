@@ -67,14 +67,19 @@ struct RootView: View {
         .overlay(alignment: .top) {
             ToastLayer()
         }
+        // **Queued behind the globe, not stacked under it.** Both used to be presented
+        // at once and simply layered — a stage-up and a badge earned by the same action
+        // animated over each other, and the badge's card slid in behind a globe still
+        // playing its own timeline. `nil` while a stage-up is pending holds the badge
+        // back until that has been dismissed, and then it appears on its own.
         .modalCard(item: Binding(
-            get: { app.pendingBadge },
+            get: { app.pendingGlobeStageUp == nil ? app.pendingBadge : nil },
             set: { if $0 == nil, let badge = app.pendingBadge { app.acknowledgeBadge(badge) } }
         )) { badge in
             BadgeDetailSheet(badge: badge, unlocked: true) { app.acknowledgeBadge(badge) }
         }
-        // Above the badge card on purpose: the globe reaching a new stage is the bigger
-        // moment, and the badge is still waiting underneath once this is dismissed.
+        // The globe goes first: reaching a new stage is the bigger moment, and the badge
+        // is still queued once this is dismissed.
         .globeStageUpOverlay(item: Binding(
             get: { app.pendingGlobeStageUp },
             set: { if $0 == nil, let stageUp = app.pendingGlobeStageUp { app.acknowledgeGlobeStageUp(stageUp) } }

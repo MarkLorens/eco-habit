@@ -28,7 +28,9 @@ struct CustomerFightWrapper: View {
     var actionTitle: String? = "Scan or check in"
     var actionBackground: Color = Color(hex: 0x2F3A32)
     var actionForeground: Color = Tokens.Semantic.ourFightQR
+    var secondaryTitle: String? = nil
     var onAction: () -> Void = {}
+    var onSecondary: () -> Void = {}
 
     @State private var isExpanded = false
 
@@ -47,7 +49,9 @@ struct CustomerFightWrapper: View {
                 actionTitle: actionTitle,
                 actionBackground: actionBackground,
                 actionForeground: actionForeground,
+                secondaryTitle: secondaryTitle,
                 onAction: onAction,
+                onSecondary: onSecondary,
                 onLove: onLove,
                 onCollapse: {
                     withAnimation(.snappy(duration: 0.2)) {
