@@ -49,7 +49,13 @@ struct Cards: View {
                         .frame(width: 100, height: 100)
 //                    }
                 Spacer()
-                NavigateButton(background: tint, buttonAction: .forward) { print("tapped") }
+                NavigateButton(background: tint, buttonAction: .forward) {
+                    print("tapped")
+                }
+                .allowsHitTesting(false)
+                .onTapGesture {
+                    print("tapped")
+                }
             }
             .padding([.horizontal, .bottom], Tokens.Spacing.sm)
         }

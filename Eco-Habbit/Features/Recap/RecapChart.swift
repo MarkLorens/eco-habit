@@ -222,11 +222,9 @@ private struct DonutPlot: View, Animatable {
                 innerRadius: .ratio(restingInner + (selectedInner - restingInner) * amount),
                 angularInset: angularInset(for: placed.sweep)
             )
-            // Pale `tint` at rest, saturated `background` when chosen. Blended by
-            // hand: Charts would cut straight from one to the other, and `Color.mix`
-            // needs iOS 18.
-            .foregroundStyle(placed.item.category.tint.blended(with: placed.item.category.background,
-                                                               by: amount))
+            .foregroundStyle(placed.item.category == current
+                             ? placed.item.category.tintDark
+                             : placed.item.category.tint)
             .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
             .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
         }
@@ -354,30 +352,6 @@ private struct DonutPlot: View, Animatable {
                 .resizable()
                 .scaledToFit()
         }
-    }
-}
-
-private extension Color {
-    /// Linear blend in sRGB. Enough for two flat brand colours a third of a second
-    /// apart, and it keeps the deployment target at iOS 17.
-    func blended(with other: Color, by amount: Double) -> Color {
-        guard amount > 0 else { return self }
-        guard amount < 1 else { return other }
-
-        let from = UIColor(self).resolvedColor(with: .current)
-        let to = UIColor(other).resolvedColor(with: .current)
-
-        var fr: CGFloat = 0, fg: CGFloat = 0, fb: CGFloat = 0, fa: CGFloat = 0
-        var tr: CGFloat = 0, tg: CGFloat = 0, tb: CGFloat = 0, ta: CGFloat = 0
-        from.getRed(&fr, green: &fg, blue: &fb, alpha: &fa)
-        to.getRed(&tr, green: &tg, blue: &tb, alpha: &ta)
-
-        let t = CGFloat(amount)
-        return Color(.sRGB,
-                     red: fr + (tr - fr) * t,
-                     green: fg + (tg - fg) * t,
-                     blue: fb + (tb - fb) * t,
-                     opacity: fa + (ta - fa) * t)
     }
 }
 
